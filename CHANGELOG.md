@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The web interface shows a tool call whole: `GET /api/sessions/{id}/tools/{agent}/{tid}`
+  (`wire.ToolDetail`) reads one call from the session's log, with its whole command and
+  output; a tool row's `⤢` opens it. `/jobs` also lists strays, the process groups an
+  agent's finished command left running (`wire.Job` gains `kind` and `procs`; a stray's id
+  is `p` and its group id), `/jobs stop ID` ends one, and `/jobs log ID` prints a job's
+  whole command and the end of its output. No prompt layer changes.
+
 - `POST /api/sessions/{id}/stop` (the web interface's Stop the run) stops a
   team as a whole instead of interrupting the manager's turn: every worker
   stops whether or not a turn runs, the open tasks are canceled, and nothing

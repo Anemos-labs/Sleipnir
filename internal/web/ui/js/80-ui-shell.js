@@ -24,24 +24,42 @@
   const jobsOf = S => (S && S.meta && Array.isArray(S.meta.jobs) ? S.meta.jobs : []);
   /** A local address a job named, as a link that opens it in a new tab; anything that is not an http(s) address stays text. */
   const jobLink = u => (/^https?:\/\//.test(String(u)) ? '<a class="mono" href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + esc(u) + '</a>' : '<span class="mono">' + esc(u) + '</span>');
-  /** The rows of the jobs dialog: running jobs first, each with its addresses under it and a Stop button. */
+  /** A job's state as a tag. */
+  const jobTag = j => j.kind === 'stray' ? '<span class="tag warm">left running</span>' : j.status === 'running' ? '<span class="tag ok">running</span>' : j.status === 'killed' ? '<span class="tag warm">killed</span>' : '<span class="tag' + (j.exit ? ' err' : '') + '">exited ' + esc(String(j.exit == null ? '' : j.exit)) + '</span>';
+  /** The rows of the jobs dialog: the background jobs, running ones first, each with its addresses under it, Output and Stop; then the
+   *  strays (processes an agent's finished command left running: `server &` inside an ordinary command), each with its live processes
+   *  and Stop. */
   function jobsHtml(S) {
-    const js = jobsOf(S); if (!js.length) return '<p class="stubnote">No background jobs. An agent starts one with <span class="mono">bash</span> and <span class="mono">run_in_background</span>: a dev server, a watcher, a long test run. When its output names a local address (<span class="mono">http://localhost:5173/</span>), the address shows here to open.</p>';
+    const all = jobsOf(S), js = all.filter(j => j.kind !== 'stray'), strays = all.filter(j => j.kind === 'stray');
+    if (!all.length) return '<p class="stubnote">No background jobs. An agent starts one with <span class="mono">bash</span> and <span class="mono">run_in_background</span>: a dev server, a watcher, a long test run. When its output names a local address (<span class="mono">http://localhost:5173/</span>), the address shows here to open. A process an agent’s command leaves running (<span class="mono">server &amp;</span>) shows here too, to stop.</p>';
     const order = js.filter(j => j.status === 'running').concat(js.filter(j => j.status !== 'running'));
-    const st = j => j.status === 'running' ? '<span class="tag ok">running</span>' : j.status === 'killed' ? '<span class="tag warm">killed</span>' : '<span class="tag' + (j.exit ? ' err' : '') + '">exited ' + esc(String(j.exit == null ? '' : j.exit)) + '</span>';
-    return '<table class="tbl jobs"><thead><tr><th>job</th><th>agent</th><th>command</th><th>state</th><th></th></tr></thead><tbody>' + order.map(j => '<tr><td class="mono bright">' + esc(j.id) + '</td><td style="color:' + U.agCol(String(j.agent).replace(/[^A-Za-z0-9_-]/g, '_')) + ';font-weight:700">' + esc(j.agent) + '</td><td class="mono">' + esc(j.command) + '</td><td>' + st(j) + '</td><td class="r">' + (j.status === 'running' ? '<button class="btn sm" type="button" data-stopjob="' + esc(j.id) + '">Stop</button>' : '') + '</td></tr>' +
+    const agent = j => '<td style="color:' + U.agCol(String(j.agent).replace(/[^A-Za-z0-9_-]/g, '_')) + ';font-weight:700">' + esc(j.agent) + '</td>';
+    let h = '';
+    if (order.length) h += '<h3 class="lab jh">background jobs <span class="dim">' + order.filter(j => j.status === 'running').length + ' running · ' + order.filter(j => j.status !== 'running').length + ' ended</span></h3><table class="tbl jobs"><thead><tr><th>job</th><th>agent</th><th>command</th><th>state</th><th></th></tr></thead><tbody>' + order.map(j => '<tr><td class="mono bright">' + esc(j.id) + '</td>' + agent(j) + '<td class="mono">' + esc(j.command) + '</td><td>' + jobTag(j) + '</td><td class="r nowrap"><button class="btn sm" type="button" data-joblog="' + esc(j.id) + '">Output</button>' + (j.status === 'running' ? ' <button class="btn sm" type="button" data-stopjob="' + esc(j.id) + '">Stop</button>' : '') + '</td></tr>' +
       (j.urls && j.urls.length ? '<tr class="jurls"><td></td><td colspan="4">' + j.urls.map(jobLink).join(' · ') + '</td></tr>' : '')).join('') + '</tbody></table>';
+    if (strays.length) h += '<h3 class="lab jh">left running by finished commands <span class="dim">' + strays.length + ' process group' + (strays.length === 1 ? '' : 's') + ': ended when the agent’s run ends, or stop one now</span></h3><table class="tbl jobs strays"><thead><tr><th>group</th><th>agent</th><th>command</th><th>state</th><th></th></tr></thead><tbody>' + strays.map(j => '<tr><td class="mono bright">' + esc(j.id) + '</td>' + agent(j) + '<td class="mono">' + esc(j.command) + '</td><td>' + jobTag(j) + '</td><td class="r"><button class="btn sm" type="button" data-stopjob="' + esc(j.id) + '">Stop</button></td></tr>' +
+      (j.procs && j.procs.length ? '<tr class="jurls"><td></td><td colspan="4">' + j.procs.map(p => '<div class="jproc mono"><span class="dim">pid ' + esc(String(p.pid)) + '</span> ' + esc(p.cmd) + '</div>').join('') + '</td></tr>' : '')).join('') + '</tbody></table>';
+    return h;
   }
-  /** The jobs dialog (the status bar's chip, /jobs): the session's background jobs, live, with their addresses to open and Stop. */
+  /** The jobs dialog (the status bar's chip, /jobs): the session's background jobs and strays, live, with their addresses to open,
+   *  a job's output (/jobs log ID) and Stop. */
   ui.jobs = {
     html: jobsHtml,
     open() {
       const S0 = SL.sessions.active; if (!S0) return;
-      ui.modal({ title: 'Background jobs', kicker: '/jobs', desc: 'what the agents left running', wide: true, body: '<div class="jobsb">' + jobsHtml(S0) + '</div>',
+      ui.modal({ title: 'Background jobs', kicker: '/jobs', desc: 'what the agents left running', wide: true, body: '<div class="jobsb">' + jobsHtml(S0) + '</div><div class="joblog" hidden><div class="tdl"><h3 class="lab">output of <span class="mono jlid"></span></h3><button class="btn sm" type="button" data-jlre>Refresh</button><button class="btn sm" type="button" data-jlx>Hide</button></div><pre class="tdpre"></pre></div>',
         onMount(b, scm) {
-          const box = $('.jobsb', b); let last = box.innerHTML;
+          const box = $('.jobsb', b), lg = $('.joblog', b); let last = box.innerHTML, cur = '';
           scm.update(S => { if (!S) return; const h = jobsHtml(S); if (h !== last) { last = h; box.innerHTML = h; } });
+          const showLog = id => {
+            cur = id; lg.hidden = false; $('.jlid', lg).textContent = id; const pre = $('pre', lg); if (!pre.textContent) pre.textContent = 'reading…';
+            const r = SL.act.command('/jobs log ' + id); if (r && r.ok === false) { pre.textContent = r.why || 'the output could not be read'; return; }
+            r.done.then(x => { if (!scm.alive || cur !== id) return; const near = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 40; pre.textContent = x.ok ? String((x.data && x.data.output) || '').replace(/\s+$/, '') || '(no output yet)' : x.message || 'the output could not be read'; if (near) pre.scrollTop = pre.scrollHeight; });
+          };
           scm.listen(b, 'click', e => {
+            const lb = e.target.closest('[data-joblog]'); if (lb) { $('pre', lg).textContent = ''; showLog(lb.dataset.joblog); return; }
+            if (e.target.closest('[data-jlre]')) { if (cur) showLog(cur); return; }
+            if (e.target.closest('[data-jlx]')) { cur = ''; lg.hidden = true; return; }
             const btn = e.target.closest('[data-stopjob]'); if (!btn) return; const id = btn.dataset.stopjob; btn.disabled = true;
             const r = SL.act.command('/jobs stop ' + id); if (r && r.ok === false) { btn.disabled = false; if (r.why) ui.toast(r.why, 'warm'); return; }
             r.done.then(x => { if (!x.ok) { btn.disabled = false; ui.toast(x.message || 'the job could not be stopped', 'warm'); return; } const out = String((x.data && x.data.output) || '').trim(); ui.toast(out || 'stopped ' + id, /^stopped/.test(out) ? 'ok' : 'warm'); });
@@ -199,9 +217,12 @@
     sc.listen($('#statusLine'), 'click', e => { if (e.target.closest('[data-act="again"]')) SL.act.restartTeam({ swarm: SL.sessions.active.meta.swarm, force: true }); else if (e.target.closest('[data-act="jobs"]')) ui.jobs.open(); });
     /** The status bar's chip of the background jobs that run (a dev server, a watcher): how many, and how many serve a local address. */
     function jobsChip(S) {
-      const run = jobsOf(S).filter(j => j.status === 'running'); if (!run.length) return '';
-      const srv = run.filter(j => j.urls && j.urls.length).length;
-      return '<button class="btn sm jobchip" type="button" data-act="jobs" title="the background jobs the agents started: open them, or stop one (/jobs)">' + (srv ? '▶ ' + srv + ' serving' + (run.length > srv ? ' · ' + run.length + ' jobs' : '') : '◷ ' + run.length + ' job' + (run.length === 1 ? '' : 's')) + '</button>';
+      const all = jobsOf(S); if (!all.length) return '';
+      const run = all.filter(j => j.kind !== 'stray' && j.status === 'running'), strays = all.length - all.filter(j => j.kind !== 'stray').length;
+      const srv = run.filter(j => j.urls && j.urls.length).length, parts = [];
+      if (srv) parts.push('▶ ' + srv + ' serving'); if (run.length > srv) parts.push((srv ? '' : '◷ ') + (run.length - srv) + ' job' + (run.length - srv === 1 ? '' : 's')); if (strays) parts.push('⚠ ' + strays + ' stray');
+      if (!parts.length) parts.push('◷ ' + all.length + ' ended job' + (all.length === 1 ? '' : 's'));
+      return '<button class="btn sm jobchip' + (strays ? ' stray' : run.length ? '' : ' idle') + '" type="button" data-act="jobs" title="the background jobs the agents started and the processes their commands left running: their output, open them, or stop one (/jobs)">' + parts.join(' · ') + '</button>';
     }
 
     /* ---- the mode chip (composer) ---- */

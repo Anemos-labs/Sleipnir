@@ -219,3 +219,8 @@ body.cq .anom .a b{color:var(--warm)}
 #statusLine .jobchip{flex:0 0 auto;color:var(--ok)}
 .tbl.jobs td{vertical-align:top}.tbl.jobs td.mono{overflow-wrap:anywhere}
 .tbl.jobs tr.jurls td{border-top:0;padding-top:0}.tbl.jobs tr.jurls a{color:var(--fe);overflow-wrap:anywhere}
+#statusLine .jobchip.stray{color:var(--warm)}#statusLine .jobchip.idle{color:var(--dim)}
+.jobsb .lab.jh{margin:4px 0 6px}.jobsb .lab.jh .dim{font-weight:400;text-transform:none;letter-spacing:0;margin-left:6px}
+.jobsb .tbl.jobs+.lab.jh{margin-top:16px}.tbl.jobs td.nowrap{white-space:nowrap}
+.tbl.jobs .jproc{color:var(--fg2);overflow-wrap:anywhere;font-size:11px}
+.joblog{margin-top:14px}.joblog .tdl{display:flex;align-items:center;gap:8px;margin:0 0 4px}.joblog .tdl .lab{margin:0;flex:1 1 auto}
