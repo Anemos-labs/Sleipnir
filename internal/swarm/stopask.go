@@ -20,14 +20,14 @@ import (
 // steering, for the manager.
 
 // stopVerbs are the verbs of a stop request.
-var stopVerbs = map[string]bool{"stop": true, "halt": true, "kill": true, "cancel": true, "abort": true, "terminate": true, "pause": true}
+var stopVerbs = map[string]bool{"stop": true, "halt": true, "kill": true, "cancel": true, "abort": true, "terminate": true}
 
 // stopAlone are whole messages that are a stop request by themselves.
 var stopAlone = map[string]bool{
 	"stop": true, "halt": true, "abort": true, "stop now": true, "stop it": true, "stop it now": true, "stop stop": true,
 	"stop please": true, "please stop": true, "stop all": true, "stop all now": true, "halt all": true, "cancel all": true,
 	"kill all": true, "abort all": true, "stop everything": true, "cancel everything": true, "kill everything": true,
-	"stop right now": true, "stop immediately": true, "pause everything": true, "pause all": true,
+	"stop right now": true, "stop immediately": true,
 }
 
 // stopFiller are the words between the verb and what it stops: "stop all of your agents".

@@ -50,6 +50,8 @@ func TestStopRequest(t *testing.T) {
 		"add a stop button to the toolbar",
 		"never stop the workers before the review",
 		"make sure the server can stop all tasks cleanly",
+		"pause all agents",
+		"pause everything",
 		"",
 	}
 	for _, s := range steering {

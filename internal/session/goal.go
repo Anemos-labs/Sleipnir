@@ -484,6 +484,9 @@ func (s *Session) GoalJudged(ctx context.Context, g *goal.State, turnErr error) 
 		return pause("the turn failed")
 	}
 	v, worked, err := s.JudgeGoal(ctx, g)
+	if s.Swarm != nil && s.Swarm.Stopped() {
+		return pause("you stopped the team") // stopped while the judge ran: a continuation would lift the person's stop
+	}
 	if err != nil {
 		j.Err = err
 		return pause("the judge could not be asked (" + short(tools.SanitizeForTerminal(err.Error()), 100) + ")")

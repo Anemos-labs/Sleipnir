@@ -137,3 +137,31 @@ func TestStopAllEndsTheManagersTurn(t *testing.T) {
 	r.sw.StopAll("")
 	<-done
 }
+
+// A run that starts at the moment the team is stopped is either refused or stopped: never left running on a stopped team.
+func TestReserveRacingStopAllNeverLeavesARun(t *testing.T) {
+	r := newRVRig(t, stallCfg(), gatedWorkers(nil))
+	r.sw.StartManager()
+	id, _ := spawnWorker(t, r, "warm up", 1)
+	r.sw.StopAll("")
+	rvWait(t, id+" to stop", func() bool { return r.idle(id) })
+	m := r.sw.get(id)
+	for i := 0; i < 200; i++ {
+		r.sw.LiftStop()
+		var rs *runState
+		var ok bool
+		done := make(chan struct{})
+		go func() { rs, _, ok = r.sw.reserve(m); close(done) }()
+		r.sw.StopAll("")
+		<-done
+		if ok {
+			m.mu.Lock()
+			cancelled := rs.reason == stopReason
+			m.mu.Unlock()
+			if !cancelled {
+				t.Fatalf("round %d: a run reserved during the stop was left running", i)
+			}
+			r.sw.unreserve(m, rs)
+		}
+	}
+}
