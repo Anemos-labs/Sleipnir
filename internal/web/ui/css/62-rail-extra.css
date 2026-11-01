@@ -75,3 +75,15 @@
 .agrp-h .ag-x{flex:none;font-weight:600}
 .agrp-h time{flex:none;font:400 10px var(--f-num);color:var(--dim)}
 .msg.agrp.open:not(.one)>.agrp-b{display:flex;flex-direction:column;gap:5px;padding:2px 0 2px 9px;margin-left:4px;border-left:1px dashed var(--line2)}
+/* a tool row opens the whole call (ui.toolDetail): its ⤢, or the row itself when it opens no file */
+.msg.tool .tdet-b{flex:none;align-self:flex-start;border:1px solid var(--line2);background:transparent;color:var(--dim);font:600 10px/1 var(--f-num);padding:2px 4px;border-radius:3px;cursor:pointer;opacity:.55}
+.msg.tool:hover .tdet-b,.msg.tool .tdet-b:focus-visible{opacity:1;color:var(--bright)}
+.msg.tool.detailable{cursor:pointer}.msg.tool.detailable:hover{background:var(--panel2)}
+.msg.tool .ts.err{color:var(--err)}
+.sheet.tooldet .tdh{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px;font:500 12px/1.4 var(--f-num);margin:0 0 10px}
+.sheet.tooldet .tdh b{color:var(--fe)}.sheet.tooldet .tdh .sp{flex:1 1 auto}
+.sheet.tooldet .tdsec{margin:0 0 12px}
+.sheet.tooldet .tdl{display:flex;align-items:center;gap:8px;margin:0 0 4px}.sheet.tooldet .tdl .lab{margin:0;flex:1 1 auto}
+.sheet.tooldet summary.lab{cursor:pointer;margin:0 0 4px}
+.tdpre{margin:0;padding:8px 10px;background:var(--panel2);border:1px solid var(--line2);border-radius:4px;font:400 11.5px/1.45 var(--f-num);color:var(--fg);white-space:pre-wrap;overflow-wrap:anywhere;max-height:55vh;overflow:auto}
+.tdpre.cmd{color:var(--bright);max-height:30vh}.tdpre.err{border-color:var(--err)}

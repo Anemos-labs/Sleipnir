@@ -29,6 +29,9 @@ func killGroup(pid int) { taskkill(pid, true) }
 // rely on the leader alone.
 func groupAlive(pid int) bool { return false }
 
+// groupMembers lists nothing here: there are no process groups to read.
+func groupMembers(pgids []int, max int) (map[int][]Member, bool) { return nil, false }
+
 func taskkill(pid int, force bool) {
 	if runtime.GOOS != "windows" {
 		if p, err := os.FindProcess(pid); err == nil {
