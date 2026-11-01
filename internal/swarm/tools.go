@@ -239,6 +239,11 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		// re-read its files, and each claim cleared the harness's no-progress alarm.
 		t0, _ := s.Board.Snapshot().Task(in.ID)
 		current := t0.Owner == me && t0.Status == StatusDoing && m != nil && m.currentTask() == in.ID
+		// The draft in the checkout belongs to the task the worker is on now, which the claim is about to change.
+		var wip string
+		if m != nil && m.tree != nil {
+			wip = s.wipMessage(m)
+		}
 		if err := s.Board.claim(me, in.ID, s.claimCheck(me, ro)); err != nil {
 			// Workers were told to start the parent with spawn, which only the manager may do, and claimed again.
 			var pe poolParentError
@@ -256,7 +261,7 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		if m != nil && m.tree != nil {
 			// Work the checkout already has: the queue's tip is in its history (a dirty tree's sync still commits the draft).
 			had, _ := m.tree.Repo().IsAncestor(ctx, s.deps.Isolation.Queue.Tip(), "HEAD")
-			if note, err := s.syncTree(ctx, m); err != nil {
+			if note, err := s.syncTreeRecording(ctx, m, wip); err != nil {
 				return text("%s is yours, but the checkout could not receive integrated work: %s. Repair the checkout or ask the manager before implementing.", in.ID, cleanText(err.Error(), 200)), nil
 			} else if note != "" {
 				return text("%s is yours. %s Resolve these conflicts before implementing.", in.ID, note), nil

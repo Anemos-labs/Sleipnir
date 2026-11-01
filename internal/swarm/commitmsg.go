@@ -76,6 +76,12 @@ func handoverCommitMessage(t Task) string {
 	return fmt.Sprintf("%s\n\nUnfinished; continued by a later commit.\n\nSleipnir-Task: %s", subject, t.ID)
 }
 
+// wipCommitMessage records the work on t that a tree holds when the harness merges integrated work into it. The task may
+// finish without another edit, so unlike a handover it promises no later commit.
+func wipCommitMessage(t Task) string {
+	return fmt.Sprintf("%s\n\nSleipnir-Task: %s", commitSubject("Work in progress: "+commitSubject(t.Title)), t.ID)
+}
+
 // filesCommitSubject names a change by the files it touches, for work that has no
 // task title (the manager's own edits).
 func filesCommitSubject(files []string) string {

@@ -283,7 +283,7 @@ func (s *Swarm) wipMessage(m *member) string {
 	id := m.task
 	m.mu.Unlock()
 	if t, ok := s.Board.Snapshot().Task(id); ok && id != "" {
-		return handoverCommitMessage(t)
+		return wipCommitMessage(t)
 	}
 	return ""
 }
@@ -295,10 +295,19 @@ func (s *Swarm) syncTree(ctx context.Context, m *member) (string, error) {
 	if m.tree == nil {
 		return "", nil
 	}
+	return s.syncTreeRecording(ctx, m, s.wipMessage(m))
+}
+
+// syncTreeRecording is syncTree with the message of the commit that records the tree's uncommitted work, for a caller that
+// named it before the member's task changed (a claim of another task records the draft of the one it leaves).
+func (s *Swarm) syncTreeRecording(ctx context.Context, m *member, wip string) (string, error) {
+	if m.tree == nil {
+		return "", nil
+	}
 	tip := s.deps.Isolation.Queue.Tip()
 	uctx, cancel := context.WithTimeout(ctx, gitTimeout)
 	defer cancel()
-	c, err := m.tree.UpdateRecording(uctx, tip, s.wipMessage(m))
+	c, err := m.tree.UpdateRecording(uctx, tip, wip)
 	if err != nil {
 		return "", err
 	}
