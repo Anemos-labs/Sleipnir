@@ -920,8 +920,11 @@ func (m *chatModel) runEnded(e runEnd) {
 		m.end, m.over = m.exiting, true
 		return
 	}
-	if r.kind == runTurn && e.turn.Next != "" && len(m.queue) == 0 && e.turn.Err == nil {
-		m.startTurn(e.turn.Next) // a goal that is not met sends the agent on; what the person typed meanwhile goes first
+	// A goal that is not met sends the agent on, and so does one whose turn failed on a provider outage (session.GoalJudged):
+	// the host gives a Next only when the goal goes on, so the turn's error does not stop it. What the person typed meanwhile
+	// goes first.
+	if r.kind == runTurn && e.turn.Next != "" && len(m.queue) == 0 {
+		m.startTurn(e.turn.Next)
 		return
 	}
 	m.drainQueue()
