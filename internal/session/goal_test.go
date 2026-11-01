@@ -16,6 +16,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
@@ -103,6 +104,65 @@ func TestAnInterruptedTurnPausesTheGoal(t *testing.T) {
 	}
 	if note, next := s.GoalTurn(context.Background(), g, nil); note != "" || next != "" {
 		t.Errorf("a paused goal acted: %q %q", note, next)
+	}
+}
+
+// A turn that failed on a provider outage, after the agent waited it out, sends the goal on by itself a bounded number of times
+// in a row, so an unattended goal is not left paused by an outage that ended minutes later; a judged turn sets the count back, and
+// a failure that waiting does not cure still pauses at once. In a team build the manager's turn failed on twenty minutes of 429s
+// from its model's provider, and the goal stayed paused while the workers went on.
+func TestAGoalGoesOnAfterAProviderOutage(t *testing.T) {
+	repo := newRepo(t)
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if strings.Contains(c.System, "You judge whether a coding agent") {
+			return mock.Reply{Text: `{"verdict":"continue","reason":"the tests have not run","left":["run the tests"]}`}
+		}
+		return mock.Reply{Text: "ok"}
+	})
+	s, err := session.New(context.Background(), opts(t, repo, client, model))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	g := goal.New("ship the service")
+	s.SaveGoal(g)
+	outage := fmt.Errorf("turn: %w", &provider.Error{Kind: provider.ErrRateLimit, Status: 429, Message: "no free capacity"})
+	for i := 1; i <= goal.MaxOutageTurns; i++ {
+		note, next := s.GoalTurn(context.Background(), g, outage)
+		if g.Paused != "" || !strings.Contains(note, "provider outage") || !strings.Contains(next, "ship the service") || !strings.Contains(next, "go on from where it stopped") {
+			t.Fatalf("outage %d: note %q paused %q next:\n%s", i, note, g.Paused, next)
+		}
+		if g.Outages != i || g.Turns != i {
+			t.Fatalf("outage %d: Outages=%d Turns=%d", i, g.Outages, g.Turns)
+		}
+	}
+	if note, next := s.GoalTurn(context.Background(), g, outage); g.Paused != "the turn failed" || next != "" {
+		t.Fatalf("an outage past the bound: note %q next %q paused %q", note, next, g.Paused)
+	}
+
+	// A resume sets the count back by itself (no judgment in between: the paused turn is taken as judged here), and so does a
+	// judged turn; the next outage is sent on again.
+	g.Unjudged = false
+	s.GoalResume(context.Background(), g)
+	if g.Paused != "" || g.Outages != 0 {
+		t.Fatalf("after /goal resume: paused %q Outages=%d", g.Paused, g.Outages)
+	}
+	g.Outages = 1
+	if _, err := s.Run(context.Background(), "go on"); err != nil {
+		t.Fatal(err)
+	}
+	if _, next := s.GoalTurn(context.Background(), g, nil); next == "" || g.Outages != 0 {
+		t.Fatalf("a judged turn: next %q Outages=%d", next, g.Outages)
+	}
+	if _, next := s.GoalTurn(context.Background(), g, outage); next == "" || g.Paused != "" {
+		t.Fatalf("an outage after a judged turn was not sent on: paused %q", g.Paused)
+	}
+
+	// A failure waiting does not cure pauses at once.
+	h := goal.New("x")
+	bad := &provider.Error{Kind: provider.ErrAuth, Status: 401, Message: "bad key"}
+	if _, next := s.GoalTurn(context.Background(), h, bad); h.Paused != "the turn failed" || next != "" || h.Outages != 0 {
+		t.Fatalf("a refused key: paused %q next %q", h.Paused, next)
 	}
 }
 

@@ -39,6 +39,9 @@ type State struct {
 	// Unjudged says the goal paused on a turn the judge did not rule on (interrupted, failed, cut short by a restart, or a judge that
 	// could not be asked): what the judge said last predates it.
 	Unjudged bool `json:",omitempty"`
+	// Outages counts the turns in a row that failed on a provider outage and were sent on without the person (MaxOutageTurns);
+	// a judged turn sets it back to zero.
+	Outages int `json:",omitempty"`
 	// Spec is the spec file the objective names (SpecRef) and SpecText its text as read when the goal was set (Prepare).
 	Spec, SpecText string
 	// Rubric is the project's rubric file (RubricFile) and RubricText its text as read when the goal was set (Prepare): standing criteria of
@@ -53,6 +56,12 @@ type State struct {
 	// Verdicts are the reasons of the judge's verdicts so far, oldest first, at most MaxVerdicts: what a lesson is distilled from.
 	Verdicts []string `json:",omitempty"`
 }
+
+// MaxOutageTurns is how many turns in a row that failed on a provider outage (an endpoint that answered it is down or
+// overloaded, or stopped answering, for longer than the agent's own patience) a goal sends on by itself before it pauses: an
+// unattended goal outlives an outage of a quarter of an hour instead of waiting for the person, and an endpoint that stays
+// down still stops it.
+const MaxOutageTurns = 2
 
 // MaxVerdicts is how many of the judge's reasons a goal keeps.
 const MaxVerdicts = 12

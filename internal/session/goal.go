@@ -481,6 +481,15 @@ func (s *Session) GoalJudged(ctx context.Context, g *goal.State, turnErr error) 
 	case errors.Is(turnErr, context.Canceled):
 		return pause("you interrupted it")
 	case turnErr != nil:
+		if pe, ok := provider.AsError(turnErr); ok && pe.Outage() != provider.NotOutage && g.Outages < goal.MaxOutageTurns && g.Turns < g.Max {
+			// The agent already waited the outage out for its patience; one more turn waits as long again, so a goal nobody
+			// watches is not left paused by an outage that ended minutes later.
+			g.Outages++
+			g.Turns++
+			why := short(tools.SanitizeForTerminal(pe.Error()), 100)
+			v := goal.Verdict{Reason: "the last turn ended on a provider outage before it finished (" + why + "); go on from where it stopped"}
+			return fmt.Sprintf("the turn failed on a provider outage (%s): going on (%d of %d such retries, continuation %d of %d)", why, g.Outages, goal.MaxOutageTurns, g.Turns, g.Max), s.GoalContinuation(g, v), j
+		}
 		return pause("the turn failed")
 	}
 	v, worked, err := s.JudgeGoal(ctx, g)
@@ -492,6 +501,7 @@ func (s *Session) GoalJudged(ctx context.Context, g *goal.State, turnErr error) 
 		return pause("the judge could not be asked (" + short(tools.SanitizeForTerminal(err.Error()), 100) + ")")
 	}
 	j.Judged, j.Verdict = true, v
+	g.Outages = 0
 	reason := tools.SanitizeForTerminal(v.Reason)
 	g.NoteVerdict(v)
 	action := g.Apply(v, worked)
@@ -517,7 +527,7 @@ func (s *Session) GoalJudged(ctx context.Context, g *goal.State, turnErr error) 
 // since it could not find the goal met, and the continuation names those tasks instead of the stale verdict. g is changed.
 func (s *Session) GoalResume(ctx context.Context, g *goal.State) (note, next string, j GoalJudgment) {
 	unjudged := g.Unjudged
-	g.Paused, g.Repeats, g.Unjudged = "", 0, false
+	g.Paused, g.Repeats, g.Unjudged, g.Outages = "", 0, false, 0
 	g.Max = g.Turns + goal.MaxTurns
 	if unjudged {
 		if open := s.unfinishedGoalTasks(); len(open) > 0 {
