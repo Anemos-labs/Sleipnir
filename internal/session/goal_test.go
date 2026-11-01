@@ -140,8 +140,14 @@ func TestAGoalGoesOnAfterAProviderOutage(t *testing.T) {
 		t.Fatalf("an outage past the bound: note %q next %q paused %q", note, next, g.Paused)
 	}
 
-	// Resumed, a judged turn sets the count back, and the next outage is sent on again.
-	g.Paused, g.Unjudged = "", false
+	// A resume sets the count back by itself (no judgment in between: the paused turn is taken as judged here), and so does a
+	// judged turn; the next outage is sent on again.
+	g.Unjudged = false
+	s.GoalResume(context.Background(), g)
+	if g.Paused != "" || g.Outages != 0 {
+		t.Fatalf("after /goal resume: paused %q Outages=%d", g.Paused, g.Outages)
+	}
+	g.Outages = 1
 	if _, err := s.Run(context.Background(), "go on"); err != nil {
 		t.Fatal(err)
 	}
