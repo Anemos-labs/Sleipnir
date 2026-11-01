@@ -470,6 +470,6 @@ func milestonesForJudge(g *State) string {
 		}
 		fmt.Fprintf(&b, "- %s [%s] %s\n", m.ID, state, m.Text)
 	}
-	b.WriteString(`With milestones, the final verdict carries a ruling for each one: {"verdict":"...","reason":"...","left":[...],"milestones":[{"id":"M1","met":true,"evidence":"records 12, 40: go test ./... passed after the last change"},{"id":"M2","met":false,"evidence":""}]}. "met" needs evidence you inspected, cited by record number; a milestone met last time is re-checked against newer changes. "done" requires every milestone met.` + "\n\n")
+	b.WriteString(`With milestones, the final verdict carries a ruling for each one: {"verdict":"...","reason":"...","left":[...],"milestones":[{"id":"M1","met":true,"evidence":"records 12, 40: go test ./... passed after the last change"},{"id":"M2","met":false,"evidence":""}]}. "met" needs evidence you inspected, cited by record number; a milestone met last time is re-checked against newer changes. A milestone whose criteria a user reaches through a user interface over an API, or a client over a service, needs an end-to-end run of the assembled program newer than its last change; tests of each side alone leave it unmet. "done" requires every milestone met.` + "\n\n")
 	return b.String()
 }

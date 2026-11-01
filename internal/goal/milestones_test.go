@@ -369,3 +369,19 @@ func TestReadSpecRefusesSecretFiles(t *testing.T) {
 		t.Errorf("readSpec(.env) = %q, %v", text, err)
 	}
 }
+
+// TestEndToEndRule checks that the judge and the agent are told the same rule: a requirement reached across parts that talk to each
+// other is met only by an end-to-end run of the assembled program, not by unit tests of each side.
+func TestEndToEndRule(t *testing.T) {
+	if !strings.Contains(JudgeSystem, "end-to-end run of the assembled program") || !strings.Contains(JudgeSystem, "starts signed out") {
+		t.Fatalf("the judge's system prompt lacks the end-to-end rule")
+	}
+	g := New("build it\n\nMilestones:\n- M1: sign in\n- M2: list flags")
+	g.Milestones = ParseMilestones(g.Objective, 1)
+	if s := milestonesForJudge(g); !strings.Contains(s, "end-to-end run of the assembled program newer than its last change") {
+		t.Fatalf("milestone section lacks the end-to-end rule: %s", s)
+	}
+	if s := Start(g); !strings.Contains(s, "needs an end-to-end run of the assembled program") {
+		t.Fatalf("a goal with milestones is not told the end-to-end rule: %s", s)
+	}
+}
