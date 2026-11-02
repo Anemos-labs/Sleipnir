@@ -442,6 +442,16 @@ func (ev *evaluator) decideCommand(u *unit) verdict {
 			res = combineAccess(res, ev.accessVerdict(a, u))
 		}
 	}
+	if rule != nil && rule.runOnly && mode == ModePlan {
+		// A read-only posture's rule (Bash(go test:*) of a reviewer) lets a check run in plan mode, not write the files it is told to:
+		// an output the command certainly names (go test -o bin, -coverprofile c.out, -c, pytest --junitxml) is still judged, and plan
+		// mode refuses it. A word that only might name a file (an unlisted program's operand) is left to the rule.
+		for _, a := range u.accesses {
+			if a.write && !a.guess {
+				res = combineAccess(res, ev.accessVerdict(a, u))
+			}
+		}
+	}
 	if mode == ModeBypass {
 		// bypass mode judges the files a command certainly names (above, only the rules and protections a file it can name could
 		// meet were applied); a file name that is only known when the command runs may be one they guard (accessVerdict)

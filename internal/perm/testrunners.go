@@ -11,7 +11,8 @@ import (
 // pytest ., python -m pytest tests, python -m unittest discover -s tests and node --test tests read the tests below their operands;
 // they do not write there. Judged as an unknown command, an operand is a tree that may be written, so "." covered the protected
 // configuration directory (Edit(./.sleipnir/**)) and a test run in bypass mode stopped for the person. A runner is recognised only
-// with the options listed here (none of them names a file to write); any other option makes it an unknown command again.
+// with the options listed here; those that name a file or directory to write (a report, pytest's --basetemp) are judged as writes
+// of it, and any other option makes it an unknown command again.
 
 // runnerFlags describes a test runner's options: those without a value, those whose value is not a file (a pattern, a number, a
 // name), and those whose value is a directory or file it reads.
@@ -19,6 +20,8 @@ type runnerFlags struct {
 	bare    map[string]bool
 	valued  map[string]bool
 	pathArg map[string]bool
+	// writeArg are the options whose value is a file or directory the runner writes: a report, a temporary directory it empties
+	writeArg map[string]bool
 	// letters are single-letter flags that may be clustered (-xq)
 	letters string
 }
@@ -28,8 +31,9 @@ var (
 		bare: set("-q", "-qq", "-v", "-vv", "-vvv", "-x", "-s", "-l", "-ra", "-rA", "-rf", "-rs", "-rx", "-rE", "--lf", "--ff", "--nf", "--sw",
 			"--co", "--collect-only", "--no-header", "--no-summary", "--disable-warnings", "--strict-markers", "--strict-config", "--exitfirst",
 			"--last-failed", "--failed-first", "--showlocals", "--quiet", "--verbose", "--capture=no", "--import-mode=importlib"),
-		valued:  set("-k", "-m", "-W", "-n", "-p", "--tb", "--maxfail", "--durations", "--color", "--log-level", "--import-mode", "--capture"),
-		letters: "qvxsl",
+		valued:   set("-k", "-m", "-W", "-n", "-p", "--tb", "--maxfail", "--durations", "--color", "--log-level", "--import-mode", "--capture"),
+		writeArg: set("--junitxml", "--junit-xml", "--basetemp", "--report-log", "--result-log", "--resultlog"),
+		letters:  "qvxsl",
 	}
 	unittestFlags = runnerFlags{
 		bare:    set("discover", "-v", "-q", "-f", "-b", "-c", "--verbose", "--quiet", "--failfast", "--buffer", "--catch", "--locals"),
@@ -42,6 +46,7 @@ var (
 			"--experimental-strip-types", "--no-warnings"),
 		valued: set("--test-reporter", "--test-name-pattern", "--test-skip-pattern", "--test-concurrency", "--test-timeout", "--test-shard",
 			"--test-isolation"),
+		writeArg: set("--test-reporter-destination"),
 	}
 )
 
@@ -83,6 +88,7 @@ func hasWord(args []string, w string) bool {
 // read. It reports false at the first option it does not know.
 func runnerOperands(args []string, f runnerFlags, nodeIDs bool) ([]pathUse, bool) {
 	var uses []pathUse
+	write := func(p string) { uses = append(uses, pathUse{raw: p, write: true, tree: true}) }
 	read := func(p string) {
 		if nodeIDs {
 			p, _, _ = strings.Cut(p, "::")
@@ -105,7 +111,7 @@ func runnerOperands(args []string, f runnerFlags, nodeIDs bool) ([]pathUse, bool
 			}
 			read(a)
 		case f.bare[a]:
-		case f.valued[a] || f.pathArg[a]:
+		case f.valued[a] || f.pathArg[a] || f.writeArg[a]:
 			if i+1 >= len(args) {
 				return nil, false
 			}
@@ -113,12 +119,17 @@ func runnerOperands(args []string, f runnerFlags, nodeIDs bool) ([]pathUse, bool
 			if f.pathArg[a] {
 				read(args[i])
 			}
+			if f.writeArg[a] {
+				write(args[i])
+			}
 		default:
 			k, v, eq := strings.Cut(a, "=")
 			switch {
 			case eq && f.valued[k]:
 			case eq && f.pathArg[k]:
 				read(v)
+			case eq && f.writeArg[k]:
+				write(v)
 			case !strings.HasPrefix(a, "--") && f.letters != "" && strings.Trim(a[1:], f.letters) == "":
 			default:
 				return nil, false // an option this does not know: the command may write what it names

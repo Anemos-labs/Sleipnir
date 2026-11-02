@@ -237,3 +237,49 @@ func TestHoldReadOnlyRemembersNoApprovalGivenDuringIt(t *testing.T) {
 		t.Errorf("an approval given during the hold was remembered: persisted %v, granted %v", persisted, e.Granted())
 	}
 }
+
+// A read-only role's test rules let it run the tests, not write the files a test command is told to write: a compiled test binary
+// (go test -c, -o), a profile or coverage report, a pytest report or temporary directory. The read-only probe (PlanOnly) holds to the
+// same, while the person's own rule in plan mode is their word for the session and still lets the command write.
+func TestReadOnlyTestRulesDoNotWriteNamedOutputs(t *testing.T) {
+	root := t.TempDir()
+	e, err := NewEngine(Config{Mode: ModeBypass, Root: root, Home: t.TempDir(),
+		Roles: map[string]RoleProfile{"reviewer": {Mode: ModePlan, Allow: ReadOnlyAllow}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	probe := e.PlanOnly(ReadOnlyAllow...)
+	ctx := context.Background()
+	role := func(cmd string) Decision {
+		return e.Check(ctx, Request{Agent: "rv-1", Role: "reviewer", Tool: "bash", Command: cmd, Cwd: root})
+	}
+	plain := func(cmd string) Decision { return probe.Check(ctx, Request{Tool: "bash", Command: cmd, Cwd: root}) }
+	for _, cmd := range []string{"go test ./...", "go test -run TestX -count=1 ./...", "pytest -q tests", "go vet ./..."} {
+		if d := role(cmd); !d.Allow {
+			t.Errorf("a reviewer may not run %q: %s", cmd, d.Reason)
+		}
+		if d := plain(cmd); !d.Allow {
+			t.Errorf("the read-only probe refuses %q: %s", cmd, d.Reason)
+		}
+	}
+	for _, cmd := range []string{
+		"go test -o bin/x.test ./...", "go test -c ./...", "go test -c -o=x.test .", "go test -coverprofile=c.out ./...",
+		"go test -cpuprofile cpu.out .", "go test -outputdir out -memprofile m.out .", "go test -trace t.out .",
+		"pytest --junitxml=out.xml", "pytest --basetemp tmp tests", "python -m pytest --report-log=r.json",
+		"node --test --test-reporter-destination=out.txt web",
+	} {
+		if d := role(cmd); d.Allow {
+			t.Errorf("a reviewer may run %q, which writes a file it names", cmd)
+		}
+		if d := plain(cmd); d.Allow {
+			t.Errorf("the read-only probe allows %q, which writes a file it names", cmd)
+		}
+	}
+	own, err := NewEngine(Config{Mode: ModePlan, Root: root, Home: t.TempDir(), Allow: []string{"Bash(go test:*)"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := own.Check(ctx, Request{Tool: "bash", Command: "go test -coverprofile=c.out ./...", Cwd: root}); !d.Allow {
+		t.Errorf("the person's own rule in plan mode no longer covers the command: %s", d.Reason)
+	}
+}
