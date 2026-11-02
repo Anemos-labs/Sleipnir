@@ -818,6 +818,36 @@ func TestQueueNoFFAndFastForward(t *testing.T) {
 	}
 }
 
+// Work saved entirely by an earlier commit (the harness's "Work in progress" when it merged integrated work into the tree)
+// leaves nothing to commit when the task is handed in: a fast-forward would put the finished work in the history under
+// "Work in progress", so the queue records it with a merge commit named by the submission's message. A tip that carries the
+// message itself still fast-forwards.
+func TestQueueNamesWorkWhoseTipDoesNotCarryItsMessage(t *testing.T) {
+	e := newQueueEnv(t, QueueOptions{})
+	a := e.agent("a")
+	edit(t, a, "a.txt", "a\n")
+	if _, err := a.Commit(tctx(t), "Work in progress: add a"); err != nil {
+		t.Fatal(err)
+	}
+	wip, _ := a.Head(tctx(t))
+	r := mustSubmit(t, e.q, Submission{Tree: a, Task: "T1: add a", Message: "Add a\n\nSleipnir-Task: T1"})
+	if !r.Merged() {
+		t.Fatalf("%+v", r)
+	}
+	c, _ := e.repo.CommitInfo(tctx(t), e.q.Tip())
+	if r.After == wip || len(c.Parents) != 2 || c.Subject != `Merge "Add a"` {
+		t.Fatalf("finished work was fast-forwarded under its work-in-progress commit: tip %s wip %s parents %v subject %q", r.After, wip, c.Parents, c.Subject)
+	}
+
+	b := e.agent("b")
+	edit(t, b, "b.txt", "b\n")
+	r = mustSubmit(t, e.q, Submission{Tree: b, Task: "T2: add b", Message: "Add b\n\nSleipnir-Task: T2"})
+	head, _ := b.Head(tctx(t))
+	if !r.Merged() || r.After != head {
+		t.Fatalf("a tip that carries the message should fast-forward: %+v head %s", r, head)
+	}
+}
+
 func TestQueueEmptyAndRejectedSubmissions(t *testing.T) {
 	e := newQueueEnv(t, QueueOptions{})
 	a := e.agent("a")
