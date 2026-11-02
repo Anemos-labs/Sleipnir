@@ -230,7 +230,11 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	case "list":
 		return c.Env.Finish(renderTaskList(s.Board.Snapshot()), false), nil
 	case "get":
-		return s.readTask(c, in.ID, "task get"), nil
+		r := s.readTask(c, in.ID, "task get")
+		if r != nil && !r.IsError {
+			s.noteReviewRead(me, in.ID)
+		}
+		return r, nil
 	case "claim":
 		ro := s.roles[c.Env.Role].ReadOnly
 		m := s.get(me)

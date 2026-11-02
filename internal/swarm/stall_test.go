@@ -492,6 +492,50 @@ func TestStallReviewStarved(t *testing.T) {
 			t.Fatal("the finding outlived the decision")
 		}
 	})
+	t.Run("seeded: the manager reads the submission before the sweep first sees it, then over and over", func(t *testing.T) {
+		r := newRVRig(t, stallCfg(), gatedWorkers(nil))
+		if _, err := r.sw.StartManager(); err != nil {
+			t.Fatal(err)
+		}
+		b := r.sw.Board
+		task, _ := b.CreateTask("mgr", TaskSpec{Title: "paginate users"})
+		if err := b.Assign("mgr", "be-1", task.ID); err != nil {
+			t.Fatal(err)
+		}
+		if err := b.Submit("be-1", task.ID, "paginated", "edited api/users.go"); err != nil {
+			t.Fatal(err)
+		}
+		mgr := r.sw.get("mgr")
+		get := func() {
+			r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "get", "id": task.ID})
+		}
+		get() // read before any sweep: this is the first read
+		r.sw.sweepStalls()
+		for i := 0; i < 3; i++ { // three turns of reading again restart nothing
+			mgr.turns.Add(1)
+			get()
+			r.sw.sweepStalls()
+		}
+		if _, ok := active(r, StallReviewStarved); !ok {
+			t.Fatal("a submission first read before the sweep, then read again and again, is not found starved")
+		}
+	})
+	t.Run("healthy: a refused task call leaves the first read to restart the clock", func(t *testing.T) {
+		r, mgr, task := setup(t)
+		mgr.turns.Add(2)
+		if res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "claim", "id": task.ID}); res == nil || !res.IsError {
+			t.Fatalf("the claim of a task in review was not refused: %+v", res)
+		}
+		r.sw.sweepStalls()
+		mgr.turns.Add(1)
+		r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "get", "id": task.ID})
+		r.sw.sweepStalls()
+		mgr.turns.Add(2)
+		r.sw.sweepStalls()
+		if n := raised(r, StallReviewStarved); n != 0 {
+			t.Fatalf("a submission the manager read after a refused call was found starved: %+v", stallEvents(r))
+		}
+	})
 	t.Run("healthy: the manager reads the submission", func(t *testing.T) {
 		r, mgr, task := setup(t)
 		mgr.turns.Add(2)

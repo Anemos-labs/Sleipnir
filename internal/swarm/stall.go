@@ -221,12 +221,7 @@ func lessTaskID(a, b string) bool {
 }
 
 // noteCoordination records the manager's coordination calls for the stall sweep: a
-// wait marks it as waiting, any other call ends that, and the first task call that
-// names a task in review restarts that revision's review clock (the manager looked at
-// it). Reading it again does not: in a team run the manager called task get on five
-// submissions every few minutes for half an hour, deciding none, and each read cleared
-// the finding the sweep had just raised. A decision is a new revision, with a clock of
-// its own.
+// wait marks it as waiting, and any other call ends that.
 func (s *Swarm) noteCoordination(agentID, tool, taskID string) {
 	if agentID == "" || agentID != s.ManagerID() {
 		return
@@ -234,13 +229,29 @@ func (s *Swarm) noteCoordination(agentID, tool, taskID string) {
 	s.stalls.mu.Lock()
 	defer s.stalls.mu.Unlock()
 	s.stalls.waiting = tool == "wait"
-	if tool == "task" && taskID != "" {
-		for k, c := range s.stalls.review {
-			if id, _, _ := strings.Cut(k, "#"); id == taskID && !c.read {
-				c.read, c.restart = true, true
-				s.stalls.review[k] = c
-			}
-		}
+}
+
+// noteReviewRead records that the manager read a task in review (task get): the first
+// read of a revision restarts that revision's review clock, since the manager looked at
+// it. Reading it again does not: in a team run the manager called task get on five
+// submissions every few minutes for half an hour, deciding none, and each read cleared
+// the finding the sweep had just raised. A decision is a new revision, with a clock of
+// its own. A read before the sweep first sees the revision leaves a clock for the sweep
+// to start.
+func (s *Swarm) noteReviewRead(agentID, taskID string) {
+	if agentID == "" || agentID != s.ManagerID() || taskID == "" {
+		return
+	}
+	t, ok := s.Board.Snapshot().Task(taskID)
+	if !ok || t.Status != StatusReview {
+		return
+	}
+	key := t.ID + "#" + strconv.FormatUint(t.Rev, 10)
+	s.stalls.mu.Lock()
+	defer s.stalls.mu.Unlock()
+	if c := s.stalls.review[key]; !c.read {
+		c.read, c.restart = true, true
+		s.stalls.review[key] = c
 	}
 }
 
