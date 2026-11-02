@@ -7,6 +7,20 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `sleipnir mcp serve` runs each goal in the folder the caller names, so one
+  entry in a client's configuration (Claude Desktop, Claude Code across
+  projects) serves every project. `sleipnir_start` takes `cwd` as an absolute
+  path (or `~/...`) and `create` to make a new project's folder. The folder
+  must be inside one of the server's roots: the new repeatable `--root`, or
+  the `--cwd` directory alone when only `--cwd` is given (the old behaviour),
+  or else the home directory. Without `--cwd`, the directory the server was
+  started in is the default only when it is inside a root; otherwise a call
+  that names no folder is refused with a message saying to pass one.
+  `sleipnir_jobs` reports `roots` and `default_dir` instead of `root`. A
+  server started with no flags now accepts folders anywhere under the home
+  directory, where it used to accept only the directory it was started in;
+  pass `--cwd DIR` to keep the old confinement.
+
 - Parts that talk to each other are built against one contract and judged
   end to end. When a user interface and its API, or a client and a service,
   are built by different workers, the architect's agreement names one

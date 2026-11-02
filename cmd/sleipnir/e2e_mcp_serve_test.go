@@ -69,7 +69,7 @@ func TestMCPServeRunsAGoalForAnotherHarness(t *testing.T) {
 	w := newWorld(t, m.url())
 	ctx, cancel := context.WithTimeout(context.Background(), e2eGuard)
 	defer cancel()
-	cmd := w.cmdContext(ctx, "mcp", "serve", "--mode", "accept-edits")
+	cmd := w.cmdContext(ctx, "mcp", "serve", "--mode", "accept-edits", "--cwd", w.project)
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)
