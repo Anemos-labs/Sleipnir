@@ -356,6 +356,23 @@ func (m *Manager) removeStaleIntegration(ctx context.Context) error {
 	return m.st.base.WorktreeRemove(ctx, dest, true)
 }
 
+// unnamedTip reports whether a submission with message whose tip is theirs would, fast-forwarded, leave the work without a
+// commit that names it: the tip's subject is not the message's, as when the task's work was all saved by an earlier commit
+// ("Work in progress: …" when the harness merged integrated work into the tree) and nothing was left to commit at the end. A
+// merge commit then records the finished work by its message. A submission without a message, or a tip that cannot be
+// read, fast-forwards as before.
+func (q *Queue) unnamedTip(ctx context.Context, theirs, message string) bool {
+	want, _, _ := strings.Cut(strings.TrimSpace(message), "\n")
+	if want = strings.TrimSpace(want); want == "" {
+		return false
+	}
+	c, err := q.m.st.base.CommitInfo(ctx, theirs)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(c.Subject) != want
+}
+
 // Branch is the integration branch name.
 func (q *Queue) Branch() string { return q.branch }
 
@@ -690,7 +707,7 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 		} else if t := oneLine(taskTitle(s.Task), 100); t != "" {
 			msg = "Merge \"" + t + "\""
 		}
-		out, err = repo.Merge(ctx, gitx.MergeOptions{Ref: theirs, Message: q.m.withAgentTrailer(msg, s.Agent), NoFF: q.opts.NoFF, Author: q.author()})
+		out, err = repo.Merge(ctx, gitx.MergeOptions{Ref: theirs, Message: q.m.withAgentTrailer(msg, s.Agent), NoFF: q.opts.NoFF || q.unnamedTip(ctx, theirs, s.Message), Author: q.author()})
 	}
 	if err != nil {
 		if rerr := q.rollbackTo(ctx, prev); rerr != nil {
