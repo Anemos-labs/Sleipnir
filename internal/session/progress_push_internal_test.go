@@ -3,10 +3,15 @@ package session
 import (
 	"context"
 	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
 
 // A failing push is said once and retried after the next merge; a recovery is said; pushes
@@ -120,5 +125,76 @@ func TestProgressBranchNamesTheWork(t *testing.T) {
 	}
 	if names != 1 || len(refs) != 2 || refs[1] != "+bbb:refs/heads/sleipnir/add-csv-export-a1b2c3" {
 		t.Fatalf("named %d times, pushed %q", names, refs)
+	}
+}
+
+// A team that started from a snapshot of the working tree does not push it when the snapshot added a file the person never
+// committed whose name says it holds credentials: the first push would publish it. A snapshot of ordinary edits is pushed.
+func TestProgressPushHoldsASnapshotThatAddsCredentials(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	dir := t.TempDir()
+	git := commandGit(dir)
+	ctx := context.Background()
+	run := func(args ...string) string {
+		t.Helper()
+		out, err := git(ctx, args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	write := func(name, text string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run("init", "-q")
+	run("config", "user.email", "t@example.com")
+	run("config", "user.name", "T")
+	write("main.go", "package main\n")
+	run("add", "-A")
+	run("commit", "-q", "-m", "init")
+	head := run("rev-parse", "HEAD")
+	snapshot := func() string {
+		t.Helper()
+		run("add", "-A")
+		tree := run("write-tree")
+		return run("commit-tree", tree, "-p", head, "-m", workspace.SnapshotMessage)
+	}
+
+	write("notes.md", "draft\n")
+	if why := snapshotSecrets(ctx, git, snapshot()); why != "" {
+		t.Errorf("a snapshot of ordinary files is held: %s", why)
+	}
+	if why := snapshotSecrets(ctx, git, head); why != "" {
+		t.Errorf("a base that is no snapshot is held: %s", why)
+	}
+	write(".env", "API_KEY=secret\n")
+	base := snapshot()
+	why := snapshotSecrets(ctx, git, base)
+	if !strings.Contains(why, ".env") {
+		t.Fatalf("a snapshot that adds .env is not held: %q", why)
+	}
+
+	var pushes int
+	var told []string
+	p := &progressPusher{remote: "origin", ref: "sleipnir/s/_integration",
+		git:  func(ctx context.Context, args ...string) ([]byte, error) { pushes++; return nil, nil },
+		hold: func() string { return why },
+		tell: func(level, msg string) { told = append(told, level+": "+msg) }}
+	for _, tip := range []string{"aaa", "bbb"} {
+		p.Kick(tip)
+		wctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		p.Wait(wctx)
+		cancel()
+	}
+	if pushes != 0 {
+		t.Errorf("pushed %d times while held", pushes)
+	}
+	if len(told) != 1 || !strings.HasPrefix(told[0], "warn: The team's verified work is not pushed") || !strings.Contains(told[0], ".env") {
+		t.Errorf("told %q", told)
 	}
 }

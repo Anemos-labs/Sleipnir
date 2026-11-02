@@ -52,6 +52,8 @@ type Config struct {
 
 	// Roles maps Request.Role to a profile that can only tighten the session.
 	Roles map[string]RoleProfile
+	// runOnly makes the allow rules a read-only posture's (crule.runOnly): set by PlanOnly.
+	runOnly bool
 
 	// Prompter is asked when a request needs a human decision. With no
 	// Prompter such requests are denied ("approval required").
@@ -293,6 +295,9 @@ func NewEngine(cfg Config) (*Engine, error) {
 	if e.allow, err = compileList(Allow, cfg.Allow, rs, configured(Allow)); err != nil {
 		return nil, err
 	}
+	if cfg.runOnly {
+		runOnly(e.allow)
+	}
 	if e.tests, err = compileList(Allow, TestsAllow, rs, fixedOrigin(OriginTests)); err != nil {
 		return nil, err
 	}
@@ -335,6 +340,9 @@ func compileProfile(name string, rp RoleProfile, rs *resolver) (*profile, error)
 	if p.allow, err = compileList(Allow, rp.Allow, rs, roleOrigin); err != nil {
 		return nil, fmt.Errorf("role %q: %w", name, err)
 	}
+	if rp.Mode == ModePlan {
+		runOnly(p.allow)
+	}
 	if p.ask, err = compileList(Ask, rp.Ask, rs, roleOrigin); err != nil {
 		return nil, fmt.Errorf("role %q: %w", name, err)
 	}
@@ -349,6 +357,13 @@ func compileProfile(name string, rp RoleProfile, rs *resolver) (*profile, error)
 		p.also = append(p.also, ap)
 	}
 	return p, nil
+}
+
+// runOnly marks rules as a read-only posture's (crule.runOnly).
+func runOnly(rules []*crule) {
+	for _, r := range rules {
+		r.runOnly = true
+	}
 }
 
 // Mode returns the session mode.

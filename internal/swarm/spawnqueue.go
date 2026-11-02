@@ -66,6 +66,7 @@ func (s *Swarm) queueTick(now time.Time) {
 	if s.wk.heldNow() || s.alive() != nil || s.startErr() != nil {
 		return
 	}
+	stopped := map[string]bool{} // roles one of whose members' runs this pass stopped: one at a time
 	for _, q := range s.queuedTasks() {
 		id := q.req.TaskID
 		if t, ok := s.Board.Snapshot().Task(id); !ok || t.Status != StatusTodo || t.Owner != "" || t.Rev != q.rev {
@@ -78,6 +79,9 @@ func (s *Swarm) queueTick(now time.Time) {
 		var busy *noSpareMember
 		switch {
 		case errors.As(err, &busy):
+			if !stopped[q.req.Role] && s.stopTasklessRun(q, now) {
+				stopped[q.req.Role] = true
+			}
 			continue // still nobody free
 		case err != nil:
 			s.dropQueued(id)
@@ -87,4 +91,50 @@ func (s *Swarm) queueTick(now time.Time) {
 			s.notify(s.ManagerID(), "info", fmt.Sprintf("%s started on %s: a %s member was free (it was queued %s ago).", id, r.Agent, q.req.Role, now.Sub(q.at).Round(time.Second)))
 		}
 	}
+}
+
+// tasklessGrace is how long a queued parent waits on a member of its role whose run has no task before that run is stopped.
+const tasklessGrace = 2 * time.Minute
+
+// stopTasklessRun stops the run of a member of q's role that works on nothing: no task of its own, no pool, no solo task,
+// started (or still going) without an assignment, as a run that mail woke. Such a member counts as busy, so the queued parent
+// waited for it, and the member, which may not claim a top-level task, waited for the parent: in a real run a backend worker
+// woken by mail spent half an hour calling wait and get on the parent queued for it while three parents stayed todo. A run
+// is stopped once q has waited tasklessGrace since it was queued and since the run began; the next pass starts q on the member.
+// It reports whether a run was stopped.
+func (s *Swarm) stopTasklessRun(q queuedSpawn, now time.Time) bool {
+	snap := s.Board.Snapshot()
+	reason := "it had no task while " + q.req.TaskID + " waited for a free " + q.req.Role + " member"
+	for _, m := range s.poolMembers(q.req.Role) {
+		if poolHolder(snap, m.id) != "" || soloTaskOf(snap, m.id, "") != "" {
+			continue
+		}
+		// The checks and the stop happen under one hold of m.mu, so a run that claimed a task, or replaced the one looked at,
+		// in between is never the one stopped.
+		m.mu.Lock()
+		rs := m.run
+		if rs == nil || m.life != lifeRunning || m.task != "" || len(rs.tasks) != 0 {
+			m.mu.Unlock()
+			continue
+		}
+		if rs.reason != "" { // already being stopped (by an earlier pass or anyone else): it counts, and is not announced again
+			m.mu.Unlock()
+			return true
+		}
+		since := rs.started
+		if q.at.After(since) {
+			since = q.at
+		}
+		if now.Sub(since) < tasklessGrace {
+			m.mu.Unlock()
+			continue
+		}
+		rs.reason, rs.count = reason, false
+		m.mu.Unlock()
+		rs.cancel()
+		s.notify(s.ManagerID(), "info", fmt.Sprintf("%s's run had no task while %s waited for a free %s member: the harness stopped it, and starts %s on %s next.",
+			m.id, q.req.TaskID, q.req.Role, q.req.TaskID, m.id))
+		return true
+	}
+	return false
 }

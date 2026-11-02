@@ -15,6 +15,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/gitx"
 	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/plugin"
+	"github.com/anemos-labs/sleipnir/internal/sandbox"
 	"github.com/anemos-labs/sleipnir/internal/scan"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
@@ -53,7 +54,7 @@ func (s *Session) newScanTool() *scan.Tool {
 	t := scan.NewTool(s.scan.store, s.scanCode)
 	if s.box != nil {
 		if repo, err := s.scanRepo(); err == nil {
-			t.Prover = &scan.Prover{Repo: repo, Run: s.runInSandbox, Network: s.box.Spec.Network}
+			t.Prover = &scan.Prover{Repo: repo, Run: s.runProof, Network: s.box.Spec.Network}
 		}
 	}
 	return t
@@ -136,13 +137,31 @@ type failCode struct{ err error }
 
 func (f failCode) Read(context.Context, string) ([]byte, error) { return nil, f.err }
 
-// runInSandbox runs argv from dir in the session's container, as the shell tool runs its commands: through the wrapper, with
-// only the formatting variables crossing over.
-func (s *Session) runInSandbox(ctx context.Context, dir string, argv []string, timeout time.Duration) ([]byte, int, error) {
-	wrap := s.opts.ShellWrap
-	if s.box == nil || len(wrap) == 0 {
+// runProof runs a reproducer's argv from dir, the disposable copy of the code the prover made, in a container of its own: one of
+// the session's sandbox (its image, or the one for the project's language, and its network setting) that mounts dir and nothing
+// else. The session's container mounts the person's checkout read-write, and a proof sent into it could change the project's
+// files whatever the agent that sent it may do; the copy is removed after the run, and the container with it.
+func (s *Session) runProof(ctx context.Context, dir string, argv []string, timeout time.Duration) ([]byte, int, error) {
+	if s.box == nil || len(s.opts.ShellWrap) == 0 {
 		return nil, 0, errors.New("this session has no sandbox")
 	}
+	box, err := startProofBox(ctx, s.opts.Sandbox, dir, sandbox.DefaultLimits)
+	if err != nil {
+		return nil, 0, fmt.Errorf("could not start a container for the reproducer: %w", err)
+	}
+	defer func() { _ = box.Close() }()
+	// the helper is the session's private copy (helperOutside), which lies outside the session's mounts and so outside dir
+	return runWrapped(ctx, box.Wrap(s.opts.ShellWrap[0]), dir, argv, timeout)
+}
+
+// startProofBox starts a reproducer's container; a variable so that tests run without docker.
+var startProofBox = func(ctx context.Context, spec sandbox.Spec, dir string, lim sandbox.Limits) (*sandbox.Box, error) {
+	return sandbox.Start(ctx, spec, []string{dir}, dir, lim)
+}
+
+// runWrapped runs argv from dir through wrap, the exec helper of a container, as the shell tool runs its commands: with only the
+// formatting variables crossing over.
+func runWrapped(ctx context.Context, wrap []string, dir string, argv []string, timeout time.Duration) ([]byte, int, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	args := append(append([]string(nil), wrap[1:]...), argv...)

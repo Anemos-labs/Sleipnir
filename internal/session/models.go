@@ -98,7 +98,7 @@ func (s *Session) describe(ctx context.Context, p provider.Provider, m cost.Mode
 				}
 			}
 		case m.Provider == "unknown":
-			es := s.catalogue(ctx, base)
+			es := s.catalogue(ctx, base, m.ID)
 			if e, ok := enrichFrom(es, m); ok {
 				m = e
 				if publishesPrices(es, m.ID) {
@@ -109,7 +109,7 @@ func (s *Session) describe(ctx context.Context, p provider.Provider, m cost.Mode
 				}
 			}
 		case configured == 0:
-			if e, ok := findEntry(s.catalogue(ctx, base), m.ID); ok && e.Model.ContextTokens > 0 {
+			if e, ok := findEntry(s.catalogue(ctx, base, m.ID), m.ID); ok && e.Model.ContextTokens > 0 {
 				m.ContextTokens, m.WindowGuessed, win = e.Model.ContextTokens, false, sourceCatalogue
 			}
 		}
@@ -151,14 +151,14 @@ func (s *Session) configuredWindow(p provider.Provider) int {
 // cacheDir is where the providers' model lists are kept: the state directory's cache/.
 func (s *Session) cacheDir() string { return filepath.Join(stateRoot(s.opts.Home), "cache") }
 
-// catalogue is the catalogue of the endpoint at base (loadCatalog), nil when it may not be read
+// catalogue is the catalogue of the endpoint at base (loadCatalog, asked for model id), nil when it may not be read
 // (catalogueReadable), when it could not be, and when it could not be earlier in this session.
-func (s *Session) catalogue(ctx context.Context, base string) []gateway.Entry {
+func (s *Session) catalogue(ctx context.Context, base, id string) []gateway.Entry {
 	key := "catalogue " + base
 	if !catalogueReadable(base) || s.unlisted[key] {
 		return nil
 	}
-	es := loadCatalog(ctx, s.cacheDir(), base)
+	es := loadCatalog(ctx, s.cacheDir(), base, id)
 	if len(es) == 0 {
 		s.markUnlisted(key)
 	}

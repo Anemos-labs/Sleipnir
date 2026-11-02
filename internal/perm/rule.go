@@ -155,6 +155,9 @@ type crule struct {
 
 	origin  string // where the rule came from (Classification.Origin)
 	runtime bool   // added while the session ran (AddRule): RemoveRule may remove it
+	// runOnly: the rule of a read-only posture (a plan-mode role's profile, PlanOnly): in plan mode it lets a command run, and the
+	// files the command names to write are still refused. A person's own session rule in plan mode is their word and has no such limit.
+	runOnly bool
 }
 
 // compileRule prepares r for matching. res may be nil (the pattern is then
