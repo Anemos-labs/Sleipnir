@@ -59,6 +59,7 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 		return goal.Verdict{Kind: goal.Continue}, false, fmt.Errorf("no agent to judge")
 	}
 	answer, worked := turnActivity(a.Stack().Thread.Turns)
+	answer = withUnheard(g.UnheardAnswer, answer)
 	if v, ok := s.scanJudgment(g); ok {
 		left := v.Left
 		if left == nil {
@@ -498,10 +499,25 @@ func (s *Session) GoalJudged(ctx context.Context, g *goal.State, turnErr error) 
 	}
 	if err != nil {
 		j.Err = err
+		if pe, ok := provider.AsError(err); ok && pe.Outage() != provider.NotOutage && ctx.Err() == nil && g.Outages < goal.MaxOutageTurns && g.Turns < g.Max {
+			// The judge's model is down after its own retries: the goal goes on, a bounded number of times in a row, as it does
+			// after a turn that failed on an outage, and the next judge sees this turn's work as well. In a team build the
+			// judge's endpoint stopped answering for a few minutes and the goal stayed paused while the person was away.
+			g.Outages++
+			g.Turns++
+			why := short(tools.SanitizeForTerminal(pe.Error()), 100)
+			if a := s.Main(); a != nil {
+				answer, _ := turnActivity(a.Stack().Thread.Turns)
+				g.UnheardAnswer = addUnheard(g.UnheardAnswer, answer)
+			}
+			// The provider's error text stays in the person's note: an endpoint's error is not the agent's to read as instructions.
+			v := goal.Verdict{Reason: "the judge could not be asked on a provider outage; go on with what is left of the goal"}
+			return fmt.Sprintf("the judge could not be asked on a provider outage (%s): going on (%d of %d such retries, continuation %d of %d)", why, g.Outages, goal.MaxOutageTurns, g.Turns, g.Max), s.GoalContinuation(g, v), j
+		}
 		return pause("the judge could not be asked (" + short(tools.SanitizeForTerminal(err.Error()), 100) + ")")
 	}
 	j.Judged, j.Verdict = true, v
-	g.Outages = 0
+	g.Outages, g.UnheardAnswer = 0, ""
 	reason := tools.SanitizeForTerminal(v.Reason)
 	g.NoteVerdict(v)
 	action := g.Apply(v, worked)
@@ -600,6 +616,32 @@ func leftCount(left []string) int {
 	}
 	return n
 }
+
+// withUnheard is the answer a judge reads: the latest one, after the answers of earlier turns that no judge could read (unheard).
+func withUnheard(unheard, latest string) string {
+	if unheard == "" {
+		return latest
+	}
+	return "Earlier answers that no judge could read (its model was down):\n" + unheard + "\n\nThe latest answer:\n" + latest
+}
+
+// addUnheard is unheard with answer kept as well, unless it is the last one kept already, bounded to its last maxUnheard runes.
+func addUnheard(unheard, answer string) string {
+	const sep = "\n\n---\n\n"
+	switch {
+	case answer == "" || unheard == answer || strings.HasSuffix(unheard, sep+answer):
+		return unheard
+	case unheard != "":
+		answer = unheard + sep + answer
+	}
+	if r := []rune(answer); len(r) > maxUnheard {
+		return "…" + string(r[len(r)-maxUnheard+1:])
+	}
+	return answer
+}
+
+// maxUnheard bounds the unheard answers a goal keeps for its next judge (runes).
+const maxUnheard = 8000
 
 // short retains at most n runes including an ellipsis when truncated; n must be positive.
 func short(s string, n int) string {
