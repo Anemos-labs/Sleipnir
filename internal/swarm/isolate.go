@@ -567,7 +567,33 @@ func (s *Swarm) verifyBounce(ctx context.Context, m *member, vr *workspace.Verif
 		state += " The output says the disk is full (no space left on device): that is the machine, not the code, so there is nothing in the code to fix for it. " +
 			"Remove build outputs you made that are not tracked (binaries, dist/, coverage files) and call task done again; if the disk stays full, block the task and say so."
 	}
+	if missingTool(code, out) {
+		state += " The output says a command or a dependency was not found. The merged result is verified in a checkout of its own that holds " +
+			"only what git tracks: what you installed into your tree and git ignores (vendor/bundle, node_modules, .venv, a build directory) is not " +
+			"there, so a check that passes in your tree can fail here. Make the verification command set up what it needs before it runs it " +
+			"(bundle install, npm ci, a virtual environment), as a fresh clone in CI would, then call task done again."
+	}
 	return fmt.Sprintf("Not done: your work merged cleanly with what other agents landed, but verification `%s` failed on the merged result (exit %d). %s\n%s", cmd, code, state, tailText(out, 2000))
+}
+
+// missingTool reports whether a verification failed because a program or a dependency could not be found: the shell's exit
+// status 127, or the words package managers and interpreters print for it. A worker whose `bundle exec rubocop` passed in its own
+// tree, with the gems installed into an ignored vendor/bundle there, was told to reproduce a "command not found" from the merge
+// queue's checkout, which never had them.
+func missingTool(code int, out string) bool {
+	if code == 127 {
+		return true
+	}
+	low := strings.ToLower(out)
+	for _, s := range []string{
+		"command not found", "could not find gem", "gem::missingspecerror", "cannot find module", "err_module_not_found",
+		"modulenotfounderror", "no module named", "executable file not found",
+	} {
+		if strings.Contains(low, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // diskFull reports whether a command's output says the disk ran out of space. Three workers whose verification failed so, on a
