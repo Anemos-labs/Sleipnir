@@ -98,9 +98,10 @@ func runsAnother(prog string, args []string) bool {
 	if prog == "make" {
 		// a command-line variable takes every assignment operator of make: SHELL:=PROG, SHELL::=, SHELL?=, SHELL+=, SHELL!=
 		for _, a := range args {
-			// and any variable runs a shell command when it is assigned with != (V!=CMD) or holds the shell function (V=$(shell CMD))
+			// and any variable runs a shell command when it is assigned with != (V!=CMD). A value with a reference in it is make text, not data: $(shell CMD), and any form that reaches it indirectly
+			// ($(call), $(eval), $(value), a computed function name), is evaluated; only a literal value is the build's own.
 			if eq := strings.IndexByte(a, '='); eq > 0 && !strings.HasPrefix(a, "-") &&
-				(a[eq-1] == '!' || strings.Contains(a, "$(shell") || strings.Contains(a, "${shell")) {
+				(a[eq-1] == '!' || strings.ContainsRune(a[eq+1:], '$')) {
 				return true
 			}
 			for _, n := range refused {

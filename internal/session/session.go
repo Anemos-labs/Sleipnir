@@ -894,7 +894,7 @@ func (s *Session) buildPerm() error {
 	}
 	s.Perm = e
 	if s.hooks != nil { // a PermissionRequest hook's condition is judged with the rules that made the engine ask
-		s.hooks.AskRules, s.hooks.Home = func() []string { return e.Rules(perm.Ask) }, o.Home
+		s.hooks.AskRules, s.hooks.Home = e.AskRulesFor, o.Home
 	}
 	return nil
 }

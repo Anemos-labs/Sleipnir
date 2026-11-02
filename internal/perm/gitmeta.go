@@ -381,8 +381,9 @@ func gitConfigHelper(b []byte) string {
 			section == "diff" && k == "external",
 			section == "filter" && (k == "clean" || k == "smudge" || k == "process"),
 			section == "diff" && (k == "textconv" || k == "command"),
-			section == "gpg" && k == "program":
-			return "core.fsmonitor, a filter, a diff driver or a gpg program in its git configuration (" + section + "." + k + ")"
+			section == "gpg" && k == "program",
+			section == "core" && k == "alternaterefscommand":
+			return "core.fsmonitor, a filter, a diff driver, a gpg program or an alternate-refs command in its git configuration (" + section + "." + k + ")"
 		}
 	}
 	return ""
@@ -430,21 +431,27 @@ func gitLineContinues(raw string, quoted bool) (cont, quote bool) {
 // looks like a section header is not taken for one.
 func gitConfigLines(b []byte) []string {
 	var out []string
-	cur, quoted := "", false
+	// git skips a UTF-8 byte order mark at the start of the file: the first section after one is read like any other
+	b = bytes.TrimPrefix(b, []byte("\xef\xbb\xbf"))
+	var cur strings.Builder // a continued value grows in place: copying it again at each continuation is quadratic in its lines
+	quoted := false
 	for _, raw := range strings.Split(string(b), "\n") {
 		raw = strings.TrimSuffix(raw, "\r")
 		if cont, q := gitLineContinues(raw, quoted); cont {
-			cur, quoted = cur+raw[:len(raw)-1], q
+			cur.WriteString(raw[:len(raw)-1])
+			quoted = q
 			continue
 		}
-		line := strings.TrimSpace(cur + raw)
-		cur, quoted = "", false
+		cur.WriteString(raw)
+		line := strings.TrimSpace(cur.String())
+		cur.Reset()
+		quoted = false
 		if line == "" || line[0] == '#' || line[0] == ';' {
 			continue
 		}
 		out = append(out, line)
 	}
-	if line := strings.TrimSpace(cur); line != "" && line[0] != '#' && line[0] != ';' {
+	if line := strings.TrimSpace(cur.String()); line != "" && line[0] != '#' && line[0] != ';' {
 		out = append(out, line)
 	}
 	return out

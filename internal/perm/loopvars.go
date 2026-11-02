@@ -1,6 +1,7 @@
 package perm
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 
@@ -29,6 +30,9 @@ var mutatesVariables = map[string]bool{
 	"unset": true, "let": true, "eval": true, "source": true, ".": true, "getopts": true, "((": true,
 }
 
+// paramAssignRE finds the parameter expansions that assign their variable: ${NAME=word} and ${NAME:=word}.
+var paramAssignRE = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*):?=`)
+
 func bindLoopVars(cmd string, cmds []shellparse.Simple) []shellparse.Simple {
 	loops := 0
 	for _, s := range cmds {
@@ -52,6 +56,13 @@ func bindLoopVars(cmd string, cmds []shellparse.Simple) []shellparse.Simple {
 		for _, env := range s.Env {
 			n, _, _ := strings.Cut(env, "=")
 			assigned[strings.TrimSuffix(n, "+")] = true
+		}
+		// arithmetic assigns the names it holds ($((f=1)), $((f++))), and ${f=x} or ${f:=x} assigns f when it is unset or empty
+		for _, n := range arithNames(s.Arith) {
+			assigned[n] = true
+		}
+		for _, m := range paramAssignRE.FindAllStringSubmatch(s.Raw, -1) {
+			assigned[m[1]] = true
 		}
 		if s.LoopVar != "" {
 			loopCount[s.LoopVar]++

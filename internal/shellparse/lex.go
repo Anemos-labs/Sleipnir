@@ -297,6 +297,9 @@ func (l *lexer) readHeredocs(toks []token) []Simple {
 		}
 		if !h.quoted && bodyEnd > bodyStart {
 			l.scanExpansions(bodyStart, bodyEnd, &nested)
+			if joinsIntoExpansion(l.src[bodyStart:bodyEnd]) {
+				l.st.problem("a backslash-newline in an unquoted here-document joins text into an expansion")
+			}
 		}
 		if h.tokIdx < len(toks) {
 			toks[h.tokIdx].arith = append(toks[h.tokIdx].arith, l.exprs[mark:]...)
@@ -304,6 +307,22 @@ func (l *lexer) readHeredocs(toks []token) []Simple {
 		l.exprs = l.exprs[:mark]
 	}
 	return nested
+}
+
+// joinsIntoExpansion reports whether removing the backslash-newlines of an unquoted here-document body, as the shell does before it
+// expands the body, starts an expansion the body as written does not have ("$\\\n(cmd)"): the scan above reads the text as
+// written. A continuation that only joins plain text, as in a Dockerfile written with cat, changes nothing.
+func joinsIntoExpansion(body string) bool {
+	if !strings.Contains(body, "\\\n") {
+		return false
+	}
+	joined := strings.ReplaceAll(body, "\\\n", "")
+	for _, m := range []string{"$(", "${", "`", "$[", "$'", `$"`} {
+		if strings.Count(joined, m) != strings.Count(body, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // endsInEscape reports whether line ends in an unescaped backslash, one that

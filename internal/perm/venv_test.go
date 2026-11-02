@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -116,6 +117,14 @@ func TestTheTestsPresetAllowsAProjectVirtualEnvironment(t *testing.T) {
 	if err := os.Symlink(filepath.Join(r.f.outside, "profile"), filepath.Join(act, "bin/activate")); err != nil {
 		t.Fatal(err)
 	}
+	pkgLink := filepath.Join(r.wtA, ".venv-pkg") // an install into it writes through the package directory's link
+	makeVenv(t, pkgLink)
+	if err := os.Symlink(r.f.outside, filepath.Join(pkgLink, "lib/python3.12/site-packages/requests")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(r.f.outside, "venv", "lib"), filepath.Join(r.wtA, "lnk")); err != nil {
+		t.Fatal(err)
+	}
 	notVenv := filepath.Join(r.wtA, "fake")
 	if err := os.MkdirAll(filepath.Join(notVenv, "bin"), 0o755); err != nil {
 		t.Fatal(err)
@@ -199,8 +208,10 @@ func TestTheTestsPresetAllowsAProjectVirtualEnvironment(t *testing.T) {
 		{cmd: ".venv/bin/pip download pytest", want: "ask"},
 		{cmd: ".venv-link/bin/pip install pytest", want: "ask", why: "outside the workspace"},
 		{cmd: r.f.outside + "/venv/bin/pip install pytest", want: "ask", why: "outside the workspace"},
-		{cmd: "../../../../outside/venv/bin/pip install pytest", want: "ask", why: "outside the workspace"},
+		{cmd: "../../../../outside/venv/bin/pip install pytest", want: "ask", why: "goes through"},
 		{cmd: ".venv-site/bin/pip install pytest", want: "ask", why: "leads outside the environment"},
+		{cmd: ".venv-pkg/bin/pip install requests", want: "ask", why: "leads outside the environment"},
+		{cmd: "lnk/../.venv/bin/pip install pytest", want: "ask"}, // the shell follows lnk before ..: another environment's pip
 		{cmd: ".venv-copy/bin/pip install pytest", want: "ask", why: "own python"},
 		{cmd: "fake/bin/pip install pytest", want: "ask", why: "not a virtual environment"},
 		{cmd: "src/pip install pytest", want: "ask", why: "bin directory"},
@@ -510,5 +521,39 @@ func TestAnEnvironmentsTestRunStaysInTheWorkspace(t *testing.T) {
 		if want == "ask" && !strings.Contains(d.Reason, "it names a file outside the workspace") {
 			t.Errorf("%q: reason %q", cmd, d.Reason)
 		}
+	}
+}
+
+// An environment whose interpreter is a python that another local user can change (in a directory everyone may write) is not one
+// the preset runs: the program would run with this user's rights.
+func TestAnEnvironmentsInterpreterMustBeOneOthersCannotChange(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("ownership is not checked on Windows")
+	}
+	r := venvRig(t, ModeAcceptEdits, nil)
+	shared := filepath.Join(r.f.outside, "shared")
+	if err := os.MkdirAll(shared, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(shared, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(installedPython(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	planted := filepath.Join(shared, "python3")
+	if err := os.WriteFile(planted, b, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(r.wtA, ".venv", "bin", "python3")
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(planted, link); err != nil {
+		t.Fatal(err)
+	}
+	if d := r.check("be-1", r.wtA, ".venv/bin/python -m pytest -q"); outcome(d) == "allow" || !strings.Contains(d.Reason, "can change") {
+		t.Errorf("an interpreter in a directory everyone may write was run: %s (%q)", outcome(d), d.Reason)
 	}
 }

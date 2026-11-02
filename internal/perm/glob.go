@@ -99,6 +99,14 @@ func (rs *resolver) anchor() []string {
 	return append(out, rs.treeBases...)
 }
 
+// anchorGlobs is anchor as pattern text: the workspace directories are escaped, since they are literal names ("proj[1]" is not the
+// class of "proj1"), while treeBases are patterns already.
+func (rs *resolver) anchorGlobs() []string {
+	a := rs.anchor()
+	n := len(a) - len(rs.treeBases)
+	return append(escapeGlobs(a[:n]), a[n:]...)
+}
+
 // cleanAbs cleans nonempty paths and makes relative paths absolute when the working directory can
 // be read.
 func cleanAbs(p string) string {
@@ -416,7 +424,7 @@ func compilePathGlobs(p string, action Action, rs *resolver) ([]*pathGlob, error
 	case pat == "~" || strings.HasPrefix(pat, "~/"):
 		rel = strings.TrimPrefix(strings.TrimPrefix(pat, "~"), "/")
 		if rs != nil {
-			bases = uniq(rs.home, rs.homeReal)
+			bases = escapeGlobs(uniq(rs.home, rs.homeReal))
 		}
 	case filepath.IsAbs(pat):
 		v := filepath.VolumeName(pat)
@@ -433,12 +441,12 @@ func compilePathGlobs(p string, action Action, rs *resolver) ([]*pathGlob, error
 	case strings.HasPrefix(pat, "./") || strings.Contains(pat, "/"):
 		rel = strings.TrimPrefix(pat, "./")
 		if rs != nil {
-			bases = rs.anchor()
+			bases = rs.anchorGlobs()
 		}
 	default: // floating
 		if action == Allow {
 			if rs != nil {
-				for _, b := range rs.anchor() {
+				for _, b := range rs.anchorGlobs() {
 					bases = append(bases, b+"/**")
 				}
 			}
@@ -484,11 +492,21 @@ func compilePathGlobs(p string, action Action, rs *resolver) ([]*pathGlob, error
 		if k > 0 {
 			pref := absRoot + strings.Join(segs[:k], "/")
 			if r := realPath(pref); r != "" && r != pref {
-				add(append(splitSegs(r), segs[k:]...))
+				add(append(splitSegs(escapeGlob(r)), segs[k:]...))
 			}
 		}
 	}
 	return out, nil
+}
+
+// escapeGlobs is escapeGlob of each directory: the workspace and the home directory are literal names in a pattern built on them
+// (a workspace called "proj[1]" is not the class of "proj1").
+func escapeGlobs(dirs []string) []string {
+	out := make([]string, len(dirs))
+	for i, d := range dirs {
+		out[i] = escapeGlob(d)
+	}
+	return out
 }
 
 // uniq removes empty and duplicate strings while preserving input order.

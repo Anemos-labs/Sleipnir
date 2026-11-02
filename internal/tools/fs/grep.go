@@ -9,9 +9,11 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"regexp/syntax"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -199,6 +201,11 @@ func (g Grep) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		}
 		if files == nil {
 			files = k.walkCandidates(base, globs)
+		}
+		if !perm.InCredentialDir(filepath.Join(base, "x")) {
+			// the root was authorized, not every directory below it: what a credential directory holds is not searched unless the
+			// search was asked for inside it
+			files = slices.DeleteFunc(files, perm.InCredentialDir)
 		}
 		sort.Strings(files)
 	} else {

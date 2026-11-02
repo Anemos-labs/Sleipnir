@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // fixture is a throwaway home directory with a workspace inside it, secrets
@@ -269,7 +270,9 @@ func TestGitReadsAskWhenTheRepositoryNamesAHelper(t *testing.T) {
 		t.Fatalf("git status in a plain repository: %+v", d)
 	}
 	for _, cfg := range []string{"[core]\n\tfsmonitor = ./hook.sh\n", "[filter \"x\"]\n\tclean = ./run\n", "[include]\n\tpath = other\n",
-		"[diff \"x\"]\n\ttextconv = ./conv\n"} {
+		"[diff \"x\"]\n\ttextconv = ./conv\n", "[core]\n\talternateRefsCommand = ./refs.sh\n",
+		"\xef\xbb\xbf[core]\n\tfsmonitor = ./hook.sh\n", // git skips a byte order mark before the first section
+	} {
 		if err := os.WriteFile(filepath.Join(f.root, ".git", "config"), []byte(cfg), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -373,5 +376,41 @@ func TestGitReadsAskWhenASubmoduleOrAContinuedValueNamesAHelper(t *testing.T) {
 	write(filepath.Join(f.root, "vendor", "x", ".git", "config"), "[diff \"x\"]\n\ttextconv = ./conv\n")
 	if d := status(); d.Allow {
 		t.Errorf("textconv in an embedded submodule repository: git status was allowed: %+v", d)
+	}
+}
+
+// A configuration value continued over many lines is read in time linear in its length.
+func TestGitConfigLinesJoinContinuationsInLinearTime(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("[core]\n\tx = ")
+	for i := 0; i < 200000; i++ {
+		b.WriteString("a\\\n")
+	}
+	b.WriteString("a\n[core]\n\tfsmonitor = ./hook.sh\n")
+	start := time.Now()
+	if why := gitConfigHelper([]byte(b.String())); why == "" {
+		t.Error("the helper after the long value was missed")
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("200,000 continuations took %s", d)
+	}
+}
+
+// A .git directory that names a common directory (commondir) has git read that directory's configuration: its helpers count.
+func TestGitHelpersAreReadFromTheCommonDirOfAGitDirectory(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeDefault})
+	common := filepath.Join(f.root, "elsewhere")
+	if err := os.MkdirAll(common, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(common, "config"), []byte("[core]\n\tfsmonitor = ./hook.sh\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.root, ".git", "commondir"), []byte("../elsewhere\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if d := e.Check(bg, f.request(rq{tool: "Bash", cmd: "git status", cwd: "{root}"})); d.Allow {
+		t.Errorf("git status was allowed with a helper in the common directory's configuration: %+v", d)
 	}
 }

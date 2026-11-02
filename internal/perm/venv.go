@@ -2,7 +2,9 @@ package perm
 
 import (
 	"bufio"
+	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -113,6 +115,10 @@ func pipName(base string) bool {
 // venvOf is the environment a program of its bin directory belongs to (".venv/bin/pip" is in ".venv"), or "" when the program is not
 // in a directory called bin.
 func venvOf(prog string) string {
+	if slices.Contains(strings.Split(prog, "/"), "..") {
+		// path.Dir would drop "x/.." before the shell follows x: the program run may be in another environment than the one named
+		return ""
+	}
 	bin := path.Dir(prog)
 	if path.Base(bin) != "bin" {
 		return ""
@@ -190,8 +196,8 @@ func existingDir(real, shown string, copies bool) string {
 	if !fi.IsDir() {
 		return shown + " exists and is not a directory"
 	}
-	names, _ := listDir(real, 1)
-	if len(names) == 0 {
+	names, ok := listDir(real, 1)
+	if len(names) == 0 && ok {
 		return ""
 	}
 	if why := venvLayout(real, shown, !copies); why != "" {
@@ -229,6 +235,9 @@ var requirementSpec = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9
 func (ev *evaluator) ownEnv(prog string, script bool, cw *cwdSet) (dir, real, why string) {
 	dir = venvOf(prog)
 	if dir == "" {
+		if slices.Contains(strings.Split(prog, "/"), "..") {
+			return "", "", prog + " goes through \"..\", which the shell takes after any link before it: name the environment's program without it"
+		}
 		return "", "", prog + " is not in the bin directory of a virtual environment"
 	}
 	real, why = ev.venvDir(dir, cw)
@@ -271,6 +280,8 @@ func (ev *evaluator) ownInterpreter(real, name, shown string) string {
 		return notOwn
 	case ev.rs.inWorkspace(target):
 		return shown + " runs a program of the workspace, not an installed python"
+	case !trustedInterpreter(target):
+		return shown + " runs " + target + ", which someone other than you or root can change"
 	}
 	f, err := openNoWait(target)
 	if err != nil {
@@ -535,7 +546,7 @@ func venvLayout(real, shown string, interpLinks bool) string {
 	}
 	names, ok := listDir(real, 64)
 	if !ok {
-		return shown + " has too many entries to check"
+		return shown + " has more entries than can be checked, or cannot be listed"
 	}
 	for _, n := range names {
 		if escapes(filepath.Join(real, n)) {
@@ -546,7 +557,7 @@ func venvLayout(real, shown string, interpLinks bool) string {
 	for _, bin := range []string{"bin", "Scripts"} {
 		files, ok := listDir(filepath.Join(real, bin), 256)
 		if !ok {
-			return shown + "/" + bin + " has too many entries to check"
+			return shown + "/" + bin + " has more entries than can be checked, or cannot be listed"
 		}
 		for _, n := range files {
 			if interpLinks && strings.HasPrefix(n, "python") {
@@ -560,7 +571,7 @@ func venvLayout(real, shown string, interpLinks bool) string {
 	for _, lib := range []string{"lib", "lib64"} {
 		vers, ok := listDir(filepath.Join(real, lib), 16)
 		if !ok {
-			return shown + "/" + lib + " has too many entries to check"
+			return shown + "/" + lib + " has more entries than can be checked, or cannot be listed"
 		}
 		for _, v := range vers {
 			for _, p := range []string{filepath.Join(real, lib, v), filepath.Join(real, lib, v, "site-packages")} {
@@ -568,21 +579,37 @@ func venvLayout(real, shown string, interpLinks bool) string {
 					return strings.TrimPrefix(p, real+"/") + " of " + shown + " leads outside the environment"
 				}
 			}
+			// an install writes into the package directories that are there already: one that is a link out of the environment
+			// takes the install with it
+			site := filepath.Join(real, lib, v, "site-packages")
+			pkgs, ok := listDir(site, 20000)
+			if !ok {
+				return strings.TrimPrefix(site, real+"/") + " of " + shown + " has more entries than can be checked, or cannot be listed"
+			}
+			for _, n := range pkgs {
+				if fi, err := os.Lstat(filepath.Join(site, n)); err == nil && fi.Mode()&os.ModeSymlink == 0 {
+					continue // a file or a directory of its own is inside
+				}
+				if escapes(filepath.Join(site, n)) {
+					return strings.TrimPrefix(site, real+"/") + "/" + n + " of " + shown + " leads outside the environment"
+				}
+			}
 		}
 	}
 	return ""
 }
 
-// listDir returns the names in dir, at most limit of them (ok false when there are more); a directory that cannot be read has none.
+// listDir returns the names in dir, at most limit of them: ok is false when there are more, or when dir is there and cannot be listed
+// (what it holds is then not known, which is not the same as holding nothing). A directory that does not exist has none.
 func listDir(dir string, limit int) ([]string, bool) {
 	f, err := openNoWait(dir)
 	if err != nil {
-		return nil, true
+		return nil, errors.Is(err, fs.ErrNotExist)
 	}
 	defer f.Close()
 	names, err := f.Readdirnames(limit + 1)
 	if err != nil && err != io.EOF {
-		return nil, true
+		return nil, false
 	}
 	return names, len(names) <= limit
 }

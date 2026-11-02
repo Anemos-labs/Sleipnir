@@ -106,9 +106,9 @@ type Runner struct {
 	KillGrace      time.Duration
 	PipeGrace      time.Duration
 
-	// AskRules, when set, are the ask rules of the permission engine the PermissionRequest hooks answer for (perm.Engine.Rules):
-	// a hook's "if" covers a request only where those rules would not ask, and Home is the home directory they are read with.
-	AskRules func() []string
+	// AskRules, when set, gives the ask rules of the permission engine the PermissionRequest hooks answer for, those of the
+	// requesting role's profiles with the session's (perm.Engine.AskRulesFor): a hook's "if" covers a request only where those rules would not ask, and Home is the home directory they are read with.
+	AskRules func(role string) []string
 	Home     string
 
 	semOnce   sync.Once
@@ -589,7 +589,7 @@ func (r *Runner) conditionHolds(ctx context.Context, h Hook, ev Event) bool {
 func (r *Runner) conditionCovers(ctx context.Context, h Hook, ev Event) bool {
 	var ask []string
 	if r.AskRules != nil {
-		ask = r.AskRules()
+		ask = r.AskRules(ev.Role)
 	}
 	key := h.If + "\x00" + strings.Join(ask, "\x00")
 	eng, err := r.engine(&r.covers, key, func() (*perm.Engine, error) {

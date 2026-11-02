@@ -332,6 +332,15 @@ func (e *Engine) lead(ctx context.Context, key, skey string, p *pending, r Reque
 		select {
 		case fd := <-fell: // nil when there is no fallback: never ready
 			p.canceled = false
+			if fd.Allow {
+				// the policy may have changed while the question waited: a deny rule or a stricter mode added since wins, and a
+				// question that is no longer one the fallback may answer is not its to approve
+				if nv := again(); nv.kind == vDeny {
+					fd = Decision{Reason: changedWhileAsked + nv.reason, by: "policy"}
+				} else if nv.kind == vAsk && !e.fallbackFor(r, nv) {
+					fd = Decision{Reason: "approval required: " + nv.reason + "; it is no longer a question " + fd.by + " may answer", by: "policy"}
+				}
+			}
 			if !fd.Allow {
 				e.pr.refuse(skey, fd, gen)
 			}
@@ -362,6 +371,12 @@ func (e *Engine) lead(ctx context.Context, key, skey string, p *pending, r Reque
 	if !d.Allow && (d.Reason == "denied by user" || d.Reason == "declined by the user") {
 		d.Reason += declinedAdvice
 	}
+	if d.Allow {
+		// a deny rule or a stricter mode added while the person was asked wins over their yes, as it would have before the question
+		if nv := again(); nv.kind == vDeny {
+			return Decision{Reason: changedWhileAsked + nv.reason, by: "policy"}
+		}
+	}
 	e.pr.refuse(skey, d, gen)
 	if d.Allow {
 		if reason, refused := e.refusedReadOnly(ctx, r); refused { // a read-only turn began while the person was asked: nothing is remembered
@@ -371,6 +386,9 @@ func (e *Engine) lead(ctx context.Context, key, skey string, p *pending, r Reque
 	e.remember(d, v)
 	return d
 }
+
+// changedWhileAsked begins the reason of a yes that the policy no longer allows: it changed while the question waited for its answer.
+const changedWhileAsked = "the permissions changed while this was asked, and they now refuse it: "
 
 // remember honours Decision.Remember by adding the rules that make a repeat of
 // the request pass (or, for a refusal, fail). An answer to a question that a

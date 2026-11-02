@@ -2,6 +2,7 @@ package perm
 
 import (
 	"path"
+	"path/filepath"
 	"strings"
 	"unicode"
 )
@@ -65,6 +66,24 @@ var harmlessDevices = []string{
 
 // credential directories under $HOME, relative to it.
 var credentialDirs = []string{"/.ssh", "/.aws", "/.gnupg", "/.config/gcloud"}
+
+// InCredentialDir reports whether path p (absolute, cleaned) lies inside a directory that holds credentials wherever it is: a .ssh,
+// .aws or .gnupg directory, or a .config/gcloud. A recursive search allowed for a directory above one (grep in /home, where another
+// user's home is) must not read what is in it: the permission check of the search's root cannot see that far.
+func InCredentialDir(p string) bool {
+	segs := strings.Split(filepath.ToSlash(p), "/")
+	for i, s := range segs[:max(len(segs)-1, 0)] {
+		switch s {
+		case ".ssh", ".aws", ".gnupg":
+			return true
+		case ".config":
+			if i+1 < len(segs)-1 && segs[i+1] == "gcloud" {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 // files under $HOME that hold tokens; guarded rather than hard.
 var guardedHome = []string{

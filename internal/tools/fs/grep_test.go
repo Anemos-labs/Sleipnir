@@ -948,3 +948,29 @@ func TestRgCompatible(t *testing.T) {
 		}
 	}
 }
+
+// A search allowed for a directory above a credential directory (another user's home, /home) does not read what that directory
+// holds: the check of the search's root cannot see it. Asked inside the directory itself, the search reads it as its check allowed.
+func TestGrepSkipsCredentialDirectoriesBelowItsRoot(t *testing.T) {
+	forEachEngine(t, func(t *testing.T, g *Grep) {
+		env := testEnv(t)
+		tree(t, env.Cwd, map[string]string{
+			"bob/.ssh/id_rsa":            "secret-key-material\n",
+			"bob/.aws/credentials":       "secret-key-material\n",
+			"bob/.config/gcloud/creds":   "secret-key-material\n",
+			"bob/notes.txt":              "secret-key-material\n",
+			"bob/.config/other/settings": "secret-key-material\n",
+		})
+		got := grep(t, g, env, map[string]any{"pattern": "secret", "output_mode": "files_with_matches"})
+		if strings.Contains(got, ".ssh") || strings.Contains(got, ".aws") || strings.Contains(got, "gcloud") {
+			t.Errorf("credential directories were searched:\n%s", got)
+		}
+		if !strings.Contains(got, "notes.txt") || !strings.Contains(got, "settings") {
+			t.Errorf("ordinary files were not searched:\n%s", got)
+		}
+		inside := grep(t, g, env, map[string]any{"pattern": "secret", "path": "bob/.ssh", "output_mode": "files_with_matches"})
+		if !strings.Contains(inside, "id_rsa") {
+			t.Errorf("a search inside the directory itself found nothing:\n%s", inside)
+		}
+	})
+}

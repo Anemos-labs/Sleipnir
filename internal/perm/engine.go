@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -623,6 +624,29 @@ func (e *Engine) Rules(a Action) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// AskRulesFor is Rules(Ask) with the ask rules of the role's profiles, those of every source the role is restricted by: what a
+// request of that role is asked about.
+func (e *Engine) AskRulesFor(role string) []string {
+	out := e.Rules(Ask)
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	top, ok := e.roles[role]
+	if !ok || role == "" {
+		return out
+	}
+	all := []*profile{top}
+	for i := 0; i < len(all); i++ {
+		all = append(all, all[i].also...)
+	}
+	for _, p := range all {
+		for _, c := range p.ask {
+			out = append(out, c.Rule.String())
+		}
+	}
+	sort.Strings(out)
+	return slices.Compact(out)
 }
 
 // Added returns the rules of one action added while the session ran (AddRule), as text in the order they were added: what a
