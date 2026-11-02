@@ -508,7 +508,15 @@ func (s *Session) progressPusher(ctx context.Context, p *isoPlan, branch string)
 		}
 		return progressBranch(p.prefix, topic)
 	}
-	return &progressPusher{git: git, remote: remote, name: name, log: s.Log, tell: s.tell}
+	hold := func() string {
+		if p.queue == nil {
+			return ""
+		}
+		hctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		return snapshotSecrets(hctx, git, p.queue.Base())
+	}
+	return &progressPusher{git: git, remote: remote, name: name, log: s.Log, tell: s.tell, hold: hold}
 }
 
 // lastProgressBranch is the remote branch this session's log last recorded a progress

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -682,7 +683,7 @@ func enrichModel(ctx context.Context, cacheDir, baseURL string, m cost.Model) (c
 	if m.Provider != "unknown" || m.Plan || !catalogueReadable(baseURL) {
 		return m, false // a plan's model is billed nothing per token, whatever a catalogue says
 	}
-	return enrichFrom(loadCatalog(ctx, cacheDir, baseURL), m)
+	return enrichFrom(loadCatalog(ctx, cacheDir, baseURL, m.ID), m)
 }
 
 // catalogueReadable reports whether the catalogue of baseURL may be read. It decides the
@@ -742,9 +743,14 @@ func findEntry(entries []gateway.Entry, id string) (gateway.Entry, bool) {
 
 // loadCatalog is the catalogue of baseURL: the copy kept under cacheDir when it is younger
 // than catalogTTL and passes gateway.Vet, else a download (six seconds at most), which is
-// then kept. nil when there is neither.
-func loadCatalog(ctx context.Context, cacheDir, baseURL string) []gateway.Entry {
+// then kept. nil when there is neither. A kept copy that does not list model id (non-empty)
+// and is older than catalogRecheck is downloaded again: an endpoint whose list left a model
+// out for a moment, or that added one since, kept it described as an unknown model (a 200k
+// window guessed, a 16000-token output limit, estimated prices) for the six hours the copy
+// was trusted.
+func loadCatalog(ctx context.Context, cacheDir, baseURL, id string) []gateway.Entry {
 	var path string
+	var kept []gateway.Entry
 	if cacheDir != "" {
 		sum := sha256.Sum256([]byte(baseURL))
 		path = filepath.Join(cacheDir, "catalog-"+hex.EncodeToString(sum[:6])+".json")
@@ -756,7 +762,10 @@ func loadCatalog(ctx context.Context, cacheDir, baseURL string) []gateway.Entry 
 				// download could not.
 				if json.Unmarshal(b, &es) == nil {
 					if es = gateway.Vet(es); len(es) > 0 {
-						return es
+						if _, listed := findEntry(es, id); id == "" || listed || time.Since(st.ModTime()) < catalogRecheck || recheckedLately(path) {
+							return es
+						}
+						kept = es
 					}
 				}
 			}
@@ -766,7 +775,10 @@ func loadCatalog(ctx context.Context, cacheDir, baseURL string) []gateway.Entry 
 	defer cancel()
 	es, err := gateway.Fetch(fctx, nil, baseURL)
 	if err != nil || len(es) == 0 {
-		return nil
+		if kept != nil {
+			catalogRechecks.Store(path, time.Now()) // the kept copy keeps its age: only the next recheck waits
+		}
+		return kept
 	}
 	if path != "" {
 		if b, err := json.Marshal(es); err == nil {
@@ -775,6 +787,21 @@ func loadCatalog(ctx context.Context, cacheDir, baseURL string) []gateway.Entry 
 		}
 	}
 	return es
+}
+
+// catalogRecheck is how old a kept catalogue must be before a model it does not list makes it be downloaded again: the
+// models of one session start are looked up within seconds of each other, and one download answers them all.
+const catalogRecheck = time.Minute
+
+// catalogRechecks holds, by kept catalogue path, when downloading it again for a model it does not list last failed. Until
+// catalogRecheck has passed since then, the kept copy is used as it is: each model it does not list would otherwise wait out
+// another six-second download from an endpoint that is down.
+var catalogRechecks sync.Map
+
+// recheckedLately reports whether a download of the catalogue kept at path failed within catalogRecheck.
+func recheckedLately(path string) bool {
+	at, ok := catalogRechecks.Load(path)
+	return ok && time.Since(at.(time.Time)) < catalogRecheck
 }
 
 // extraBodyFor is what a request for model is given beside the adapter's own members: the provider's extra_body, with the members

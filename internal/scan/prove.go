@@ -32,7 +32,8 @@ const ProofScript = ".sleipnir-proof.sh"
 var leadIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,39}$`)
 
 // Prover runs reproducers: each in a fresh copy of the code at the scan's commit, made as a detached worktree under the scan's
-// directory, through Run (the session's sandbox). The copy is removed after the run, whatever the script did to it.
+// directory, through Run: in the session's sandbox, a container that mounts that copy and none of the project's own files, so a
+// reproducer cannot change the code it was sent to check. The copy is removed after the run, whatever the script did to it.
 type Prover struct {
 	Repo *gitx.Repo
 	Run  Runner
