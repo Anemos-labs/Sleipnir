@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -10,6 +11,10 @@ func TestServeDirs(t *testing.T) {
 	home := t.TempDir()
 	proj := filepath.Join(home, "proj")
 	other := t.TempDir()
+	// The start directory always exists; it must, for its symlinks (macOS's /var) to resolve as the roots' do.
+	if err := os.Mkdir(proj, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		name            string
 		roots           []string
