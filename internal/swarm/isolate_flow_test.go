@@ -260,6 +260,55 @@ func TestAVerificationThatRanOutOfDiskSaysItIsTheMachine(t *testing.T) {
 	}
 }
 
+// A verification that failed on a missing program says that the merge queue's checkout holds only what git tracks: a worker
+// whose gems were installed into an ignored vendor/bundle of its own tree passed its own check, and was told to reproduce a
+// "command not found" it could not see.
+func TestAVerificationMissingAToolSaysTheCheckoutHasOnlyTrackedFiles(t *testing.T) {
+	sc := script{
+		"be-1": {
+			act(writeCall("a.txt", "alpha edited\n")),
+			act(doneCall("T1", "try 1")),
+			act(doneCall("T1", "try 2")),
+		},
+	}
+	tries := 0
+	var mu sync.Mutex
+	missing := func(dir string) (string, int) {
+		mu.Lock()
+		defer mu.Unlock()
+		if tries++; tries == 1 {
+			return "== RuboCop ==\nbundler: command not found: rubocop\nInstall missing gem executables with `bundle install`", 127
+		}
+		return "ok", 0
+	}
+	r := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 4, MaxAttempts: 3}, queueVerify: missing}, sc.fn())
+	r.sw.StartManager()
+	r.mustSpawn("backend", "edit a", "a.txt")
+	r.waitStatus("T1", StatusReview)
+	if !r.prov.sawEver("holds only what git tracks") {
+		t.Fatal("the worker was not told that the merge queue's checkout lacks what its own tree installed")
+	}
+}
+
+func TestMissingTool(t *testing.T) {
+	for _, c := range []struct {
+		code int
+		out  string
+		want bool
+	}{
+		{127, "", true},
+		{1, "Error: Cannot find module 'playwright'", true},
+		{1, "ModuleNotFoundError: No module named 'pytest'", true},
+		{1, "Could not find gem 'roda (~> 3.84)' in locally installed gems.", true},
+		{1, "3 runs, 1 failures", false},
+		{2, "FAIL: expected 201, got 409", false},
+	} {
+		if got := missingTool(c.code, c.out); got != c.want {
+			t.Errorf("missingTool(%d, %q) = %v, want %v", c.code, c.out, got, c.want)
+		}
+	}
+}
+
 // A task whose worker made no change has nothing to merge: it is reported as such and
 // proceeds to review. The manager accepts it by saying why no change was needed.
 func TestEmptyMergeIsReportedAndProceeds(t *testing.T) {
