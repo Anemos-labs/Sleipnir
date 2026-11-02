@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -561,9 +562,24 @@ func isTestWords(w []string) bool {
 			break
 		}
 	}
+	if isCheckScript(prog) {
+		return true
+	}
 	switch prog {
 	case "go":
 		return sub == "test" || sub == "vet"
+	case "bundle", "uv", "poetry", "pipenv", "pdm", "hatch":
+		// bundle exec rspec, uv run pytest: the runner is the command after the wrapper's verb
+		for i, x := range rest {
+			if x == sub {
+				return (sub == "exec" || sub == "run") && isTestWords(rest[i+1:])
+			}
+		}
+		return false
+	case "rake", "rails":
+		return sub == "test" || sub == "spec" || strings.HasPrefix(sub, "test:") || strings.HasPrefix(sub, "spec:")
+	case "deno", "mix", "swift", "composer":
+		return sub == "test"
 	case "npm", "pnpm", "yarn", "bun":
 		if sub == "test" || sub == "t" {
 			return true
@@ -576,7 +592,10 @@ func isTestWords(w []string) bool {
 			}
 		}
 		return false
-	case "npx":
+	case "npx", "bunx":
+		if sub == "playwright" {
+			return slices.Contains(rest, "test")
+		}
 		return sub == "jest" || sub == "vitest" || sub == "mocha"
 	case "pytest", "py.test", "jest", "vitest", "ctest", "rspec", "phpunit", "tox", "nox":
 		return true
@@ -604,6 +623,25 @@ func isTestWords(w []string) bool {
 				return t
 			}
 		}
+		return sub != "" && isCheckScript(path.Base(sub))
+	}
+	return false
+}
+
+// isCheckScript reports whether prog, the base name of the program a command runs, is a project's own test or check script
+// (scripts/verify.sh, ./test.sh, bin/check): a script named for checking that a worker runs as it is, or through bash or sh. A
+// worker whose `bash scripts/verify.sh` ran RuboCop, the unit tests and the browser tests was reported as having run no tests.
+func isCheckScript(prog string) bool {
+	name, ext := prog, path.Ext(prog)
+	if ext != "" {
+		if ext != ".sh" && ext != ".bash" {
+			return false
+		}
+		name = strings.TrimSuffix(prog, ext)
+	}
+	switch name {
+	case "test", "tests", "check", "verify", "ci", "run-tests", "run_tests":
+		return true
 	}
 	return false
 }
