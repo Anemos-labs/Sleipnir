@@ -256,6 +256,7 @@ var positionals = map[string][]wire.CLIPositional{
 	"plugins forget":  {pos("NEED", true, "the need whose located file to drop")},
 	"plugins setup":   {pos("NEED", true, "the need to install"), pos("METHOD", false, "one of its install methods (none: the only one that can run here)")},
 	"models fav list": {}, "models fav add": {many("REF", true, "provider/model")}, "models fav rm": {many("REF", true, "provider/model")},
+	"models default": {pos("REF", false, "provider/model to keep as the default (none: show the default and where it comes from)")},
 	"rl taskgen git": {}, "rl taskgen mutate": {}, "rl taskgen recall": {}, "rl taskgen fixture": {}, "rl rollout": {}, "rl branch": {}, "rl eval": {}, "rl serve": {},
 	"rl taskgen composite":   {pos("TASKS", true, "the tasks file to combine")},
 	"rl taskgen chain":       {pos("REPO", true, "the repository the chains' commits are in (a local path)")},
@@ -444,6 +445,7 @@ var modes = map[string]modeOf{
 	"logout":         {mode: ModePriv, why: "it removes a stored key or a sign-in: it asks for a confirmation first"},
 	"models fav add": {mode: ModePriv, why: "it changes your configuration: it asks for a confirmation first"},
 	"models fav rm":  {mode: ModePriv, why: "it changes your configuration: it asks for a confirmation first"},
+	"models default": {mode: ModePriv, why: "given a model, it changes your configuration: it asks for a confirmation first"},
 	"mock":           {mode: ModeServer, why: "a server: it runs until it is stopped"},
 	"rl serve":       {mode: ModeServer, why: "a server: it runs until it is stopped"},
 	"daemon":         {mode: ModeServer, why: "it runs until it is stopped; the Schedule view starts and stops the daemon of this page"},
@@ -670,6 +672,7 @@ func Generate(in Inputs) (*wire.CLISpec, error) {
 				{[]string{"models", "fav", "list"}, "sleipnir models fav list", "Lists the favourite models kept as models.favorites in your user configuration.", nil, "models"},
 				{[]string{"models", "fav", "add"}, "sleipnir models fav add provider/model...", "Star one or more models.", nil, "models"},
 				{[]string{"models", "fav", "rm"}, "sleipnir models fav rm provider/model...", "Unstar one or more models.", nil, "models"},
+				{[]string{"models", "default"}, "sleipnir models default [--role ROLE] [provider/model]", "Shows the default model a new session starts on and where it comes from, or keeps the model given as that default in your user configuration (models.default; models.roles.ROLE with --role), so that it survives a restart.", []wire.CLIFlag{{Name: "role", Arg: "string", Default: "", Desc: "the role whose default to show or keep (manager, backend, judge...); without it, models.default"}}, "models"},
 			} {
 				if err = s.finish(c.path, c.usage, c.sum, c.flags, sec, wire.CLICommand{Parent: c.parent}); err != nil {
 					break

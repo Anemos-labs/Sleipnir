@@ -35,6 +35,42 @@ type ModelsView struct {
 	Embedders []string `json:"embedders"`
 	Efforts   []string `json:"efforts"`
 	FetchedAt int64    `json:"fetchedAt"`
+	// Saved are the default models a new session reads, by role ("default" for models.default, then the manager and each role of
+	// RoleOrder), each with the file or variable it comes from. A model chosen for a running session is not among them.
+	Saved map[string]SavedModel `json:"saved"`
+	// SaveFile is the file a default chosen on the page is kept in: the user's own configuration, as the page shows paths.
+	SaveFile string `json:"saveFile"`
+}
+
+// SavedModel is the default model of a role as the configuration holds it, and where it comes from.
+type SavedModel struct {
+	// Key is the configuration key: models.default, or models.roles.ROLE.
+	Key string `json:"key"`
+	// Ref is the model, "" when no layer names one.
+	Ref string `json:"ref,omitempty"`
+	// From is the file (as the page shows paths) or "env:NAME" that set it, "" when nothing did; Layer is its kind (user, project,
+	// local, env, overrides).
+	From  string `json:"from,omitempty"`
+	Layer string `json:"layer,omitempty"`
+}
+
+// DefaultRequest keeps Ref as the default model of Role in the user's configuration: "" (or "default", "manager") is models.default,
+// any other role models.roles.ROLE.
+type DefaultRequest struct {
+	Ref  string `json:"ref"`
+	Role string `json:"role,omitempty"`
+}
+
+// DefaultReply is the answer of POST /api/models/default: the file written, the default the next start reads for the role, and Over,
+// a sentence naming the layer that still outranks the file (a project's file, SLEIPNIR_MODEL), "" when the saved model is the one read.
+type DefaultReply struct {
+	OK    bool       `json:"ok"`
+	Role  string     `json:"role"`
+	File  string     `json:"file"`
+	Saved SavedModel `json:"saved"`
+	Over  string     `json:"over,omitempty"`
+	// Note says that the change rewrote the configuration file without the comments it had.
+	Note string `json:"note,omitempty"`
 }
 
 // RoleInfo is a role of the swarm: its name, short code, whether it is read-only, and what it is for.

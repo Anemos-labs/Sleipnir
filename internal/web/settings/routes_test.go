@@ -23,6 +23,7 @@ func settingsRoutes(repo string) []route {
 	return []route{
 		{method: "GET", path: "/api/models"},
 		{method: "POST", path: "/api/models/fav", body: wire.FavRequest{Ref: "acme/m", On: true}},
+		{method: "POST", path: "/api/models/default", body: wire.DefaultRequest{Ref: "acme/m"}},
 		{method: "GET", path: "/api/sessions/t1/permissions"},
 		{method: "GET", path: "/api/sessions/t1/trust"},
 		{method: "GET", path: "/api/trust/challenge?dir=" + repo},
