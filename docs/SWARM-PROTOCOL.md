@@ -1139,7 +1139,10 @@ the last six characters of the session id, so verified work survives the loss of
 one at a time and coalesce to the newest tip; they use the person's own git credentials, never prompt, skip `pre-push`
 hooks, and never write any branch but that one. The first push and a push that recovers are announced at level `delivery`;
 a failure is announced once (level `warn`) and retried after the next merge; every attempt is logged (`swarm.progress_push`).
-A resumed session pushes its tip at start. Without a push remote nothing is pushed.
+A resumed session pushes its tip at start. Without a push remote nothing is pushed. A team that started from a snapshot of
+uncommitted work pushes nothing during the run when that snapshot added a file whose name says it holds credentials (`.env`,
+a private key, `.npmrc`): the pushed history would carry it. The person is told once (level `warn`), and the work is applied
+to the checkout at the end as usual.
 
 **Recovery.** A stopped or killed session keeps its worker trees, including uncommitted
 edits. Startup cleanup skips namespaces with a `sleipnir/<session>/_resume` recovery

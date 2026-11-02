@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/skills/mdfile"
+	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
 
 // Progress pushing (swarm.push_progress, default on).
@@ -61,6 +63,36 @@ func clipText(s string, n int) string {
 	return s
 }
 
+// snapshotSecrets is the hold of a progress push whose history starts from a snapshot of the person's working tree (workspace.Manager
+// Snapshot): a file the snapshot added that the person never committed and whose name says it holds credentials (.env, a private key,
+// .npmrc; mdfile.SensitivePath) would be published with the first push, on the strength of the repository's own ignore rules alone.
+// base is the commit the team started from. It returns why it holds, or "" when base is no snapshot or adds no such file. A check
+// that cannot be made holds too: publishing is the step that cannot be taken back.
+func snapshotSecrets(ctx context.Context, git gitRunner, base string) string {
+	out, err := git(ctx, "log", "-1", "--format=%P%x00%s", base)
+	if err != nil {
+		return "could not check what the starting snapshot of your working tree holds (" + clipText(err.Error(), 200) + ")"
+	}
+	parents, subject, _ := strings.Cut(strings.TrimSpace(string(out)), "\x00")
+	if subject != workspace.SnapshotMessage || strings.Contains(parents, " ") || parents == "" {
+		return ""
+	}
+	out, err = git(ctx, "diff", "--name-only", "-z", "--no-renames", "--diff-filter=A", parents, base, "--")
+	if err != nil {
+		return "could not check what the starting snapshot of your working tree holds (" + clipText(err.Error(), 200) + ")"
+	}
+	for _, f := range strings.Split(string(out), "\x00") {
+		if f == "" {
+			continue
+		}
+		if why := mdfile.SensitivePath(f); why != "" {
+			return "the team started from your uncommitted files, and " + f + " is among them (" + why +
+				"); pushing would publish it. Commit or ignore such files before a run, or remove them, to have progress pushed"
+		}
+	}
+	return ""
+}
+
 // pushRemote is the remote the checkout's branch pushes to: its configured push
 // remote (not ".", the repository itself), else "origin" when that exists; "" when
 // there is none.
@@ -87,6 +119,9 @@ type progressPusher struct {
 	name func(tip string) string
 	log  events.Emitter
 	tell func(level, msg string)
+	// hold, when set, is asked once, before the first push: a reason not to publish the integration branch at all ("" to go on). The
+	// history pushed starts from the base the team began on, and that base can hold what the person never committed (snapshotSecrets).
+	hold func() string
 
 	mu      sync.Mutex
 	want    string // the newest tip asked for
@@ -94,6 +129,8 @@ type progressPusher struct {
 	running bool
 	failing bool // the last push failed and the person was told
 	told    bool // the person was told where the work is pushed
+	held    bool // hold was asked; reason says why nothing is pushed ("" when it is)
+	reason  string
 	idle    chan struct{}
 }
 
@@ -126,7 +163,24 @@ func (p *progressPusher) loop(idle chan struct{}) {
 			return
 		}
 		named := p.ref != ""
+		asked, reason := p.held, p.reason
 		p.mu.Unlock()
+		if !asked && p.hold != nil {
+			reason = p.hold()
+			p.mu.Lock()
+			p.held, p.reason = true, reason
+			p.mu.Unlock()
+			if reason != "" && p.tell != nil {
+				p.tell("warn", "The team's verified work is not pushed to "+p.remote+" during this run: "+reason+
+					". It stays on the local integration branch and is applied to your checkout at the end.")
+			}
+		}
+		if reason != "" {
+			p.mu.Lock()
+			p.running = false
+			p.mu.Unlock()
+			return
+		}
 		if !named {
 			ref := p.name(tip)
 			p.mu.Lock()
