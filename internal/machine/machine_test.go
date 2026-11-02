@@ -160,8 +160,10 @@ func TestStartLowersThePriorityOfTheCommandAndItsChildren(t *testing.T) {
 		t.Skip("no sh")
 	}
 	b := newBudget(Settings{}, "", 4, 0, nil)
-	// the child of the shell reads its own nice value
-	cmd := exec.Command("sh", "-c", "sh -c 'ps -o nice= -p $$'")
+	// the child of the shell reads its own nice value. Outside Linux the nice value is lowered just after the command starts
+	// (startLow), so the shell waits a moment before it starts the child: a child started in the first instants keeps the
+	// priority it was started with, and on a macOS CI runner that is -10.
+	cmd := exec.Command("sh", "-c", "sleep 0.5; sh -c 'ps -o nice= -p $$'")
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
