@@ -313,6 +313,10 @@ func (m *Manager) derive(ctx context.Context) (mstate, error) {
 	return m.deriveCopy(ctx, st)
 }
 
+// SnapshotMessage is the message of the commit that holds a snapshot of the user's working tree (Snapshot): its one parent is the
+// commit the tree was taken over.
+const SnapshotMessage = "sleipnir: snapshot of the working tree"
+
 // dirtyBase implements Snapshot: it turns the user's uncommitted state into a
 // commit (unreachable from any user branch) and returns it as the base. When
 // Snapshot is off it only reports whether such state exists.
@@ -332,7 +336,7 @@ func (m *Manager) dirtyBase(ctx context.Context, st mstate, base string) (dirty 
 	if !m.Snapshot {
 		return true, sha, nil
 	}
-	c, err := m.Repo.CommitTree(ctx, tree, []string{base}, "sleipnir: snapshot of the working tree", gitx.Author{Name: "Sleipnir", Email: "sleipnir@localhost", When: m.now()})
+	c, err := m.Repo.CommitTree(ctx, tree, []string{base}, SnapshotMessage, gitx.Author{Name: "Sleipnir", Email: "sleipnir@localhost", When: m.now()})
 	if err != nil {
 		return false, sha, err
 	}

@@ -22,6 +22,7 @@ func goPathUses(args []string) ([]pathUse, bool) {
 	}
 	var uses []pathUse
 	packages, closed := false, false
+	compiles, output := false, false // go test -c, and whether -o names where its binary goes
 	for i := 0; i < len(rest); i++ {
 		a := rest[i]
 		if sub == "run" && (!strings.HasPrefix(a, "-") || a == "-") {
@@ -69,7 +70,13 @@ func goPathUses(args []string) ([]pathUse, bool) {
 			break
 		}
 		if kind == goBoolFlag {
+			if sub == "test" && name == "c" {
+				compiles = true
+			}
 			continue
+		}
+		if name == "o" {
+			output = true
 		}
 		if !inline {
 			if i+1 >= len(rest) {
@@ -89,6 +96,10 @@ func goPathUses(args []string) ([]pathUse, bool) {
 	}
 	if !packages {
 		uses = append(uses, pathUse{raw: ".", tree: true})
+	}
+	if compiles && !output {
+		// go test -c without -o writes the test binary (pkg.test) into the working directory.
+		uses = append(uses, pathUse{raw: ".", write: true})
 	}
 	return uses, true
 }
