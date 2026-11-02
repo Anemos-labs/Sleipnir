@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -502,17 +503,21 @@ func TestEnrichModelUsesTheEndpointsCatalogueAndCachesIt(t *testing.T) {
 // A kept catalogue that does not list a model is downloaded again once it is a minute old: an endpoint whose list left a
 // model out for a moment kept it described as an unknown model (a guessed window, a 16000-token output limit) for six hours.
 func TestAKeptCatalogueWithoutTheModelIsDownloadedAgain(t *testing.T) {
-	var hits int
-	withB := false
+	var hits atomic.Int32
+	var withB, down atomic.Bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits++
+		hits.Add(1)
+		if down.Load() {
+			http.Error(w, "down", http.StatusBadGateway)
+			return
+		}
 		entry := func(id string) string {
 			return `{"id":"` + id + `","context_length":1000000,"architecture":{"modality":"text->text"},
 				"pricing":{"prompt":"0.000001","completion":"0.000004"},
 				"top_provider":{"context_length":1000000,"max_completion_tokens":65536},"supported_parameters":["tools"]}`
 		}
 		list := entry("acme/a")
-		if withB {
+		if withB.Load() {
 			list += "," + entry("acme/b")
 		}
 		fmt.Fprint(w, `{"data":[`+list+`]}`)
@@ -522,10 +527,10 @@ func TestAKeptCatalogueWithoutTheModelIsDownloadedAgain(t *testing.T) {
 	if got := session.EnrichModel(context.Background(), cache, srv.URL, cost.Fallback("acme/a")); got.ContextTokens != 1000000 {
 		t.Fatalf("acme/a: window %d", got.ContextTokens)
 	}
-	withB = true
-	before := hits
-	if got := session.EnrichModel(context.Background(), cache, srv.URL, cost.Fallback("acme/b")); got.ContextTokens == 1000000 || hits != before {
-		t.Fatalf("a copy younger than a minute is used as it is (window %d, hits %d -> %d)", got.ContextTokens, before, hits)
+	withB.Store(true)
+	before := hits.Load()
+	if got := session.EnrichModel(context.Background(), cache, srv.URL, cost.Fallback("acme/b")); got.ContextTokens == 1000000 || hits.Load() != before {
+		t.Fatalf("a copy younger than a minute is used as it is (window %d, hits %d -> %d)", got.ContextTokens, before, hits.Load())
 	}
 	files, _ := filepath.Glob(filepath.Join(cache, "catalog-*.json"))
 	if len(files) != 1 {
@@ -536,12 +541,34 @@ func TestAKeptCatalogueWithoutTheModelIsDownloadedAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := session.EnrichModel(context.Background(), cache, srv.URL, cost.Fallback("acme/b"))
-	if got.ContextTokens != 1000000 || got.MaxOutput != 65536 || hits != before+1 {
-		t.Fatalf("a model the kept copy does not list must be looked up again: window %d, max output %d, hits %d -> %d", got.ContextTokens, got.MaxOutput, before, hits)
+	if got.ContextTokens != 1000000 || got.MaxOutput != 65536 || hits.Load() != before+1 {
+		t.Fatalf("a model the kept copy does not list must be looked up again: window %d, max output %d, hits %d -> %d", got.ContextTokens, got.MaxOutput, before, hits.Load())
 	}
-	before = hits
-	if session.EnrichModel(context.Background(), cache, srv.URL, cost.Fallback("acme/a")); hits != before {
-		t.Fatalf("a model the kept copy lists is not downloaded again (hits %d -> %d)", before, hits)
+	before = hits.Load()
+	if session.EnrichModel(context.Background(), cache, srv.URL, cost.Fallback("acme/a")); hits.Load() != before {
+		t.Fatalf("a model the kept copy lists is not downloaded again (hits %d -> %d)", before, hits.Load())
+	}
+	// An endpoint that is down when a kept copy lacks a model is asked once: the copy is used, and the next models it does
+	// not list wait for the recheck instead of each waiting out a download.
+	stale := t.TempDir()
+	session.EnrichModel(context.Background(), stale, srv.URL, cost.Fallback("acme/a"))
+	files, _ = filepath.Glob(filepath.Join(stale, "catalog-*.json"))
+	if err := os.Chtimes(files[0], old, old); err != nil {
+		t.Fatal(err)
+	}
+	down.Store(true)
+	before = hits.Load()
+	for _, id := range []string{"acme/c", "acme/d", "acme/e"} {
+		session.EnrichModel(context.Background(), stale, srv.URL, cost.Fallback(id))
+	}
+	if n := hits.Load() - before; n != 1 {
+		t.Fatalf("an endpoint that is down was asked %d times for three models the kept copy does not list", n)
+	}
+	if st, err := os.Stat(files[0]); err != nil || st.ModTime().After(old.Add(time.Second)) {
+		t.Fatalf("a failed download must not make the kept copy look fresh (%v, %v)", st.ModTime(), err)
+	}
+	if got := session.EnrichModel(context.Background(), stale, srv.URL, cost.Fallback("acme/a")); got.ContextTokens != 1000000 {
+		t.Fatalf("the kept copy still serves the models it lists: window %d", got.ContextTokens)
 	}
 }
 

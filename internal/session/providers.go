@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -761,7 +762,7 @@ func loadCatalog(ctx context.Context, cacheDir, baseURL, id string) []gateway.En
 				// download could not.
 				if json.Unmarshal(b, &es) == nil {
 					if es = gateway.Vet(es); len(es) > 0 {
-						if _, listed := findEntry(es, id); id == "" || listed || time.Since(st.ModTime()) < catalogRecheck {
+						if _, listed := findEntry(es, id); id == "" || listed || time.Since(st.ModTime()) < catalogRecheck || recheckedLately(path) {
 							return es
 						}
 						kept = es
@@ -774,6 +775,9 @@ func loadCatalog(ctx context.Context, cacheDir, baseURL, id string) []gateway.En
 	defer cancel()
 	es, err := gateway.Fetch(fctx, nil, baseURL)
 	if err != nil || len(es) == 0 {
+		if kept != nil {
+			catalogRechecks.Store(path, time.Now()) // the kept copy keeps its age: only the next recheck waits
+		}
 		return kept
 	}
 	if path != "" {
@@ -788,6 +792,17 @@ func loadCatalog(ctx context.Context, cacheDir, baseURL, id string) []gateway.En
 // catalogRecheck is how old a kept catalogue must be before a model it does not list makes it be downloaded again: the
 // models of one session start are looked up within seconds of each other, and one download answers them all.
 const catalogRecheck = time.Minute
+
+// catalogRechecks holds, by kept catalogue path, when downloading it again for a model it does not list last failed. Until
+// catalogRecheck has passed since then, the kept copy is used as it is: each model it does not list would otherwise wait out
+// another six-second download from an endpoint that is down.
+var catalogRechecks sync.Map
+
+// recheckedLately reports whether a download of the catalogue kept at path failed within catalogRecheck.
+func recheckedLately(path string) bool {
+	at, ok := catalogRechecks.Load(path)
+	return ok && time.Since(at.(time.Time)) < catalogRecheck
+}
 
 // extraBodyFor is what a request for model is given beside the adapter's own members: the provider's extra_body, with the members
 // of model_extra_body[model] put over it (one gateway, a routing preference for one of its models: Heimdallm's provider.only for
