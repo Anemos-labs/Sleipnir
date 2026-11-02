@@ -498,6 +498,16 @@ func (s *Session) GoalJudged(ctx context.Context, g *goal.State, turnErr error) 
 	}
 	if err != nil {
 		j.Err = err
+		if pe, ok := provider.AsError(err); ok && pe.Outage() != provider.NotOutage && ctx.Err() == nil && g.Outages < goal.MaxOutageTurns && g.Turns < g.Max {
+			// The judge's model is down after its own retries: the goal goes on, a bounded number of times in a row, as it does
+			// after a turn that failed on an outage, and the next judge sees this turn's work as well. In a team build the
+			// judge's endpoint stopped answering for a few minutes and the goal stayed paused while the person was away.
+			g.Outages++
+			g.Turns++
+			why := short(tools.SanitizeForTerminal(pe.Error()), 100)
+			v := goal.Verdict{Reason: "the judge could not be asked on a provider outage (" + why + "); go on with what is left of the goal"}
+			return fmt.Sprintf("the judge could not be asked on a provider outage (%s): going on (%d of %d such retries, continuation %d of %d)", why, g.Outages, goal.MaxOutageTurns, g.Turns, g.Max), s.GoalContinuation(g, v), j
+		}
 		return pause("the judge could not be asked (" + short(tools.SanitizeForTerminal(err.Error()), 100) + ")")
 	}
 	j.Judged, j.Verdict = true, v

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/checkpoint"
@@ -128,6 +129,42 @@ func TestTheJudgesVerdictIsLoggedAndHandedToTheHost(t *testing.T) {
 	left, _ := d["left"].([]any)
 	if d["verdict"] != "continue" || d["reason"] != "no test ran" || len(left) != 2 || left[0] != "run go test" {
 		t.Errorf("goal.judge = %v", d)
+	}
+}
+
+// A judge whose model is down after its own retries sends the goal on a bounded number of times in a row, as a turn that failed
+// on an outage does; past the bound the goal pauses, and the judgment carries the error and no verdict each time.
+func TestAJudgeOutageSendsTheGoalOn(t *testing.T) {
+	defer func(base time.Duration) { agent.RetryBase = base }(agent.RetryBase)
+	agent.RetryBase = time.Millisecond
+	repo := newRepo(t)
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		if strings.Contains(c.System, "You judge whether a coding agent") {
+			return mock.Reply{Fault: &mock.Fault{Status: 503, Message: "no endpoints"}}
+		}
+		return mock.Reply{Text: "ok"}
+	})
+	s, err := session.New(context.Background(), opts(t, repo, client, model))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	g := goal.New("ship the service")
+	s.SaveGoal(g)
+	if _, err := s.Run(context.Background(), goal.Start(g)); err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= goal.MaxOutageTurns; i++ {
+		note, next, j := s.GoalJudged(context.Background(), g, nil)
+		if j.Judged || j.Err == nil || g.Paused != "" || !strings.Contains(note, "provider outage") || !strings.Contains(next, "ship the service") {
+			t.Fatalf("outage %d: note %q next %q judgment %+v paused %q", i, note, next, j, g.Paused)
+		}
+		if g.Outages != i || g.Turns != i {
+			t.Fatalf("outage %d: Outages=%d Turns=%d", i, g.Outages, g.Turns)
+		}
+	}
+	if note, next, _ := s.GoalJudged(context.Background(), g, nil); next != "" || !strings.HasPrefix(g.Paused, "the judge could not be asked") || !g.Unjudged {
+		t.Fatalf("an outage past the bound: note %q next %q paused %q", note, next, g.Paused)
 	}
 }
 
