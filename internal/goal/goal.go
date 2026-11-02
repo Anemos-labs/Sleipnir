@@ -43,6 +43,10 @@ type State struct {
 	// without the person (MaxOutageTurns);
 	// a judged turn sets it back to zero.
 	Outages int `json:",omitempty"`
+	// UnheardAnswer is the agent's answer at the end of a turn whose judge could not be asked on an outage, kept for the next judge:
+	// it reads only the latest answer, and the turn sent on in its place may answer differently (an earlier "I need your
+	// credentials" would otherwise go unread). A judged turn clears it.
+	UnheardAnswer string `json:",omitempty"`
 	// Spec is the spec file the objective names (SpecRef) and SpecText its text as read when the goal was set (Prepare).
 	Spec, SpecText string
 	// Rubric is the project's rubric file (RubricFile) and RubricText its text as read when the goal was set (Prepare): standing criteria of
