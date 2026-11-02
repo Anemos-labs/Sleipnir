@@ -126,7 +126,9 @@ func (s *Swarm) readTaskNoted(c *tools.Call, id, how string, note func(Task) str
 	}
 	s.poolReads.note(c.Env.Agent, task, s.turnOf(c.Env.Agent), false)
 	if note != nil {
-		data = append([]byte(note(task)+"\n\n"), data...)
+		if line := note(task); line != "" {
+			data = append([]byte(line+"\n\n"), data...)
+		}
 	}
 	return c.Env.Finish(string(data), false)
 }
@@ -230,7 +232,13 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	case "list":
 		return c.Env.Finish(renderTaskList(s.Board.Snapshot()), false), nil
 	case "get":
-		return s.readTask(c, in.ID, "task get"), nil
+		var read Task // the revision the manager is given, not whatever the board holds a moment later
+		r := s.readTaskNoted(c, in.ID, "task get", func(t Task) string { read = t; return "" })
+		s.stalls.at("get")
+		if r != nil && !r.IsError {
+			s.noteReviewRead(me, read)
+		}
+		return r, nil
 	case "claim":
 		ro := s.roles[c.Env.Role].ReadOnly
 		m := s.get(me)

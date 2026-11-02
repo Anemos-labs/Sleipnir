@@ -135,12 +135,25 @@ type stallState struct {
 	since     map[string]time.Time
 	escalated map[string]bool
 	stopped   map[string]bool
+	// between, set only by tests before the swarm runs, is called at the two points a review read and a sweep can interleave:
+	// "get" after task get read the task and before it is noted, "sweep" after the sweep's board snapshot and before its lock.
+	between func(at string)
+}
+
+func (st *stallState) at(point string) {
+	if st.between != nil {
+		st.between(point)
+	}
 }
 
 // reviewClock is when a submission's review clock (re)started: the manager's turn count and the time.
 type reviewClock struct {
 	turns int64
 	at    time.Time
+	// read says the manager's reading of this revision already restarted the clock once, and restart that the next sweep
+	// restarts it. Only the first read counts: a manager that reads the same submission again and again without deciding it
+	// starves it all the same.
+	read, restart bool
 }
 
 // init makes the maps; the zero value is not ready for use.
@@ -217,8 +230,7 @@ func lessTaskID(a, b string) bool {
 }
 
 // noteCoordination records the manager's coordination calls for the stall sweep: a
-// wait marks it as waiting, any other call ends that, and a task call that names a
-// task restarts that task's review clock (the manager looked at it).
+// wait marks it as waiting, and any other call ends that.
 func (s *Swarm) noteCoordination(agentID, tool, taskID string) {
 	if agentID == "" || agentID != s.ManagerID() {
 		return
@@ -226,12 +238,25 @@ func (s *Swarm) noteCoordination(agentID, tool, taskID string) {
 	s.stalls.mu.Lock()
 	defer s.stalls.mu.Unlock()
 	s.stalls.waiting = tool == "wait"
-	if tool == "task" && taskID != "" {
-		for k := range s.stalls.review {
-			if id, _, _ := strings.Cut(k, "#"); id == taskID {
-				delete(s.stalls.review, k)
-			}
-		}
+}
+
+// noteReviewRead records that the manager read t, the task in review as task get returned it: the first
+// read of a revision restarts that revision's review clock, since the manager looked at
+// it. Reading it again does not: in a team run the manager called task get on five
+// submissions every few minutes for half an hour, deciding none, and each read cleared
+// the finding the sweep had just raised. A decision is a new revision, with a clock of
+// its own. A read before the sweep first sees the revision leaves a clock for the sweep
+// to start.
+func (s *Swarm) noteReviewRead(agentID string, t Task) {
+	if agentID == "" || agentID != s.ManagerID() || t.ID == "" || t.Status != StatusReview {
+		return
+	}
+	key := t.ID + "#" + strconv.FormatUint(t.Rev, 10)
+	s.stalls.mu.Lock()
+	defer s.stalls.mu.Unlock()
+	if c := s.stalls.review[key]; !c.read {
+		c.read, c.restart = true, true
+		s.stalls.review[key] = c
 	}
 }
 
@@ -303,6 +328,7 @@ type memberView struct {
 // counters, and updates the sweep's own memory (orphan candidates, review clocks).
 func (s *Swarm) stallFindings() []Stall {
 	snap := s.Board.Snapshot()
+	s.stalls.at("sweep")
 	mgr := s.ManagerID()
 	s.mu.Lock()
 	views := make(map[string]memberView, len(s.members))
@@ -476,8 +502,8 @@ func (s *Swarm) stallFindings() []Stall {
 			key := t.ID + "#" + strconv.FormatUint(t.Rev, 10)
 			inReview[key] = true
 			since, ok := s.stalls.review[key]
-			if !ok {
-				s.stalls.review[key] = reviewClock{turns: mv.turns, at: now}
+			if !ok || since.restart {
+				s.stalls.review[key] = reviewClock{turns: mv.turns, at: now, read: since.read}
 				continue
 			}
 			n, waited := mv.turns-since.turns, now.Sub(since.at)
@@ -488,6 +514,13 @@ func (s *Swarm) stallFindings() []Stall {
 			case waited >= reviewStarvedAfter:
 				out = append(out, Stall{Kind: StallReviewStarved, Task: t.ID, Agent: mgr, Notify: mgr,
 					Detail: fmt.Sprintf("%s has waited in review for %d minutes", t.ID, int(waited/time.Minute))})
+			}
+		}
+		// Prune against the board as it is now, under the lock noteReviewRead takes: a revision submitted after snap was taken
+		// may already carry the manager's first read, which a prune by snap would drop.
+		for _, t := range s.Board.Snapshot().Tasks {
+			if t.Status == StatusReview {
+				inReview[t.ID+"#"+strconv.FormatUint(t.Rev, 10)] = true
 			}
 		}
 		for key := range s.stalls.review {
