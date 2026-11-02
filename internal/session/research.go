@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"github.com/anemos-labs/sleipnir/internal/research"
@@ -365,4 +366,67 @@ type researchRender struct {
 	slug    string
 	version int
 	site    *research.Rendered
+}
+
+// maxResearchLeft is how many of a run's problems a verdict judged from its ledger names as left.
+const maxResearchLeft = 8
+
+// researchJudgment is the verdict of a goal that drives a report research run, judged from the run's ledger rather than by a model:
+// every milestone of the brief is a measure `research status` reports, so the ledger is the evidence, and a model reading it can
+// only find one more thing to ask for, which keeps the team researching past the bars. The goal is met when the ledger says done;
+// when only the build is missing, the harness builds the wiki, as the build action would. Otherwise the verdict is continue, with
+// the current phase's problems as what is left (the manager is sent on to those, and no more) and the ledger's version in the reason,
+// so that a turn that changes nothing in the ledger counts as no progress. ok is false when g does not drive a report run of this
+// session (a kickoff run's goal is also the project's, and stays with the model judge).
+func (s *Session) researchJudgment(g *goal.State) (v goal.Verdict, ok bool) {
+	slug := research.ObjectiveSlug(g.Objective)
+	if slug == "" || s.research == nil {
+		return goal.Verdict{}, false
+	}
+	r, err := s.research.Snapshot(slug)
+	if err != nil || r.Mode == research.ModeKickoff {
+		return goal.Verdict{}, false
+	}
+	rep := research.Check(s.opts.Root, r)
+	if rep.Phase == research.PhasePublish {
+		built, _, err := s.research.Publish(slug, research.BuildOptions{Fonts: s.researchFonts})
+		if err != nil {
+			return goal.Verdict{Kind: goal.Continue, Reason: "the research wiki could not be built: " + err.Error()}, true
+		}
+		s.researchBuilt(built)
+		r, rep = built, research.Check(s.opts.Root, built)
+	}
+	c := rep.Counts
+	if rep.Phase == research.PhaseDone {
+		v = goal.Verdict{Kind: goal.Done, Left: []string{}, Reason: fmt.Sprintf("the research ledger is done: %d verified sources from %d sites, %d findings, %d pages written and %d fact-checked, the wiki built",
+			c.Sources, c.Domains, c.Findings, c.Pages, c.Reviewed)}
+		for _, m := range g.Milestones {
+			v.Milestones = append(v.Milestones, goal.MilestoneVerdict{ID: m.ID, Met: true, Evidence: "research status: Done (ledger version " + fmt.Sprint(r.Version) + ")"})
+		}
+		return g.Reconcile(v), true
+	}
+	var now []string
+	for _, p := range rep.Problems {
+		if p.Phase == rep.Phase {
+			now = append(now, p.Text)
+		}
+	}
+	v = goal.Verdict{Kind: goal.Continue, Reason: fmt.Sprintf("the research run is in its %s phase with %d %s left in it (ledger version %d)",
+		rep.Phase, len(now), pluralS(len(now), "problem", "problems"), r.Version)}
+	for i, p := range now {
+		if i == maxResearchLeft {
+			v.Left = append(v.Left, fmt.Sprintf("and %d more: research check lists them", len(now)-i))
+			break
+		}
+		v.Left = append(v.Left, p)
+	}
+	return v, true
+}
+
+// pluralS is one when n is 1, else many.
+func pluralS(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }

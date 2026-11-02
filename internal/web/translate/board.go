@@ -473,6 +473,10 @@ func (t *Translator) stall(e events.Event, ts float64, at int64) {
 		t.sysRow("mgr", "◇", words+" cleared", who, p.Task, ts, at)
 		return
 	}
+	if p.Action == "stop" { // the harness stopped the worker the finding is about (swarm stopStalled)
+		t.sysRow("mgr", "■", firstNonEmpty(who, "a worker")+" stopped by the harness: "+firstNonEmpty(p.Detail, words), who, p.Task, ts, at)
+		return
+	}
 	t.sysRow("mgr", "⚠", firstNonEmpty(p.Detail, words), who, p.Task, ts, at)
 }
 

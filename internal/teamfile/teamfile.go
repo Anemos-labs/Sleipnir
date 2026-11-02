@@ -180,7 +180,7 @@ func Load(p string) (*File, error) {
 	}
 	// the file is read once, from the descriptor that is checked, and no further than the bound: the name may have been
 	// replaced by a larger file or a device since the Stat above
-	fh, err := os.Open(p)
+	fh, err := os.OpenFile(p, os.O_RDONLY|noWaitFlag, 0) // and without waiting, should the name now be a FIFO
 	if err != nil {
 		return nil, err
 	}

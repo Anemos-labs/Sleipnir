@@ -100,6 +100,14 @@ func cmdChat(ctx context.Context, args []string) error {
 	if err != nil {
 		return usageError(fs, "chat: "+err.Error())
 	}
+	if *cf.managerAnswersAfter < 0 {
+		return usageError(fs, "chat: --manager-answers-after must not be negative")
+	}
+	answersAfter := managerAnswersGiven(fs, *cf.managerAnswersAfter)
+	answersUpTo, err := perm.ParseDanger(*cf.managerAnswersUpTo)
+	if err != nil {
+		return usageError(fs, "chat: --manager-answers-up-to: "+err.Error())
+	}
 	checkForUpdateInBackground()
 	// Nothing says which model to use: ask the provider what it has, once (pick.go).
 	asking := bufio.NewReader(os.Stdin)
@@ -112,8 +120,8 @@ func cmdChat(ctx context.Context, args []string) error {
 			Cwd: *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: team, Workers: workers,
 			TrustProject: *trust, BudgetUSD: *budget, CompactAtPercent: *cf.compactAt, Resume: spec, NoMCP: *noMCP, NoMemory: *cf.noMemory, Sandbox: box, TrainingLogs: *cf.trainingLogs,
 			Verify: *verify, Isolation: *isolation, Commit: *commit, Mailman: mailman(), AutoDocs: autoDocs(), ManagerApproves: managerApproves(),
-			RoleModels: roleModels,
-			Team:       append([]session.TeamSlot(nil), teamSlots...), DefaultTeam: true, Allow: expandAllow(*allow),
+			ManagerAnswersAfter: answersAfter, ManagerAnswersUpTo: answersUpTo, RoleModels: roleModels,
+			Team: append([]session.TeamSlot(nil), teamSlots...), DefaultTeam: true, Allow: expandAllow(*allow),
 		})
 	}
 	if !*plain && app.CanDrawChat(os.Stdin, os.Stdout, os.Getenv) {
@@ -274,6 +282,10 @@ func runTurn(parent context.Context, intr *interrupts, s *session.Session, goal 
 	var err error
 	intr.run(parent, func(ctx context.Context) { res, err = s.Run(ctx, goal) })
 	fmt.Fprintln(os.Stdout)
+	if res != nil && res.Stopped != "" {
+		fmt.Fprintln(os.Stderr, res.Stopped) // the message asked the team to stop, and the harness stopped it (session.StopRequest)
+		return
+	}
 	if res != nil {
 		fmt.Fprintf(os.Stderr, "── %s · %d steps · %s · cache hit %.0f%%\n",
 			time.Since(start).Round(time.Second), res.Steps, spentText(res.CostUSD, res.ListUSD, res.Plan), res.Usage.HitRatio()*100)
@@ -327,7 +339,7 @@ a team, and the program
 /team [save|load]  saved teams: save this one, start again as one, share one
 /restart [flags]   start again with other flags: --no-mcp, --cwd DIR, ...
 /plugins [on|off]  the plugins: list them, or switch one (/plugins off web)
-/agents            the team's agents and tasks (ctrl+g: cockpit)
+/agents [stop ID]  the team's agents and tasks (ctrl+g: cockpit); stop one
 /steer TEXT        tell the running turn something, without stopping it
 /queue [drop N]    what waits for the turn: list, drop one, or clear all
 /verbose [on|off]  notices and tool errors
@@ -397,7 +409,7 @@ func slashTo(ctx context.Context, s *session.Session, line string, stdout, stder
 	case "/compact":
 		compactNow(ctx, s, strings.TrimSpace(strings.TrimPrefix(line, f[0])), stderr)
 	case "/agents":
-		printAgents(stderr, s)
+		agentsSlash(stderr, s, f[1:])
 	case "/steer":
 		text := strings.TrimSpace(strings.TrimPrefix(line, f[0]))
 		if text == "" {
@@ -710,6 +722,42 @@ func printContext(w io.Writer, s *session.Session) {
 
 // printAgents lists swarm agents in ID order, board tasks, and optional mailman totals;
 // single-agent sessions receive a brief explanation.
+// agentsSlash is /agents: the team's agents and tasks, or, with `stop ID`, stops a worker that is stuck (swarm.StopAgent): its run
+// ends, its task goes back to todo for the manager to give again, and the manager is told. `stop all` stops the whole team
+// (session.StopTeam): the manager's turn, every worker and the open tasks, and nothing starts until the person writes again.
+func agentsSlash(w io.Writer, s *session.Session, args []string) {
+	switch {
+	case len(args) == 0:
+		printAgents(w, s)
+	case len(args) == 2 && strings.EqualFold(args[0], "stop") && strings.EqualFold(args[1], "all"):
+		line, ok := s.StopTeam("")
+		if !ok {
+			fmt.Fprintln(w, "agents: a single agent has no team to stop: interrupt its turn instead (Esc, or Stop)")
+			return
+		}
+		fmt.Fprintln(w, line)
+	case len(args) == 2 && strings.EqualFold(args[0], "stop"):
+		if s.Swarm == nil {
+			fmt.Fprintln(w, "agents: a single agent has no workers to stop: interrupt its turn instead (Esc, or Stop)")
+			return
+		}
+		id := args[1]
+		tasks, err := s.Swarm.StopAgent(id)
+		if err != nil {
+			fmt.Fprintln(w, "agents:", tools.SanitizeForTerminal(err.Error()))
+			return
+		}
+		if len(tasks) == 0 {
+			fmt.Fprintf(w, "stopped %s; the manager is told\n", firstText(id, 40))
+			return
+		}
+		fmt.Fprintf(w, "stopped %s; %s goes back to todo and the manager is told\n", firstText(id, 40), strings.Join(tasks, ", "))
+	default:
+		fmt.Fprintln(w, "usage: /agents lists the team's agents and tasks; /agents stop ID stops a worker that is stuck (its task goes back to todo); /agents stop all stops the whole team (every worker, the manager's turn, and the open tasks)")
+	}
+}
+
+// printAgents writes the team's agents and tasks, one line each.
 func printAgents(w io.Writer, s *session.Session) {
 	if s.Swarm == nil {
 		fmt.Fprintln(w, "single agent session (start with --swarm N for a team)")

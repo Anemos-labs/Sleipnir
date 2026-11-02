@@ -10,8 +10,8 @@
 // user-invocable, argument-hint, model, context and agent (see Skill). The
 // directories are searched in this order, and the first skill of a name wins:
 //
-//	<root>/.sleipnir/skills   <root>/.claude/skills      project
-//	~/.sleipnir/skills        ~/.claude/skills           user
+//	<root>/.sleipnir/skills   <root>/.claude/skills   <root>/.agents/skills   project
+//	~/.sleipnir/skills        ~/.claude/skills        ~/.agents/skills        user
 //	Opts.Extra                                            plugins, namespaced
 //
 // A name collision is reported as a Warning naming both files; the same
@@ -32,7 +32,8 @@
 // # Security model
 //
 // Repository-supplied skills are untrusted until the user trusts the project.
-// With Opts.TrustProject false nothing under <root>/.sleipnir or <root>/.claude
+// With Opts.TrustProject false nothing under <root>/.sleipnir, <root>/.claude
+// or <root>/.agents
 // is read (a Warning says it was left alone); the user's own directories are
 // trusted, including symlinks the user made into a dotfiles checkout.
 //
@@ -59,5 +60,6 @@
 // A catalog is a snapshot: bodies and permission-relevant metadata are read once
 // at discovery, so a skill edited during a session (by a compromised agent, say)
 // changes nothing until the harness rediscovers at a session boundary. Protect
-// .sleipnir/ and .claude/ from agent writes in the permission engine.
+// .sleipnir/, .claude/ and .agents/skills/ from agent writes in the permission
+// engine.
 package skills

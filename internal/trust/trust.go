@@ -32,6 +32,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/memory"
 	"github.com/anemos-labs/sleipnir/internal/provider"
+	"github.com/anemos-labs/sleipnir/internal/skills/mdfile"
 )
 
 // Kind says what a file is to the harness.
@@ -131,7 +132,7 @@ func Scan(root, cwd, home string) (*Footprint, error) {
 		sc.file(r, f.rel, f.kind)
 	}
 	for _, kind := range []Kind{Skills, Commands, Agents} {
-		for _, brand := range []string{".sleipnir", ".claude"} {
+		for _, brand := range mdfile.BrandsFor(string(kind)) {
 			sc.tree(r, brand+"/"+string(kind), kind)
 		}
 	}

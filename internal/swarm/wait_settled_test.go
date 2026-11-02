@@ -132,7 +132,7 @@ func TestWaitAndTaskTakeTaskIDsAsAString(t *testing.T) {
 // The free workers are the idle ones that hold no open task; the line names them for the manager.
 func TestFreeCapacityNamesIdleWorkersWithoutOpenTasks(t *testing.T) {
 	r := idleCapacityRig(t, time.Minute) // be-1 runs on T1; be-2, be-3 and fe-1 are idle
-	got := r.sw.FreeCapacity()
+	got := r.sw.FreeCapacity(0)
 	if !strings.Contains(got, "3 of its 4 workers are free (be-2, be-3, fe-1)") || !strings.Contains(got, "spawn") {
 		t.Fatalf("free capacity %q", got)
 	}
@@ -143,8 +143,21 @@ func TestFreeCapacityNamesIdleWorkersWithoutOpenTasks(t *testing.T) {
 	if err := r.sw.Board.Assign("mgr", "fe-1", task.ID); err != nil {
 		t.Fatal(err)
 	}
-	if got := r.sw.FreeCapacity(); !strings.Contains(got, "2 of its 4 workers are free (be-2, be-3)") {
+	if got := r.sw.FreeCapacity(0); !strings.Contains(got, "2 of its 4 workers are free (be-2, be-3)") {
 		t.Fatalf("a worker holding a task counted as free: %q", got)
+	}
+}
+
+// Near the end of a goal, when fewer items are missing than workers are free, the line asks for one task per item and no more.
+func TestFreeCapacityAsksForNoMoreTasksThanItemsLeft(t *testing.T) {
+	r := idleCapacityRig(t, time.Minute) // be-1 runs on T1; be-2, be-3 and fe-1 are idle
+	got := r.sw.FreeCapacity(1)
+	if !strings.Contains(got, "What is missing is 1 item: start at most 1 task") || !strings.Contains(got, "leave the other workers free") ||
+		!strings.Contains(got, "Never make up work to fill a slot") {
+		t.Fatalf("one item left, three workers free: %q", got)
+	}
+	if got := r.sw.FreeCapacity(5); strings.Contains(got, "at most") || !strings.Contains(got, "one for each item") {
+		t.Fatalf("more items than free workers: %q", got)
 	}
 }
 

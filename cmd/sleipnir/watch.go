@@ -278,12 +278,28 @@ func renderGallery(stdout, stderr io.Writer, path, manifest, dir string) error {
 		if err := root.WriteFile(name, []byte(docs[name]), 0o644); err != nil {
 			return fmt.Errorf("replay: %w", err)
 		}
-		fmt.Fprintf(stderr, "sleipnir replay: wrote %s (%d KB)\n", filepath.Join(dir, name), (len(docs[name])+1023)/1024)
+		fmt.Fprintf(stderr, "sleipnir replay: wrote %s (%d KB)\n", oneLineSafe(filepath.Join(dir, name)), (len(docs[name])+1023)/1024)
 		for _, s := range r.StillList() {
-			fmt.Fprintf(stdout, "still %s %s %g\n", r.Name, s.Name, s.At)
+			line, err := stillLine(r.Name, s.Name, s.At)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(stdout, line)
 		}
 	}
 	return nil
+}
+
+// stillLine is the line "still SVG PNG SECONDS" for one still. The script splits it on blanks and names files after the fields, so a
+// name that is not one field of printable characters as it stands is refused: cleaning it up for the terminal could make two names
+// one, or make a name the script reads as another.
+func stillLine(svg, png string, at float64) (string, error) {
+	for _, n := range []string{svg, png} {
+		if n == "" || oneLineSafe(n) != n || strings.ContainsAny(n, " /\\") {
+			return "", fmt.Errorf("replay: still name %q is not one printable file name", n)
+		}
+	}
+	return fmt.Sprintf("still %s %s %g", svg, png, at), nil
 }
 
 // printFinal writes the last screen of a session as text: the log folded to its end (or to until), the screen drawn once at that

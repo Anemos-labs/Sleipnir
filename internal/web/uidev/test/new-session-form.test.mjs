@@ -316,3 +316,21 @@ test('when the folder could not be asked about, nothing is blocked: the server c
   assert.equal(isoBtn(L, 'worktree').disabled, false);
   assert.equal(L.$('[data-k="commit"]').disabled, false);
 });
+
+test('the level the manager may answer up to is sent when it is picked, with no wait picked too: the server\'s own wait may answer with it', async () => {
+  const L = await open({ swarm: 8 });
+  assert.doesNotMatch(cli(L), /--manager-answers/, 'nothing picked: the server\'s wait and level apply');
+  await start(L);
+  assert.equal(spec(L).managerAnswersUpTo, undefined);
+  const M = await open({ swarm: 8 });
+  M.$('[data-seg="mgrUpTo"][data-v="high"]').click(); await M.settle();
+  assert.match(cli(M), / --manager-answers-up-to high( |$)/);
+  assert.doesNotMatch(cli(M), /--manager-answers-after/);
+  await start(M);
+  assert.equal(spec(M).managerAnswersUpTo, 'high');
+  assert.equal(spec(M).managerAnswersAfter, undefined);
+  const N = await open({ swarm: 8 });
+  N.$('[data-seg="mgrAfter"][data-v="5m"]').click(); await N.settle(); await start(N);
+  assert.equal(spec(N).managerAnswersAfter, '5m');
+  assert.equal(spec(N).managerAnswersUpTo, 'medium', 'a wait picked with no level answers up to medium');
+});

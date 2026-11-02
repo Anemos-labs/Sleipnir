@@ -89,7 +89,7 @@
   ]);
   page('scan', { title: 'Deep scan', view: 'scan', wrap: 'scanv' }, [
     ['scan.runs', 'Scans', 'every deep scan of the project: its phase, its numbers, its findings by severity', 0, 0, 4, 12, 3, 3, 'list'],
-    ['scan.findings', 'Findings', 'the selected scan\'s findings, with their traces, verdicts and reproductions; open an issue or fix one', 4, 0, 8, 12, 4, 3, 'list'],
+    ['scan.findings', 'Report', 'the selected scan\'s report: its summary, its findings filtered by severity, status and category, each with its trace, verdicts and reproductions; open an issue or fix one', 4, 0, 8, 12, 4, 3, 'list'],
     ['scan.surface', 'Attack surface and map', 'the points of the attack surface by lane, and the shards with their maps', 0, 12, 8, 10, 4, 3],
     ['scan.new', 'New scan', 'this project or a repository cloned for it, and a depth', 8, 12, 4, 10, 3, 3],
   ]);

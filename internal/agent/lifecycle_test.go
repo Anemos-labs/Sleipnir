@@ -663,8 +663,10 @@ func TestSec_S22b_ConstitutionIsDeterministicAndStaysTight(t *testing.T) {
 		// CHANGELOG.md, "Compatibility changes". Raised from 5150 to 5200 for the Capabilities check before adding a subsystem:
 		// about 40 tokens; CHANGELOG.md, "Compatibility changes". Raised from 5200 to 5350 for planning and verification scaled
 		// to the task, which saves requests: about 120 tokens; CHANGELOG.md, "Compatibility changes". Raised from 5350 to 5400 for
-		// one round of debugging a throwaway check, which saves requests: about 35 tokens; CHANGELOG.md, "Compatibility changes".)
-		if n := core.NewBytesEstimator().WithRatio(4).Tokens(a); n > 5400 {
+		// one round of debugging a throwaway check, which saves requests: about 35 tokens; CHANGELOG.md, "Compatibility changes".
+		// Raised from 5400 to 5550 for keeping agent names and task ids out of what a run leaves in the project, and the commit
+		// convention: about 110 tokens; CHANGELOG.md, "Compatibility changes".)
+		if n := core.NewBytesEstimator().WithRatio(4).Tokens(a); n > 5550 {
 			t.Errorf("the constitution (swarm=%v) is %d tokens; keep the wording tight or raise this bound on purpose", swarm, n)
 		}
 		lower := strings.ToLower(a)

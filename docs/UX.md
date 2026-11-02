@@ -170,9 +170,18 @@ a commented line is marked, and a click on it edits or removes the comment. Whil
 `Send N comments`, which puts them all in the message box, each as `path:line`, the line as it reads and the comment, for the
 person to read and send; the comments then leave their lines (`Clear` drops them unsent).
 
-While background jobs run (a dev server, a watcher: `bash` with `run_in_background`), the status bar has a chip (`▶ 1 serving`,
-or `◷ 2 jobs` when none names an address) that opens them: each job's agent, command and state, the local addresses its output
-named as links, and a Stop button. `/jobs` opens the same; `/jobs stop ID` ends one.
+While the session has background jobs (a dev server, a watcher: `bash` with `run_in_background`) or strays, the status bar has a
+chip (`▶ 1 serving`, `◷ 2 jobs` when none names an address, `⚠ 1 stray`, or `◷ 3 ended jobs`) that opens them: each job's agent,
+command and state, the local addresses its output named as links, an Output button that shows the job's whole command and the end
+of its output (`/jobs log ID`), and a Stop button. A stray is a process group an agent's finished command left running (`server &`
+or `nohup server >log 2>&1 &` inside an ordinary command, or what a job left once it ended); it is listed with its live processes
+(pid and command line) and a Stop button, and the harness ends it anyway when that agent's run ends. A process that leaves its
+group on purpose (`setsid`, a double fork) is not seen. `/jobs` opens the same; `/jobs stop ID` ends a job or a stray.
+
+A tool row of the feed, of the Radio rail and of an agent's Tool log shows one line of the call. Its `⤢` (or a click on the row,
+when the row does not open a file) opens the whole call, read from the session's log: the whole command, path or pattern, the
+whole output (the complete one when the agent was shown a shortened copy; past 1 MiB the middle is left out and counted), and
+the arguments as JSON, each with a Copy button.
 
 The connection chip in the session strip shows the server's address. While the stream is down it reads `reconnecting` (the
 browser reconnects by itself), `the server stopped` after the server said it is stopping, or `disconnected`; a new server run

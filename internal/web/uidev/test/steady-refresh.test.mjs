@@ -48,8 +48,8 @@ const VIEWS = [{
   root: L => { let n = L.$('.sc-list'); while (n && !(n.querySelector('.sc-surface') && n.querySelector('.sc-detail'))) n = n.parentNode; return n; },
   // the folds a user opens and expects to find open after a refresh
   open: L => [L.$('.sc-needs'), L.$('.sc-more'), L.$('details.sc-group')],
-  // rows that stay on the screen as the scan goes on
-  rows: L => [L.$('[data-scan="scan-20261030-2033-66434ce"]'), L.$('[data-lead="L0"]'), L.$('[data-lead="L102"]'), L.$('.sc-pt'), L.$('.sc-cell')],
+  // rows that stay on the screen as the scan goes on (the report's index shows the findings, confirmed and unproven, at first)
+  rows: L => [L.$('[data-scan="scan-20261030-2033-66434ce"]'), L.$('[data-lead="L0"]'), L.$('[data-lead="L101"]'), L.$('.sc-pt'), L.$('.sc-cell')],
 }];
 
 for (const v of VIEWS) {

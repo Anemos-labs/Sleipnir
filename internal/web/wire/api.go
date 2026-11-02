@@ -220,7 +220,7 @@ type MetaPatch struct {
 	Queued      *[]QueuedLine      `json:"queued,omitempty"`
 	Running     *bool              `json:"running,omitempty"`
 	// Jobs are the background jobs the session's agents started (dev servers, watchers), oldest first, with the local addresses
-	// their output named: what /jobs lists.
+	// their output named, then the strays their finished commands left running (Job.Kind "stray"): what /jobs lists.
 	Jobs *[]Job `json:"jobs,omitempty"`
 }
 
@@ -235,6 +235,42 @@ type Job struct {
 	Exit    *int     `json:"exit,omitempty"`
 	Started int64    `json:"started"`
 	URLs    []string `json:"urls,omitempty"`
+	// Kind is "stray" for a process group an agent's finished command left running (a server started with "server &" inside an
+	// ordinary command, or what a background job left once it ended): its ID is "p" and the group id, its Status is "running",
+	// and Procs lists its live processes. Empty for a background job.
+	Kind  string    `json:"kind,omitempty"`
+	Procs []JobProc `json:"procs,omitempty"`
+}
+
+// ToolDetail is one tool call read whole from the session's log (GET /api/sessions/{id}/tools/{agent}/{tid}): what a tool row
+// (Tool), which shows a line of each, leaves out. Tool is the tool's name as the harness knows it (bash), Name as the rows show it
+// (Bash); Arg is the whole command, path or pattern the row shows clipped; Input the whole arguments as indented JSON. Output is
+// the whole result the agent was shown, or its complete text when the agent was shown a shortened one (Full); Cut counts the
+// bytes left out of the middle of a very long one, Chars the length of the complete result. HasOutput is false when the log
+// holds no result text yet; Running while the call has no result. At is the epoch milliseconds the call started at.
+type ToolDetail struct {
+	Agent     string `json:"agent"`
+	TID       string `json:"tid"`
+	Tool      string `json:"tool"`
+	Name      string `json:"name"`
+	Arg       string `json:"arg"`
+	Input     string `json:"input"`
+	Output    string `json:"output"`
+	HasOutput bool   `json:"hasOutput"`
+	Full      bool   `json:"full,omitempty"`
+	Cut       int    `json:"cut,omitempty"`
+	Chars     int    `json:"chars,omitempty"`
+	Error     bool   `json:"error,omitempty"`
+	Refused   bool   `json:"refused,omitempty"`
+	Running   bool   `json:"running,omitempty"`
+	Ms        int64  `json:"ms,omitempty"`
+	At        int64  `json:"at,omitempty"`
+}
+
+// JobProc is one live process of a stray (Job.Kind "stray"): its pid and its command line, clipped.
+type JobProc struct {
+	PID int    `json:"pid"`
+	Cmd string `json:"cmd"`
 }
 
 // TabSnapshot is the full state of a tab for a late joiner. Gen is the tab's generation, Seq the sequence number of the last event
@@ -358,6 +394,9 @@ type SendResult struct {
 	Position int    `json:"position,omitempty"`
 	ID       string `json:"id"`
 	Steered  bool   `json:"steered,omitempty"`
+	// Stopped is set when the message asked the team to stop (session.StopRequest): the harness stopped the whole team instead of
+	// delivering it, and this is the line that says what it stopped.
+	Stopped string `json:"stopped,omitempty"`
 }
 
 // CommandRequest is a slash line the page has no handler for (custom commands, skills, MCP prompts, /mcp reconnect) or that the
@@ -459,7 +498,7 @@ type ScanRun struct {
 	Confirmed int `json:"confirmed"`
 	Unproven  int `json:"unproven"`
 	Rejected  int `json:"rejected"`
-	// BySeverity counts the confirmed findings.
+	// BySeverity counts the findings: the confirmed leads and the unproven ones.
 	BySeverity map[string]int `json:"bySeverity"`
 	Active     bool           `json:"active"` // the scan the session works on now
 	// Previous is the scan this one reruns, and Review is set when the scan reviews a change rather than the whole code.

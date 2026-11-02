@@ -42,7 +42,8 @@ func (s *Session) ClearGoalPlan() {
 
 // JudgeGoal checks completion against searchable durable tool evidence across
 // workers and turns. Inspection is read-only and bounded; failures never certify
-// completion. worked reports tool activity in the latest agent turn.
+// completion. worked reports tool activity in the latest agent turn. A goal that
+// drives a deep scan is judged from the scan's ledger instead (scanJudgment).
 //
 // The judge runs on the judge role's model (--role-model judge=M, else models.roles.judge) when one is named, else on the
 // session's own. A "done" from a named judge whose model is not the session's is confirmed by a second, independent judgment on
@@ -58,6 +59,22 @@ func (s *Session) JudgeGoal(ctx context.Context, g *goal.State) (v goal.Verdict,
 		return goal.Verdict{Kind: goal.Continue}, false, fmt.Errorf("no agent to judge")
 	}
 	answer, worked := turnActivity(a.Stack().Thread.Turns)
+	if v, ok := s.scanJudgment(g); ok {
+		left := v.Left
+		if left == nil {
+			left = []string{}
+		}
+		s.Log.Emit("", judgeEvent, map[string]any{"verdict": v.Kind, "reason": v.Reason, "left": left, "judge": "scan ledger"})
+		return v, worked, nil
+	}
+	if v, ok := s.researchJudgment(g); ok {
+		left := v.Left
+		if left == nil {
+			left = []string{}
+		}
+		s.Log.Emit("", judgeEvent, map[string]any{"verdict": v.Kind, "reason": v.Reason, "left": left, "judge": "research ledger"})
+		return v, worked, nil
+	}
 	cutoff, err := s.goalEvidenceCutoff()
 	if err != nil {
 		return goal.Verdict{Kind: goal.Continue}, false, err
@@ -459,17 +476,32 @@ func (s *Session) GoalJudged(ctx context.Context, g *goal.State, turnErr error) 
 		return "goal paused: " + why + ". /goal resume goes on, /goal clear drops it", "", j
 	}
 	switch {
+	case s.Swarm != nil && s.Swarm.Stopped():
+		return pause("you stopped the team")
 	case errors.Is(turnErr, context.Canceled):
 		return pause("you interrupted it")
 	case turnErr != nil:
+		if pe, ok := provider.AsError(turnErr); ok && pe.Outage() != provider.NotOutage && g.Outages < goal.MaxOutageTurns && g.Turns < g.Max {
+			// The agent already waited the outage out for its patience; one more turn waits as long again, so a goal nobody
+			// watches is not left paused by an outage that ended minutes later.
+			g.Outages++
+			g.Turns++
+			why := short(tools.SanitizeForTerminal(pe.Error()), 100)
+			v := goal.Verdict{Reason: "the last turn ended on a provider outage before it finished (" + why + "); go on from where it stopped"}
+			return fmt.Sprintf("the turn failed on a provider outage (%s): going on (%d of %d such retries, continuation %d of %d)", why, g.Outages, goal.MaxOutageTurns, g.Turns, g.Max), s.GoalContinuation(g, v), j
+		}
 		return pause("the turn failed")
 	}
 	v, worked, err := s.JudgeGoal(ctx, g)
+	if s.Swarm != nil && s.Swarm.Stopped() {
+		return pause("you stopped the team") // stopped while the judge ran: a continuation would lift the person's stop
+	}
 	if err != nil {
 		j.Err = err
 		return pause("the judge could not be asked (" + short(tools.SanitizeForTerminal(err.Error()), 100) + ")")
 	}
 	j.Judged, j.Verdict = true, v
+	g.Outages = 0
 	reason := tools.SanitizeForTerminal(v.Reason)
 	g.NoteVerdict(v)
 	action := g.Apply(v, worked)
@@ -495,7 +527,7 @@ func (s *Session) GoalJudged(ctx context.Context, g *goal.State, turnErr error) 
 // since it could not find the goal met, and the continuation names those tasks instead of the stale verdict. g is changed.
 func (s *Session) GoalResume(ctx context.Context, g *goal.State) (note, next string, j GoalJudgment) {
 	unjudged := g.Unjudged
-	g.Paused, g.Repeats, g.Unjudged = "", 0, false
+	g.Paused, g.Repeats, g.Unjudged, g.Outages = "", 0, false, 0
 	g.Max = g.Turns + goal.MaxTurns
 	if unjudged {
 		if open := s.unfinishedGoalTasks(); len(open) > 0 {
@@ -542,15 +574,31 @@ func (s *Session) unfinishedGoalTasks() []string {
 }
 
 // GoalContinuation is the message that sends the agent on after verdict v (goal.Continuation), with, for the manager of a team, the
-// workers that are free (swarm.FreeCapacity).
+// workers that are free (swarm.FreeCapacity), sized to what the verdict found missing.
 func (s *Session) GoalContinuation(g *goal.State, v goal.Verdict) string {
 	msg := goal.Continuation(g, s.GoalPlan(), v)
 	if s.Swarm != nil {
-		if line := s.Swarm.FreeCapacity(); line != "" {
+		if line := s.Swarm.FreeCapacity(leftCount(v.Left)); line != "" {
 			msg += "\n\n" + line
 		}
 	}
 	return msg
+}
+
+// leftCount is how many items a verdict's left list stands for: its entries, where a closing "and N more..." entry stands for N.
+func leftCount(left []string) int {
+	n := 0
+	for _, l := range left {
+		var more int
+		if _, err := fmt.Sscanf(strings.TrimSpace(l), "and %d more", &more); err == nil && more > 0 {
+			n += more
+			continue
+		}
+		if strings.TrimSpace(l) != "" {
+			n++
+		}
+	}
+	return n
 }
 
 // short retains at most n runes including an ellipsis when truncated; n must be positive.

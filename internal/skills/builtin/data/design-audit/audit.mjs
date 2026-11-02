@@ -275,6 +275,10 @@ try {
   await browser.close();
 }
 
+// plain drops terminal controls from text the audited page chose (escape sequences, other C0/C1 controls), keeping tabs, and makes
+// its line breaks blanks: what the page chose stays on its own line of the report and cannot add lines that read as findings.
+const plain = (t) => String(t).replace(/[\n\u2028\u2029]/g, " ").replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "");
+
 let defects = 0;
 for (const r of report) for (const k of Object.keys(r.findings)) if (DEFECTS.has(k)) defects += r.findings[k].count;
 if (opt.json) {
@@ -282,11 +286,11 @@ if (opt.json) {
 } else {
   for (const r of report) {
     const keys = Object.keys(r.findings).sort((a, b) => DEFECTS.has(b) - DEFECTS.has(a) || a.localeCompare(b));
-    console.log(`\n${r.url} at ${r.width}px${opt.dark ? " (dark)" : ""}: ${keys.length ? "" : "nothing found"}`);
+    console.log(`\n${plain(r.url)} at ${r.width}px${opt.dark ? " (dark)" : ""}: ${keys.length ? "" : "nothing found"}`);
     for (const k of keys) {
       const f = r.findings[k];
       console.log(`  ${DEFECTS.has(k) ? "DEFECT" : "tell  "} ${k} ×${f.count}`);
-      for (const s of f.samples) console.log(`         ${[s.where, s.detail].filter(Boolean).join(": ")}`);
+      for (const s of f.samples) console.log(`         ${plain([s.where, s.detail].filter(Boolean).join(": "))}`);
     }
   }
   console.log(`\n${defects} defect${defects === 1 ? "" : "s"}; tells are for judgement, defects are to fix.`);

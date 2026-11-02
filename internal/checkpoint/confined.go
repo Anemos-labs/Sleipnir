@@ -61,6 +61,9 @@ func (c *confined) mkdirParents() error {
 	return nil
 }
 
+// chmodLooked runs between chmod's look at the path and its change of the mode: a test swaps the path there.
+var chmodLooked = func(rel string) {}
+
 // chmod changes the path's mode, refusing a symlink (as chmodNoFollow). The set-ID bits are kept only on what is a directory
 // now: what the path was when the rewind was planned may have changed since.
 func (c *confined) chmod(mode fs.FileMode) error {
@@ -80,7 +83,21 @@ func (c *confined) chmod(mode fs.FileMode) error {
 	if !fi.IsDir() {
 		mode = restorableMode(mode)
 	}
-	return c.root.Chmod(c.rel, mode)
+	chmodLooked(c.rel)
+	if mode == restorableMode(mode) {
+		return c.root.Chmod(c.rel, mode)
+	}
+	// Set-ID bits go only on the directory that was looked at: change the mode through a descriptor whose own type is checked, so
+	// a file swapped in for the directory after the Lstat does not get them.
+	f, err := c.root.OpenFile(c.rel, openReadFlags, 0)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if dfi, err := f.Stat(); err != nil || !dfi.IsDir() || !os.SameFile(fi, dfi) {
+		return errors.New("the path changed while it was restored")
+	}
+	return f.Chmod(mode)
 }
 
 // mkdirAll creates the path as a directory, with any missing parents.

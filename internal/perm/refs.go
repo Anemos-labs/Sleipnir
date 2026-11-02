@@ -3,6 +3,7 @@ package perm
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -114,6 +115,67 @@ sub:
 				return refuse("git branch -f "+ops[0], ops[0])
 			}
 		}
+	case "checkout", "switch":
+		// The tree's own branch is exempt because it is the tree's: attaching the tree to a queued branch would make that branch its
+		// own for every later command, so the switch itself is refused. -b/-B/-c/-C, --create, --force-create and --orphan name a
+		// branch the command creates or resets; --track creates the branch its remote-tracking start point names. Long options are
+		// read as git reads them, abbreviated to any unambiguous prefix.
+		created, track := false, false
+		for k := 0; k < len(rest); k++ {
+			a := rest[k]
+			if a == "--" {
+				break
+			}
+			if name, val, hasVal := strings.Cut(a, "="); strings.HasPrefix(a, "--") {
+				switch {
+				case name == "--force": // an option of its own, which git matches before any abbreviation: it creates no branch
+				case longPrefix(name, "--create", "--force-create", "--orphan"):
+					created = true
+					if !hasVal && k+1 < len(rest) {
+						val = rest[k+1]
+					}
+					if queued(val, true) {
+						return refuse("git "+sub+" "+a+" "+val, val)
+					}
+				case longPrefix(name, "--track"):
+					track = true
+				case longPrefix(name, "--detach"):
+					return ""
+				}
+				continue
+			}
+			if len(a) < 2 || a[0] != '-' {
+				continue
+			}
+			for c := 1; c < len(a); c++ {
+				if a[c] == 't' {
+					track = true
+				}
+				if strings.IndexByte("bBcC", a[c]) >= 0 {
+					created = true
+					v := a[c+1:]
+					if v == "" && k+1 < len(rest) {
+						v = rest[k+1]
+					}
+					if queued(v, true) {
+						return refuse("git "+sub+" "+a+" "+v, v)
+					}
+					break
+				}
+			}
+		}
+		// git checkout <tree-ish> -- <paths> writes files and moves no branch; for git switch, -- only ends the options.
+		if created || (sub == "checkout" && slices.Contains(rest, "--")) {
+			return ""
+		}
+		if ops := operands(rest); len(ops) > 0 {
+			if queued(ops[0], false) {
+				return refuse("git "+sub+" "+ops[0], ops[0])
+			}
+			if _, local, ok := strings.Cut(ops[0], "/"); track && ok && queued(local, true) { // origin/<name> makes <name>
+				return refuse("git "+sub+" --track "+ops[0], local)
+			}
+		}
 	case "push", "fetch":
 		// git fetch writes this repository's refs whatever it fetches from; git push writes them when its destination is this
 		// repository, which a path, a file:// URL or a remote configured with one can name as well as ".". A destination that is
@@ -149,6 +211,22 @@ sub:
 }
 
 // operands are a git subcommand's arguments that are not options, everything after a bare -- included.
+// longPrefix reports whether name, a long option as written ("--orph"), is one of opts or an abbreviation of one: git accepts any
+// unambiguous prefix and matches an exact option name first, so a caller handles the exact names that are also prefixes of opts
+// (--force of --force-create) before asking; an ambiguous prefix fails in git, so taking it for each option it may abbreviate
+// only refuses a command git would not run.
+func longPrefix(name string, opts ...string) bool {
+	if len(name) < 3 {
+		return false
+	}
+	for _, o := range opts {
+		if strings.HasPrefix(o, name) {
+			return true
+		}
+	}
+	return false
+}
+
 func operands(args []string) []string {
 	var out []string
 	for k, a := range args {

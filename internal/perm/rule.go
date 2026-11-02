@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"strings"
 
@@ -219,7 +220,9 @@ func compileRule(r Rule, res *resolver) (*crule, error) {
 			// The Unicode full stops are dots before the root dot is trimmed, the order
 			// a request's host is normalized in (weburl.HostChecked).
 			c.domain = strings.ToLower(strings.TrimSuffix(unicodeDots.Replace(strings.TrimSpace(strings.TrimPrefix(p, "domain:"))), "."))
-			if rest, wild := strings.CutPrefix(c.domain, "*."); wild {
+			if ip := net.ParseIP(strings.TrimSuffix(strings.TrimPrefix(c.domain, "["), "]")); ip != nil {
+				c.domain = ip.String() // an address in the spelling a request's is shown in (weburl.HostChecked)
+			} else if rest, wild := strings.CutPrefix(c.domain, "*."); wild {
 				if a, ok := weburl.ASCIIName(rest); ok {
 					c.domain = "*." + a
 				}

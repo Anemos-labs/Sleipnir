@@ -227,7 +227,7 @@
           if (slot._k !== key) { clearTimeout(slot._t); const id = done.id; slot._t = setTimeout(() => { slot._t = 0; if (slot._mgrOpen) shown['_d' + id] = SL.time.T.wall; else shown['_d' + id] = -Infinity; const A = SL.sessions.active; if (A) render(A, A.wm); }, left + 50); }
         } else if (left > 0) {
           key = 'd' + done.id + done.answered;
-          html = '<div class="qdone"><b>' + (done.by && done.by !== 'you' ? '⊘' : '✓') + '</b><span><b style="color:var(--fg)">' + (done.by && done.by !== 'you' ? esc(BY[done.by] || 'refused') : keyOf(done, done.answered) + ' ' + esc(choiceText(done, done.answered))) + '</b><br><span class="dim">' + esc(done.agent) + (done.task ? ' · ' + esc(done.task) : '') + ' · <span class="mono">' + esc(clip1(done.cmd, 160)) + '</span></span></span></div>';
+          html = '<div class="qdone"><b>' + (done.by && done.by !== 'you' ? '⊘' : '✓') + '</b><span><b style="color:var(--fg)">' + (done.by && done.by !== 'you' ? esc(BY[done.by] || 'refused') : esc(String(keyOf(done, done.answered))) + ' ' + esc(choiceText(done, done.answered))) + '</b><br><span class="dim">' + esc(done.agent) + (done.task ? ' · ' + esc(done.task) : '') + ' · <span class="mono">' + esc(clip1(done.cmd, 160)) + '</span></span></span></div>';
           if (slot._k !== key) { clearTimeout(slot._t); const id = done.id; slot._t = setTimeout(() => { slot._t = 0; shown['_d' + id] = -Infinity; const A = SL.sessions.active; if (A) render(A, A.wm); }, left + 50); }
         }
       }

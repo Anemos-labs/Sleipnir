@@ -808,7 +808,7 @@ func TestQueueNoFFAndFastForward(t *testing.T) {
 			head, _ := a.Head(tctx(t))
 			c, _ := e.repo.CommitInfo(tctx(t), e.q.Tip())
 			if noff {
-				if r.After == head || len(c.Parents) != 2 || !strings.HasPrefix(c.Subject, "Merge a") {
+				if r.After == head || len(c.Parents) != 2 || !strings.HasPrefix(c.Subject, "Merge \"a") {
 					t.Fatalf("NoFF must create a merge commit: tip %s agent head %s parents %v subject %q", r.After, head, c.Parents, c.Subject)
 				}
 			} else if r.After != head {

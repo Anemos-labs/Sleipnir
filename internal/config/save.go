@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"math/rand/v2"
 	"os"
@@ -187,10 +188,26 @@ func (f rootFiles) read(name string) ([]byte, error) {
 	if !fi.Mode().IsRegular() {
 		return nil, errors.New("not a regular file")
 	}
-	if fi.Size() > maxFileSize {
+	// The check and the read are of one descriptor, with the limit on the read: the file may be swapped or grow after the Stat.
+	h, err := f.r.OpenFile(name, os.O_RDONLY|noWaitFlag, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer h.Close()
+	if fi, err = h.Stat(); err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, errors.New("not a regular file")
+	}
+	b, err := io.ReadAll(io.LimitReader(h, maxFileSize+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > maxFileSize {
 		return nil, fmt.Errorf("file is larger than %d KB", maxFileSize>>10)
 	}
-	return f.r.ReadFile(name)
+	return b, nil
 }
 func (f rootFiles) stat(name string) (fs.FileInfo, error)     { return f.r.Stat(name) }
 func (f rootFiles) mkdirAll(dir string) error                 { return f.r.MkdirAll(dir, 0o700) }

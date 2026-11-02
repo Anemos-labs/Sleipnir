@@ -110,14 +110,15 @@ func TestSectionsMatchTheSpecifiedFields(t *testing.T) {
 		"Models":      {"default", "roles", "favorites"},
 		"Permissions": {"mode", "allow", "ask", "deny", "roles", "manager_approves", "manager_answers_after", "manager_answers_up_to"},
 		"Provider":    {"dialect", "base_url", "api_key_env", "auth", "headers", "options", "allow_hosts", "allow_insecure_http", "suggested_model"},
-		"Config":      {"providers", "models", "permissions", "cache", "swarm", "tools", "plugins", "hooks", "mcp"},
+		"Config":      {"providers", "models", "permissions", "cache", "swarm", "tools", "resources", "plugins", "hooks", "mcp"},
+		"Resources":   {"cpus", "heavy_slots", "memory_reserve_mb", "priority", "unlimited"},
 		"Plugins":     {"profile", "enabled", "settings"},
 	}
 	types := map[string]reflect.Type{
 		"Cache": reflect.TypeOf(Cache{}), "Swarm": reflect.TypeOf(Swarm{}), "Tools": reflect.TypeOf(Tools{}),
 		"Models":      reflect.TypeOf(Models{}),
 		"Permissions": reflect.TypeOf(Permissions{}), "Provider": reflect.TypeOf(Provider{}), "Config": reflect.TypeOf(Config{}),
-		"Plugins": reflect.TypeOf(Plugins{}),
+		"Plugins": reflect.TypeOf(Plugins{}), "Resources": reflect.TypeOf(Resources{}),
 	}
 	for name, fields := range want {
 		var got []string

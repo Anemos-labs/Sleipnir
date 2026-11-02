@@ -17,8 +17,12 @@ func Issue(r *Run, l *Lead) (title, body string, err error) {
 	w := func(format string, args ...any) { fmt.Fprintf(&b, format, args...) }
 	title = fmt.Sprintf("%s: %s", strings.ToUpper(f.Severity), f.Title)
 	w("%s\n\n", f.Claim)
-	w("| Severity | Category | Reachability | Exploitability |\n|---|---|---|---|\n| %s | %s | %s | %s |\n\n", f.Severity, f.Category, f.Reach, f.Exploit)
-	w("**Impact**: %s\n\n", oneLine(f.Impact))
+	w("| Severity | Category | Reachability | Exploitability |\n|---|---|---|---|\n| %s | %s | %s | %s |\n\n", SeverityLabel(f), f.Category, f.Reach, f.Exploit)
+	if f.Score != nil {
+		w("**Score**: %s\n\n", scoreMarkdown(f))
+	} else {
+		w("**Impact**: %s\n\n", oneLine(f.Impact))
+	}
 	w("## Where\n\nFrom where the input comes in to where it does harm, at commit `%s`:\n\n", short(r.Commit))
 	for i, s := range f.Trace {
 		w("%d. `%s:%d` %s\n\n", i+1, s.File, s.Line, oneLine(s.Note))
@@ -99,10 +103,17 @@ func reproducing(l *Lead) *Proof {
 
 // writeFence writes text in a code fence long enough that no line of it closes the fence.
 func writeFence(b *strings.Builder, indent, text string) {
-	fence := "```"
-	for strings.Contains(text, fence) {
-		fence += "`"
+	// One backtick more than the longest run in the text, found in one pass.
+	longest, cur := 0, 0
+	for i := 0; i < len(text); i++ {
+		if text[i] == '`' {
+			cur++
+			longest = max(longest, cur)
+		} else {
+			cur = 0
+		}
 	}
+	fence := strings.Repeat("`", max(3, longest+1))
 	fmt.Fprintf(b, "%s%s\n", indent, fence)
 	for _, l := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
 		fmt.Fprintf(b, "%s%s\n", indent, l)

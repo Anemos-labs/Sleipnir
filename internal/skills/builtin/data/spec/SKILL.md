@@ -27,6 +27,7 @@ Keep it short and concrete. Sections, dropping any that do not apply:
 - **Solution:** what the user will be able to do, in their terms.
 - **User stories:** a long numbered list, "As a <actor>, I want <capability>, so that <benefit>", covering every workflow including errors, empty states, limits, configuration and operations.
 - **Decisions:** modules built or changed and their interfaces, data shapes, API contracts, schema, the stack and why, security assumptions. Names and shapes, not file-by-file code. A snippet that pins a decision more precisely than prose (a type, a state machine, a schema) may be inlined.
+- **Contract:** when parts built separately talk to each other (a user interface and its API, a client and a service), one machine-readable file in the repository that both sides build against: an OpenAPI document, a JSON Schema, shared types or a protobuf schema. It lists every endpoint with request and response shapes, status codes and error bodies, and the authentication flow from a signed-out start. Name its owner and the contract test that fails when either side drifts from it.
 - **Testing:** the seams under test (prefer existing ones, the highest that works, as few as possible), what a good test is here (observable behaviour, not internals), and the end-to-end check that proves the whole.
 - **Out of scope:** what will not be built, so nobody builds it.
 - **Assumptions:** every decision taken without the user, so they can correct it.
@@ -43,7 +44,7 @@ Break the work into tracer-bullet slices:
 
 ## 4. Milestones a judge can check
 
-Group slices into milestones. Each milestone has acceptance criteria that someone who did not build it can check by observation: a command and its expected output, a page and what it must show, a test suite that must pass, a measured limit ("lists 10 000 rows in under 200 ms"). "Works well" or "is polished" is not a criterion; "every screen has loading, empty and error states, screenshotted at 375 and 1440 pixels in both themes" is.
+Group slices into milestones. Each milestone has acceptance criteria that someone who did not build it can check by observation: a command and its expected output, a page and what it must show, a test suite that must pass, a measured limit ("lists 10 000 rows in under 200 ms"). A milestone whose flows cross parts (a page that calls the API) is checked by an end-to-end run of the assembled program, with the real server, from a clean start ("signed out, sign in through the form, create a record, see it in the list with the values entered"), never by unit tests of each side alone. "Works well" or "is polished" is not a criterion; "every screen has loading, empty and error states, screenshotted at 375 and 1440 pixels in both themes" is.
 
 ## In a team
 

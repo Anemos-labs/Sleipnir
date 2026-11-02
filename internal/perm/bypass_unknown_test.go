@@ -234,7 +234,9 @@ func TestGoRunMktempAndReadOnlyRolesInBypass(t *testing.T) {
 		{"", `D=$(mktemp -d /x/rw.$N.XXXXXX); rm -rf "$D"`, "ask"},
 		{"", `TMPDIR=/; D=$(mktemp -d); rm -rf "$D"`, "ask"},
 		{"reviewer", `cat "$F"`, "allow"},
-		{"reviewer", `echo x > "$F"`, "deny"}, // a read-only role still writes nothing
+		{"reviewer", `echo x > "$F"`, "deny"},                      // a read-only role still writes nothing
+		{"reviewer", `x='a[$(touch pwned)]'; echo $((x))`, "deny"}, // arithmetic runs the substitution in the subscript
+		{"reviewer", `x='a[$(touch pwned)]'; echo $[x]`, "deny"},   // and so does the legacy $[...] form
 	} {
 		d := e.Check(context.Background(), Request{Agent: "a", Role: c.role, Tool: "Bash", Command: f.expand(c.cmd)})
 		if got := outcome(d); got != c.want {
@@ -462,7 +464,11 @@ func TestALoopsAssignmentsReachItsWholeBody(t *testing.T) {
 		{`D="$TMPDIR/a"; printf -vD '%s' /; rm -rf "$D"/*`, "ask"}, // printf -v with the name attached
 		{`D="$TMPDIR/a"; printf -v D '%s' /; rm -rf "$D"/*`, "ask"},
 		{`D="$TMPDIR/a"; printf -v x '%s' 1; rm -rf "$D"`, "allow"},
-		{`D="$TMPDIR/a"; printf -v D* '%s' /; rm -rf "$D"/*`, "ask"}, // a glob: a file D in the directory makes it D
+		{`D="$TMPDIR/a"; printf '%n' D; rm -rf "$D"/*`, "ask"},            // %n stores a count in the variable its argument names
+		{`D="$TMPDIR/a"; F='%n'; printf -- "$F" D; rm -rf "$D"/*`, "ask"}, // the format after -- is computed too
+		{`D="$TMPDIR/a"; printf 'x%-5n' D; rm -rf "$D"/*`, "ask"},         // with flags and a width
+		{`D="$TMPDIR/a"; printf '100%%n\n'; rm -rf "$D"`, "allow"},        // %% is a literal percent sign
+		{`D="$TMPDIR/a"; printf -v D* '%s' /; rm -rf "$D"/*`, "ask"},      // a glob: a file D in the directory makes it D
 		{`D="$TMPDIR/a"; read D? < f; rm -rf "$D"/*`, "ask"},
 		{`D="$TMPDIR/a"; read a[1] < f; rm -rf "$D"`, "ask"},
 		{`read HOM? < f; rm -rf "$HOME/x"`, "ask"},

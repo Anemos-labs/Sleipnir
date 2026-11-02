@@ -252,6 +252,8 @@ func TestSymlinks(t *testing.T) {
 	link(t, filepath.Join(w.root, "docs", "prompt.md"), filepath.Join(w.root, ".claude", "commands", "shared.md"))
 	link(t, filepath.Join(w.root, ".claude", "commands"), filepath.Join(w.root, ".claude", "commands", "loop"))
 	link(t, filepath.Join(w.root, "missing"), filepath.Join(w.root, ".claude", "commands", "dangling.md"))
+	put(t, filepath.Join(w.root, ".env"), "SECRET-CANARY env")
+	link(t, filepath.Join(w.root, ".env"), filepath.Join(w.root, ".claude", "commands", "env.md")) // a project file that is no prompt
 
 	// The user's own dotfiles symlinks are honoured.
 	dot := filepath.Join(filepath.Dir(w.home), "dotfiles")
@@ -271,6 +273,9 @@ func TestSymlinks(t *testing.T) {
 	text := warnText(warns)
 	if strings.Contains(text, "SECRET-CANARY") {
 		t.Errorf("a warning leaks file content:\n%s", text)
+	}
+	if !strings.Contains(text, `links to ".env", which is not a Markdown file`) {
+		t.Errorf("a link to a project file that is not Markdown was not reported:\n%s", text)
 	}
 	if c := strings.Count(text, "outside its allowed location"); c != 2 {
 		t.Errorf("expected the file and the directory escapes to be reported:\n%s", text)

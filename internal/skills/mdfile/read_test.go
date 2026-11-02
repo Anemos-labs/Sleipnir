@@ -177,3 +177,21 @@ func TestReadDirLimited(t *testing.T) {
 		t.Fatal("missing directory must be an error")
 	}
 }
+
+// Ext is checked on the file the read opened: a link to a file of another kind is refused, in any case of the extension, and the
+// error names where the link led.
+func TestReadFileExt(t *testing.T) {
+	root := realTemp(t)
+	write(t, filepath.Join(root, "notes.MD"), "notes")
+	write(t, filepath.Join(root, ".env"), "SECRET")
+	symlink(t, filepath.Join(root, "notes.MD"), filepath.Join(root, "ok.md"))
+	symlink(t, filepath.Join(root, ".env"), filepath.Join(root, "env.md"))
+	if f, err := ReadFile(filepath.Join(root, "ok.md"), ReadOpts{Ext: ".md"}); err != nil || string(f.Data) != "notes" {
+		t.Errorf("a link to notes.MD: %q, %v", f.Data, err)
+	}
+	f, err := ReadFile(filepath.Join(root, "env.md"), ReadOpts{Ext: ".md"})
+	var ext *ExtError
+	if !errors.As(err, &ext) || filepath.Base(ext.Real) != ".env" {
+		t.Fatalf("a link to .env: %q, %v", f.Data, err)
+	}
+}

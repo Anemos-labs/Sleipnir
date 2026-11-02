@@ -195,7 +195,7 @@ func (s *Session) RoleModels() []RoleModel {
 	return out
 }
 
-// StartFlags are the `sleipnir chat` flags that reproduce this session's shape (a team and its size, the verifier, isolation, the sandbox, tool servers, trust,
+// StartFlags are the `sleipnir chat` flags that reproduce this session's shape (a team and its size, the verifier, isolation, when the manager answers for the person, the sandbox, tool servers, trust,
 // the budget, the compaction share, the roles named by flags), for a restart that changes one thing and keeps the rest.
 func (s *Session) StartFlags() []string {
 	o := s.opts
@@ -230,6 +230,15 @@ func (s *Session) StartFlags() []string {
 	}
 	if o.ManagerApproves != nil {
 		f = append(f, "--manager-approves="+strconv.FormatBool(*o.ManagerApproves))
+	}
+	switch {
+	case o.ManagerAnswersAfter < 0:
+		f = append(f, "--manager-answers-after", "0") // a 0 given is "never", which a restart keeps over the configuration's wait
+	case o.ManagerAnswersAfter > 0:
+		f = append(f, "--manager-answers-after", o.ManagerAnswersAfter.String())
+	}
+	if o.ManagerAnswersUpTo != "" {
+		f = append(f, "--manager-answers-up-to", string(o.ManagerAnswersUpTo))
 	}
 	if o.NoMCP {
 		f = append(f, "--no-mcp")

@@ -89,6 +89,9 @@ const (
 	TypeSwarmUnfinished = "swarm.unfinished"
 	TypeSwarmWake       = "swarm.wake"
 	TypeSwarmWakePaused = "swarm.wake.paused"
+	// swarm.stop: the person stopped the whole team (payload: phase = stopped, with workers, canceled, queued and turn; or
+	// phase = lifted, when they wrote again).
+	TypeSwarmStop = "swarm.stop"
 	// swarm.wake_limit: peer mail woke one worker as often as the bound allows for its
 	// current task (payload: limit, task); further mail waits in its inbox.
 	TypeSwarmWakeLimit = "swarm.wake_limit"

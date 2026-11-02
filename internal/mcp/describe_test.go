@@ -47,3 +47,14 @@ func TestDescribeIsCleanedAndBounded(t *testing.T) {
 		t.Errorf("a long argument list is summarised: %q", d)
 	}
 }
+
+// A newline, a run of spaces or an invisible character in an argument is shown as an escape, not folded away.
+func TestDescribeShowsArgumentsAsTheyRun(t *testing.T) {
+	c := ServerConfig{Command: "sh", Args: []string{"-c", "echo safe\nrm -rf ~", "a  b", "x\u200by"}}
+	got := c.Describe()
+	for _, want := range []string{`"echo safe\nrm -rf ~"`, `"a  b"`, `"x\u200by"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("Describe lacks %s:\n%s", want, got)
+		}
+	}
+}

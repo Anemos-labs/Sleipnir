@@ -463,6 +463,156 @@ func TestStallReviewStarved(t *testing.T) {
 			t.Fatal("the finding outlived its condition")
 		}
 	})
+	t.Run("seeded: the manager reads the submission over and over without deciding it", func(t *testing.T) {
+		r, mgr, task := setup(t)
+		get := func() {
+			r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "get", "id": task.ID})
+		}
+		get() // the first read restarts the clock
+		r.sw.sweepStalls()
+		for i := 0; i < 4; i++ { // then turn after turn it reads the same submission again and decides nothing
+			mgr.turns.Add(1)
+			get()
+			r.sw.sweepStalls()
+		}
+		f, ok := active(r, StallReviewStarved)
+		if !ok || f.Task != task.ID {
+			t.Fatalf("a submission read again and again but never decided is not found starved: %+v, %v", f, ok)
+		}
+		get()
+		r.sw.sweepStalls()
+		if _, ok := active(r, StallReviewStarved); !ok {
+			t.Fatal("reading the submission again cleared the finding")
+		}
+		if err := r.sw.Board.Accept("mgr", task.ID, ""); err != nil {
+			t.Fatal(err)
+		}
+		r.sw.sweepStalls()
+		if _, ok := active(r, StallReviewStarved); ok {
+			t.Fatal("the finding outlived the decision")
+		}
+	})
+	t.Run("seeded: the manager reads the submission before the sweep first sees it, then over and over", func(t *testing.T) {
+		r := newRVRig(t, stallCfg(), gatedWorkers(nil))
+		if _, err := r.sw.StartManager(); err != nil {
+			t.Fatal(err)
+		}
+		b := r.sw.Board
+		task, _ := b.CreateTask("mgr", TaskSpec{Title: "paginate users"})
+		if err := b.Assign("mgr", "be-1", task.ID); err != nil {
+			t.Fatal(err)
+		}
+		if err := b.Submit("be-1", task.ID, "paginated", "edited api/users.go"); err != nil {
+			t.Fatal(err)
+		}
+		mgr := r.sw.get("mgr")
+		get := func() {
+			r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "get", "id": task.ID})
+		}
+		get() // read before any sweep: this is the first read
+		r.sw.sweepStalls()
+		for i := 0; i < 3; i++ { // three turns of reading again restart nothing
+			mgr.turns.Add(1)
+			get()
+			r.sw.sweepStalls()
+		}
+		if _, ok := active(r, StallReviewStarved); !ok {
+			t.Fatal("a submission first read before the sweep, then read again and again, is not found starved")
+		}
+	})
+	t.Run("healthy: a refused task call leaves the first read to restart the clock", func(t *testing.T) {
+		r, mgr, task := setup(t)
+		mgr.turns.Add(2)
+		if res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "claim", "id": task.ID}); res == nil || !res.IsError {
+			t.Fatalf("the claim of a task in review was not refused: %+v", res)
+		}
+		r.sw.sweepStalls()
+		mgr.turns.Add(1)
+		r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "get", "id": task.ID})
+		r.sw.sweepStalls()
+		mgr.turns.Add(2)
+		r.sw.sweepStalls()
+		if n := raised(r, StallReviewStarved); n != 0 {
+			t.Fatalf("a submission the manager read after a refused call was found starved: %+v", stallEvents(r))
+		}
+	})
+	t.Run("healthy: a read of an earlier revision leaves the new submission's first read", func(t *testing.T) {
+		r, mgr, task := setup(t)
+		stale, _ := r.sw.Board.Snapshot().Task(task.ID) // what a task get returned just before the worker submitted again
+		if _, err := r.sw.Board.SendBack("mgr", task.ID, "add a test"); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.sw.Board.Claim("be-1", task.ID); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.sw.Board.Submit("be-1", task.ID, "paginated, tested", "edited api/users_test.go"); err != nil {
+			t.Fatal(err)
+		}
+		r.sw.sweepStalls()
+		r.sw.noteReviewRead("mgr", stale)
+		r.sw.sweepStalls()
+		mgr.turns.Add(2)
+		r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "get", "id": task.ID})
+		r.sw.sweepStalls()
+		mgr.turns.Add(2)
+		r.sw.sweepStalls()
+		if n := raised(r, StallReviewStarved); n != 0 {
+			t.Fatalf("the first read of the new submission did not restart its clock: %+v", stallEvents(r))
+		}
+	})
+	resubmit := func(t *testing.T, r *rvRig, id string) {
+		t.Helper()
+		if _, err := r.sw.Board.SendBack("mgr", id, "add a test"); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.sw.Board.Claim("be-1", id); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.sw.Board.Submit("be-1", id, "paginated, tested", "edited api/users_test.go"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Run("healthy: a submission that lands while task get is being answered keeps its first read", func(t *testing.T) {
+		r, mgr, task := setup(t)
+		once := true
+		r.sw.stalls.between = func(at string) {
+			if at == "get" && once {
+				once = false
+				resubmit(t, r, task.ID) // the manager was given the earlier revision
+			}
+		}
+		r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "get", "id": task.ID})
+		r.sw.sweepStalls()
+		mgr.turns.Add(2)
+		r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "get", "id": task.ID})
+		r.sw.sweepStalls()
+		mgr.turns.Add(2)
+		r.sw.sweepStalls()
+		if n := raised(r, StallReviewStarved); n != 0 {
+			t.Fatalf("the first read of the new submission did not restart its clock: %+v", stallEvents(r))
+		}
+	})
+	t.Run("seeded: a submission read while the sweep runs keeps that read", func(t *testing.T) {
+		r, mgr, task := setup(t)
+		once := true
+		r.sw.stalls.between = func(at string) {
+			if at == "sweep" && once {
+				once = false
+				resubmit(t, r, task.ID) // submitted and read after the sweep's snapshot, before it prunes
+				r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "get", "id": task.ID})
+			}
+		}
+		r.sw.sweepStalls()
+		r.sw.sweepStalls()
+		for i := 0; i < 3; i++ { // reading it again turn after turn restarts nothing
+			mgr.turns.Add(1)
+			r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "get", "id": task.ID})
+			r.sw.sweepStalls()
+		}
+		if _, ok := active(r, StallReviewStarved); !ok {
+			t.Fatal("a read the sweep pruned let a later read restart the clock")
+		}
+	})
 	t.Run("healthy: the manager reads the submission", func(t *testing.T) {
 		r, mgr, task := setup(t)
 		mgr.turns.Add(2)

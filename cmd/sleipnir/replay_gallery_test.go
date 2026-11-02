@@ -82,3 +82,16 @@ func TestReplayGalleryRefusesALinkOut(t *testing.T) {
 		t.Errorf("the link's target was overwritten: %q", b)
 	}
 }
+
+// A still's names go out as blank-separated fields the script names files after: a name that would not come out as itself, or as
+// one field, is refused rather than cleaned into another name.
+func TestStillLineRefusesANameItCannotPrintAsItIs(t *testing.T) {
+	if got, err := stillLine("chat", "chat-ask", 1.5); err != nil || got != "still chat chat-ask 1.5" {
+		t.Errorf("stillLine(chat, chat-ask) = %q, %v", got, err)
+	}
+	for _, name := range []string{"", "a b", "chat​", "chat\x1b[2J", "a/b", "line\nbreak"} {
+		if got, err := stillLine("chat", name, 1); err == nil {
+			t.Errorf("stillLine took the name %q and printed %q", name, got)
+		}
+	}
+}

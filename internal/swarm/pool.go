@@ -544,12 +544,43 @@ func (s *Swarm) startPool(req SpawnReq, files []string) (string, error) {
 		s.notifyPoolRelease(parent, left, id)
 	}
 	task, _ := s.Board.Snapshot().Task(id) // its owner leads: the first member the manager has not excused
+	if task.Pool.Phase == "planning" {
+		s.syncPlanners(task)
+	}
 	if task.Pool.Phase == "executing" {
 		s.wakePool(id, "Continue the accepted plan and existing child tasks; do not recreate them. Reconcile, inspect and confirm the combined result when the children are complete.")
 	} else {
 		s.wakePool(id, "Plan together. The first member leads. Use pool propose, agree, execute, reconcile and confirm. The leader creates scoped child tasks with task create parent="+id+" and assigns them with spawn (use task claim for its own child). All members contribute before execution, and inspect the combined result before confirming reconciliation. When the work is small (one owner, a handful of files, no shared decision), do not divide it: the leader proposes one child that it does itself, and the others agree at once.")
 	}
 	return task.Owner, nil
+}
+
+// syncPlanners brings the integration tip into the trees of a planning pool's members before they are woken: they plan by
+// reading their own checkout, and a member whose tree was made before the scaffold merged found no scaffold there, so it read
+// the merge commit file by file with git show and tried the leader's tree, which isolation refuses. A member that is not free
+// (it holds a task of its own, or runs) keeps its checkout as it is: its next claim brings the merged work in.
+func (s *Swarm) syncPlanners(t Task) {
+	sn := s.Board.Snapshot()
+	for _, id := range t.Pool.Members {
+		m := s.get(id)
+		if m == nil || m.tree == nil || soloTaskOf(sn, id, t.ID) != "" {
+			continue
+		}
+		// The reservation keeps a mail wake from starting the member on this checkout while git updates it (wake finds it
+		// busy and the pool's wake below starts it), and its context ends with the session.
+		rs, ctx, ok := s.reserve(m)
+		if !ok {
+			continue
+		}
+		note, err := s.syncTree(ctx, m)
+		s.unreserve(m, rs)
+		switch {
+		case err != nil:
+			s.notify(id, "info", fmt.Sprintf("The harness could not bring the merged work into your tree before planning %s (%s): read the integration branch, or merge it into your tree before you implement.", t.ID, cleanText(err.Error(), 160)))
+		case note != "":
+			s.notify(id, "info", note+" Resolve them before you plan "+t.ID+".")
+		}
+	}
 }
 
 // wakeBlockedOn tells the owner of each task blocked on id that id is accepted, so a worker

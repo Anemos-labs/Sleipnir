@@ -475,7 +475,7 @@ func (t *Translator) derive(e events.Event, ts float64, at int64) {
 		events.TypeMergeRejected, events.TypeTaskMerge:
 		t.merge(e, ts, at)
 	case events.TypeCompactReject, events.TypeLayerCommit, "sink.panic", events.TypeSwarmHold, events.TypeSwarmUnfinished, events.TypeSwarmWake,
-		events.TypeSwarmWakePaused, events.TypeSwarmWakeLimit, "swarm.shutdown", events.TypeToolJob:
+		events.TypeSwarmWakePaused, events.TypeSwarmWakeLimit, events.TypeSwarmStop, "swarm.shutdown", events.TypeToolJob:
 		t.feedRows(e, ts, at)
 	case "swarm.budget":
 		var p struct {

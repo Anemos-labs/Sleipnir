@@ -156,7 +156,8 @@ func (m *Manager) Jobs() []JobInfo {
 	return out
 }
 
-// StopJob ends a background job and everything it started, for the person (the agents use bash_kill). It waits for the job to
+// StopJob ends a background job and everything it started, or a stray (Strays) when id names one, for the person (the agents use
+// bash_kill). It waits for the job to
 // end, at most the kill grace and a few seconds more, and reports an unknown id or a job that outlived that wait.
 func (m *Manager) StopJob(id string) error {
 	if m == nil {
@@ -164,6 +165,9 @@ func (m *Manager) StopJob(id string) error {
 	}
 	j := m.job(strings.TrimSpace(id))
 	if j == nil {
+		if m.stopStray(strings.TrimSpace(id)) {
+			return nil
+		}
 		return errNoJob(id)
 	}
 	if state, _, _ := j.snapshot(); state != jobRunning {
@@ -191,7 +195,11 @@ func (e jobError) Error() string { return string(e) }
 
 // errNoJob is StopJob's error for an id the Manager does not know.
 func errNoJob(id string) error {
-	return jobError("no background job " + clip(strings.TrimSpace(id), 40))
+	id = clip(strings.TrimSpace(id), 40)
+	if isStrayID(id) {
+		return jobError("no stray process group " + id + " (it may have ended)")
+	}
+	return jobError("no background job " + id)
 }
 
 // addURL records an address the job's output named and announces it, until the job has maxJobURLs of them.

@@ -7,6 +7,183 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `sleipnir mcp serve` runs each goal in the folder the caller names, so one
+  entry in a client's configuration (Claude Desktop, Claude Code across
+  projects) serves every project. `sleipnir_start` takes `cwd` as an absolute
+  path (or `~/...`) and `create` to make a new project's folder. The folder
+  must be inside one of the server's roots: the new repeatable `--root`, or
+  the `--cwd` directory alone when only `--cwd` is given (the old behaviour),
+  or else the home directory. Without `--cwd`, the directory the server was
+  started in is the default only when it is inside a root; otherwise a call
+  that names no folder is refused with a message saying to pass one.
+  `sleipnir_jobs` reports `roots` and `default_dir` instead of `root`. A
+  server started with no flags now accepts folders anywhere under the home
+  directory, where it used to accept only the directory it was started in;
+  pass `--cwd DIR` to keep the old confinement.
+
+- Parts that talk to each other are built against one contract and judged
+  end to end. When a user interface and its API, or a client and a service,
+  are built by different workers, the architect's agreement names one
+  machine-readable contract file (an OpenAPI document, a JSON Schema, shared
+  types or a protobuf schema) with every endpoint, status code, error body
+  and the sign-in flow from a signed-out start; the backend keeps it and tests
+  its real responses against it, the frontend calls the API only through types
+  taken from it, and the tester runs an end-to-end smoke test against the
+  merged result with the real server. The goal judge counts a requirement a
+  user reaches across such parts as met only with an end-to-end run newer than
+  the last change to either side, starting signed out when there is sign-in;
+  unit tests of each side alone no longer satisfy it. Prompt change: the
+  manager, architect, backend, frontend and tester role pins, the judge's
+  system prompt, its milestone section, a goal's first message when it has
+  milestones, and the spec skill each gain these sentences, which re-prices
+  those layers once.
+
+- Agents' commands share the machine (`internal/machine`, the new
+  `resources` configuration section). Builds, test runs, installs and
+  verification runs take one of a few machine-wide slots (files locked under
+  `<state>/run/slots/`, shared by every Sleipnir process of the same state
+  directory) and may wait before they start; every command is told how many
+  workers to start (`SLEIPNIR_JOBS`, `CARGO_BUILD_JOBS`, `GOMAXPROCS`,
+  `GOFLAGS=-p=N` and others, unless already set) and runs at low priority
+  (nice 10, lowest best-effort I/O class); on Linux the command holding the
+  most memory is stopped when free memory falls below half the reserve.
+  `resources.unlimited` restores the old behaviour. Prompt change: the shared
+  runtime context gains one sentence (`shell.MachineGuidance`, the same on
+  every machine) while a budget is in force, which re-prices the shared layer
+  once.
+
+- The web interface shows a tool call whole: `GET /api/sessions/{id}/tools/{agent}/{tid}`
+  (`wire.ToolDetail`) reads one call from the session's log, with its whole command and
+  output; a tool row's `⤢` opens it. `/jobs` also lists strays, the process groups an
+  agent's finished command left running (`wire.Job` gains `kind` and `procs`; a stray's id
+  is `p` and its group id), `/jobs stop ID` ends one, and `/jobs log ID` prints a job's
+  whole command and the end of its output. No prompt layer changes.
+
+- `POST /api/sessions/{id}/stop` (the web interface's Stop the run) stops a
+  team as a whole instead of interrupting the manager's turn: every worker
+  stops whether or not a turn runs, the open tasks are canceled, and nothing
+  starts until the next message; it answers `{"ok":true,"line":"..."}`. A
+  single agent's turn is interrupted as before. A message that only asks the
+  team to stop ("stop", "stop all your agents") does the same and is not
+  delivered to the manager; `wire.SendResult` gains `stopped`, and the log
+  gains the `swarm.stop` event. No prompt layer changes.
+
+- Deep scan severity is a CVSS v3.1 base score. The `scan` tool's `lead`
+  takes `cvss`, a base vector (`CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H`),
+  in place of `impact`; the harness validates it, computes the base score
+  with the specification's formula, and takes the severity from the rating
+  scale (critical from 9.0, high from 7.0, medium from 4.0). A lead nothing
+  reaches, or with no practical exploit, stays low at most. A confirming
+  `verdict` may correct the vector; the lowest-scoring one wins. Findings
+  rank by severity, then score. `findings.json` gains `cvss` and `score`
+  (and `impact` is omitted when empty), `findings.csv` gains `cvss_score`
+  and `cvss_vector` as its last columns, `findings.sarif` reports the score
+  as `security-severity` (or the band's representative value when the
+  severity is capped below the score's band) with `cvss` and `cvssScore`
+  properties, and the
+  report, `report.html`, issues and the Deep scan view show the score and
+  the vector. Ledgers written before keep their impact-based severity. The
+  tool's schema and the scan brief changed, so the stable prompt layer of a
+  scan team changes once.
+
+- A deep scan leaves no tracked file out. Vendored, generated, data, large,
+  binary, symlink and submodule files are now in the inventory and its
+  shards, each marked with its kind (`File.Kind`, `File.Bytes` in
+  scan.json), so a scan of the same code makes more shards and asks for a
+  larger team. The brief tells hunters how to read each kind (a binary with
+  the sandbox's reverse-engineering tools), a quote on a binary is checked
+  as a string it holds, and the report counts the kinds where it said "left
+  out". `Inventory.Skipped` now only counts files git could not read; a scan
+  made before keeps its old counts. The scan brief changes; no stable prompt
+  bytes change.
+- A worker that is stuck can be stopped. `/agents stop ID`, in the terminal
+  and the web interface, and a Stop button in a working agent's drawer of
+  the web interface, end its run: its tasks go back to `todo` with the
+  attempt counted, the harness does not restart it on them, and the manager
+  is told. The harness also stops a worker itself when a stall about its own
+  run (`claimed_no_progress`, `review_overrun`, or the new `task_overrun`: one
+  assignment held for more than 90 minutes) still holds 20 minutes after it
+  was escalated to the manager (`swarm.Config.TaskTimeout`, `StallStop`).
+  New harness mail (the `task_overrun` stall check and the stop notice); no
+  stable prompt bytes change.
+
+- Teams stop filling every free slot near the end of a goal. The line a
+  standing goal adds for the manager of a team ("N of its M workers are
+  free") is sized to what the verdict left: with fewer items missing than
+  workers free, it asks for at most one task per item and says the other
+  workers stay free, and it always says never to make up work to fill a
+  slot. The manager pin says the same: an idle slot with no concrete open
+  work costs nothing. A deep research manager kept spawning researchers on
+  searches and re-reviews nobody needed, and the run never ended.
+- A goal that drives a report research run is judged from the run's
+  ledger, as deep scans are: met when `research status` says Done, with
+  the harness building the wiki when only the build is missing;
+  otherwise continue with the current phase's problems and the ledger
+  version, so a turn that changes nothing counts as no progress. A
+  kickoff run's goal is also the project's and stays with the model
+  judge. The research brief gains a "When the run ends" section, a
+  search made after every gather bar is met says that new sources no
+  longer move the run on, and the scan brief no longer asks to keep
+  every agent busy. Prompt bytes: the manager pin and the free-capacity
+  line change once; research and scan briefs are goal specs, outside the
+  cached layers. No tool spec changed.
+
+- `sleipnir mcp serve` makes Sleipnir an MCP server on stdio, so another
+  harness (Claude Code, Codex, an editor) can start goals with Sleipnir's
+  agents and teams (`sleipnir_start`), follow them (`sleipnir_status`,
+  `sleipnir_wait`), cancel them and list them. Each goal is a `sleipnir run
+  --json` child. The permission mode is a ceiling the server's flags set, and
+  the allow rules, project trust and directory are the server's, never the
+  caller's. No prompt bytes change.
+
+- Skills are also read from `.agents/skills/` (the directory the Agent Skills
+  convention shares between Codex, opencode, Gemini CLI and others): in a
+  trusted project after `.claude/skills/`, and in the home directory after
+  `~/.claude/skills/`. Within each scope a skill of the same name in
+  `.sleipnir` or `.claude` wins; project skills still come before the
+  home directory's, as they always have. Writes to `.agents/skills/` ask, as writes to `.claude/` do, and
+  the project's trust fingerprint covers them, so a project trusted before
+  with an `.agents/skills/` directory asks to be trusted again. An extension
+  directory that is a link (`~/.claude/skills` into a dotfiles checkout, say)
+  is now guarded at its target as well, since the loaders follow the link.
+
+- Commits, code and pull requests a team leaves in a project no longer name
+  its agents or board tasks. `task done` takes an optional `commit` message
+  (the project's convention, Conventional Commits when it has none) that
+  becomes the commit recording the task; without one, the subject is the
+  task's title and the body the worker's result minus the sentences naming
+  team members or task ids. Merge, handover and salvage commits describe the
+  work instead of naming the agent; the task and agent ids stay in the
+  `Sleipnir-Task:` and `Sleipnir-Agent:` trailers. In an isolated run,
+  `done` sends the worker back once when the lines its change adds name a
+  team member or a board task, `task deliver` refuses such a commit message,
+  and the constitution, the manager's role and the delivery prompt say so.
+  Prompt-cache change: the constitution and the task tool's schema change
+  bytes, so the first request of each agent after the upgrade misses the
+  cache once.
+
+- Deep scans end, and their report reads as an assessment. A scan verifies at
+  most a budget of leads (4, 6 or 8 per shard by depth, at least 24); once
+  every shard is hunted only a few late leads are verified (a tenth of those
+  the hunt filed, at least 3), and none once the last 3 were all rejected. A
+  lead below critical filed past that point is recorded as `deferred`: kept,
+  reported as not verified, never blocking. A settled lead takes no more
+  verdicts, and a lead ruled on by two more agents than the depth asks for
+  without agreeing is `disputed` and reported apart. The goal that drives a
+  scan is judged from the scan's ledger, not by a model: it is met when
+  `scan status` says done, and the harness writes the report itself when
+  only the report is missing. REPORT.md, report.html and the Deep scan view
+  lead with a summary (a headline, findings by severity and by category),
+  then an index and each finding with its facts, trace, verification and
+  remediation; the attack surface is summarised (map.json keeps every
+  point). Reports name no agent: verdicts are given by role, the agents' ids
+  are taken out of their notes, findings.json carries `confirms`, `rejects`,
+  `defended`, `reproduced` and a reproduction's `independent` in place of
+  `by`, and findings.csv's last column is `not_verified_because` instead of
+  `filed_by`. `by_severity` counts unproven findings too. The brief changes
+  (a section on when the scan ends), so a scan started after this change
+  has a different goal text; nothing else in a prompt changes.
+
 - Follow-ups to CodeRabbit findings left unanswered. A goal's spec is opened
   without waiting, so a pipe swapped in for it after the check is refused at
   once. A research export reads an earlier export's mark only when it is a

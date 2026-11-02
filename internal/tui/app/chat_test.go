@@ -1305,6 +1305,26 @@ func TestABareResumeOpensItsMenu(t *testing.T) {
 	}
 }
 
+// A turn that failed on a provider outage and comes back with a Next (the goal goes on by itself, session.GoalJudged) is followed
+// by that turn: the error is said, and it does not stop the goal.
+func TestAGoalGoesOnAfterATurnThatFailedOnAnOutage(t *testing.T) {
+	r := startChat(t, rigOpts{})
+	var n int
+	r.host.turn = func(ctx context.Context, goal string) TurnResult {
+		n++
+		if n == 1 {
+			return TurnResult{Steps: 1, Err: errors.New("rate_limit (http 429): no free capacity"), Note: "the turn failed on a provider outage: going on", Next: "[standing goal, continuation 1] go on"}
+		}
+		return TurnResult{Steps: 1, Note: "goal met: the tests pass"}
+	}
+	r.typeText("make the tests pass")
+	r.enter()
+	r.shows("no free capacity", "goal met: the tests pass")
+	if got := r.host.seen(); len(got) != 2 || got[1] != "[standing goal, continuation 1] go on" {
+		t.Errorf("the turns the host ran: %q", got)
+	}
+}
+
 // A turn that comes back with a Next (a standing goal that is not met) is followed by that turn at once, without being echoed as something the
 // person typed, and its Note is said; what the person typed meanwhile goes first.
 func TestAGoalThatIsNotMetSendsTheAgentOn(t *testing.T) {

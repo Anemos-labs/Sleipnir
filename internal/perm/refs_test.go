@@ -87,6 +87,32 @@ func TestAConfinedAgentMovesOnlyItsOwnBranch(t *testing.T) {
 		{"git fetch origin", false},
 		{"git status", false},
 		{"git log --oneline -3", false},
+		// attaching the tree to a queued branch would make it the tree's own for every later command
+		{"git checkout sleipnir/s1/_integration", true},
+		{"git switch claude/work", true},
+		{"git checkout -B sleipnir/s1/_integration", true},
+		{"git switch -c sleipnir/s1/new", true},
+		{"git checkout -bsleipnir/s1/new", true},
+		{"git switch --orphan=sleipnir/s1/new", true},
+		{"git checkout sleipnir/s1/be-1", false},
+		{"git checkout -b scratch", false},
+		{"git switch -c scratch sleipnir/s1/_integration", false}, // a new branch starting there moves nothing
+		{"git checkout sleipnir/s1/_integration -- main.go", false},
+		{"git checkout -- main.go", false},
+		{"git checkout --detach sleipnir/s1/_integration", false},
+		{"git switch --force-create=sleipnir/s1/_integration", true},
+		{"git switch --create sleipnir/s1/new", true},
+		{"git switch --force-c=sleipnir/s1/new", true}, // an abbreviation, as git accepts it
+		{"git checkout --orph sleipnir/s1/new", true},
+		{"git checkout --force -q sleipnir/s1/_integration", true}, // --force is an option of its own, not --force-create
+		{"git switch --force --quiet claude/work", true},
+		{"git checkout --force scratch", false},
+		{"git switch -- sleipnir/s1/_integration", true}, // for switch, -- only ends the options
+		{"git switch --track origin/sleipnir/s1/new", true},
+		{"git checkout -t origin/sleipnir/s1/new", true},
+		{"git switch --track=direct origin/sleipnir/s1/new", true},
+		{"git switch --track origin/scratch", false},
+		{"git switch -c scratch --track origin/sleipnir/s1/new", false},
 	}
 	for _, tc := range cases {
 		r := f.request(bash(tc.cmd))

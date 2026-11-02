@@ -23,3 +23,20 @@ func TestThePinsRouteTheUIToTheFrontendAndTestsToTheirOwners(t *testing.T) {
 		}
 	}
 }
+
+// TestRolesShareOneContract checks that the roles that build parts which talk to each other are told to build them against one
+// machine-readable contract file and to check the assembled result end to end.
+func TestRolesShareOneContract(t *testing.T) {
+	rs := BuiltinRoles()
+	for role, want := range map[string]string{
+		"manager":   "one machine-readable contract file",
+		"architect": "one machine-readable contract file",
+		"backend":   "checks their responses against the file",
+		"frontend":  "only through types or a client taken from it",
+		"tester":    "starts the real built server",
+	} {
+		if !strings.Contains(rs[role].Pin, want) {
+			t.Errorf("%s pin lacks %q", role, want)
+		}
+	}
+}

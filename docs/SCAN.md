@@ -41,31 +41,43 @@ judge holds the team to the brief's milestones on the evidence of the `scan` too
 The harness is the only writer of the ledger (`.sleipnir/scan/SCAN/scan.json`), through the `scan` tool. It does what must not
 depend on a model:
 
-- **Inventory.** Every file git tracks at the commit, minus vendored, built, generated, binary and oversized files (counted
-  under *left out*). Functions are found and scored for complexity: exactly for Go (`go/parser`, McCabe), by their usual
-  shapes for JavaScript, TypeScript, Python, Ruby, PHP, Rust, Kotlin, Swift, C-like languages and others. Configuration
+- **Inventory.** Every file git tracks at the commit, nothing left out. A file no person wrote is scanned too and marked by
+  its kind: `vendored` (vendor/, node_modules/, dist/...), `generated` (minified bundles, protobuf output, lock files),
+  `data`, `other` (text in no known language: docs, templates), `large` (over 1 MiB, scanned whole), `binary` (read with
+  the sandbox's reverse-engineering tools, quoted by the strings it holds), `symlink` and `submodule`. The report counts
+  them. Such files weigh a quarter of their lines in a shard, a binary a quarter of a shard. Functions are found and scored for complexity: exactly for Go (`go/parser`, McCabe), by their usual
+  shapes for JavaScript, TypeScript, Python, Ruby, PHP, Rust, Kotlin, Swift, C-like languages and others, in the code a
+  person wrote. Configuration
   files are kept for the config lane.
 - **Sizing.** The inventory is split into shards of at most N functions or M lines, files of one directory together. The
   work is sized by that, not by a clock: the scan asks for a team of one agent per two shards, between 8 and 32.
 - **Citations.** Every point, edge, trace step and verdict quotes the code. The harness looks for the quote in the file at
   the pinned commit (white space aside, near the line named, then anywhere in the file) and refuses a quote it cannot find,
   answering with the lines that are there. A changed work tree changes nothing: the commit is what is read.
-- **Severity.** Computed from the impact, the reachability and the exploitability the agents give: one level lower when
-  only an insider reaches the code, one lower when exploiting it is difficult, low at most when nothing reaches it or no
-  practical exploit was shown. A verifier's more cautious correction wins.
+- **Severity.** Computed from the CVSS v3.1 base vector the agents give
+  (`CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H`). The harness checks the vector, computes its base score with the
+  specification's formula (including its Roundup), and takes the severity from the rating scale: critical from 9.0, high
+  from 7.0, medium from 4.0, low below (0.0, rated none by the scale, is reported as low). A lead is low at most when nothing
+  reaches the code or no practical exploit was shown, since a base score assumes the code is reached. A confirming verifier
+  may correct the vector, the reachability or the exploitability; the lowest-scoring vector and the most cautious tiers win.
+  Findings are ranked by severity, then by score. A ledger written before leads carried vectors keeps the earlier rule: the
+  impact level, one lower when only an insider reaches the code and one lower when exploiting it is difficult.
 - **Rules of evidence.** A lead is ruled on only by agents that did not file it; a reproducer counts only when an agent other
   than the filer wrote it; a reproducer that prints a marker without a check is refused.
-- **Report.** `REPORT.md`, `findings.json`, `findings.sarif` (SARIF 2.1.0, the trace as a code flow, for code scanning) and
-  `map.json` (nodes and edges in the shape code graphs such as graphify use; an edge is `EXTRACTED` when a checked quote backs
-  it, else `INFERRED`) are rewritten after every change, so the report can be read while the scan runs.
+- **Stopping.** A scan is sized by its code and it ends (see [When a scan ends](#when-a-scan-ends)): a lead budget, fewer
+  leads verified once the hunt is over, settled leads that take no more verdicts, and a goal judged from the ledger.
+- **Report.** `REPORT.md`, `report.html`, `findings.json`, `findings.sarif` (SARIF 2.1.0, the trace as a code flow and the CVSS score as `security-severity`, or the band's representative value when a cap lowered the severity, for code
+  scanning) and `map.json` (nodes and edges in the shape code graphs such as graphify use; an edge is `EXTRACTED` when a checked
+  quote backs it, else `INFERRED`) are rewritten after every change, so the report can be read while the scan runs (see
+  [The report](#the-report)).
 
 The agents read the code and record what they find:
 
 | Phase | Who | Through |
 |---|---|---|
 | Map | scouts, the architect, anyone free | `shards claim`, `functions`, `point` (entry, boundary, access, sink, config), `edge`, `map` |
-| Hunt | backend, frontend, devops, any worker | `shards claim for=hunt`, `lead` (title, category, claim, trace from entry to sink, impact, reach, exploit, fix), `hunt` |
-| Verify | reviewers, testers, anyone but the filer | `show`, `verdict` (confirm, or reject as duplicate, mitigated, speculative, test-only, dead-code, unreachable, wrong) |
+| Hunt | backend, frontend, devops, any worker | `shards claim for=hunt`, `lead` (title, category, claim, trace from entry to sink, CVSS vector, reach, exploit, fix), `hunt` |
+| Verify | reviewers, testers, anyone but the filer | `show`, `verdict` on an open lead (confirm, or reject as duplicate, mitigated, speculative, test-only, dead-code, unreachable, wrong) |
 | Prove | testers, anyone but the filer | `prove` (a bash reproducer) |
 | Report | the manager | `report`, then `status` says done |
 
@@ -86,6 +98,45 @@ The *defender* is a verifier who argues the lead is false (the guard the filer m
 and confirms only when it finds none. A lead is confirmed when enough verifiers confirm it, more than reject it, a defender
 among them; it is rejected once as many reject it as the depth asks to confirm it. A confirmed lead the depth wants
 reproduced is *unproven* until a reproducer shows it, and is reported apart from the findings.
+
+## When a scan ends
+
+A team can always find one more thing to check. The harness ends a scan by rules the agents cannot argue with:
+
+- **A budget.** The scan verifies at most a set number of leads: 4 per shard at survey depth, 6 at standard, 8 at deep, and at
+  least 24. Past it, a lead below critical is recorded as **deferred**.
+- **Diminishing returns.** Once every shard is hunted, a lead is *late*. Only a few late leads are verified (a tenth of those
+  the hunt filed, at least 3), and none once the last 3 late leads ruled on were all rejected. A later lead below critical is
+  deferred.
+- **A settled lead is final.** A confirmed, unproven, rejected or deferred lead takes no more verdicts. A lead that two more
+  agents than the depth asks for (4 at standard depth, 5 at deep) ruled on without agreeing is **disputed**: settled,
+  and reported apart.
+- **The ledger decides.** The goal a scan runs under is judged from the scan's ledger, not by a model: it is met when
+  `scan status` says done, and when only the report is missing the harness writes it. Until then the agents are sent on with
+  the ledger's own list of what is missing, and a turn that changes nothing in the ledger counts as no progress.
+
+A deferred lead is kept in the ledger and listed in the report as *not verified*, with the reason: nothing more is done with
+it, and a critical lead is never deferred. `scan status` shows the intake: how many leads are verified against the budget,
+and the late leads against their allowance.
+
+## The report
+
+The report says what was found and how it was checked; it names no agent. Verdicts are given by role (reviewer, defender),
+a reproduction as independent or not, and agents' ids written into notes are replaced. It is laid out as an assessment:
+
+1. The scan's facts: the commit, the code's size, the depth and whether the scan is complete.
+2. A summary: a sentence, the findings by severity (and how many were not reproduced), and by category.
+3. An index of the findings and the disputed leads, worst first, with their location and status.
+4. Each finding: its severity, status, category, location, CVSS score and vector (linked to FIRST's calculator),
+   reachability and exploitability; the description; the trace with its quotes; how it was verified; the remediation; and the reproducer that showed it.
+5. Appendices: the leads still being verified, those not verified, the rejected ones with the reason, and the scope (the
+   counts, the attack surface by lane and the files with the largest one).
+6. The method.
+
+`report.html` is the same document as a page with no script: on a screen it uses the product's dark palette and filters the
+index and the findings by severity and status (checkboxes the stylesheet reads); printed, it is light and keeps every finding.
+The Deep scan view shows the report live: the summary (each tile, category and row of the leads narrows the index), an index
+filtered by words, severity, status and category, and each finding in full.
 
 ## Rerunning and comparing
 
@@ -126,8 +177,8 @@ sleipnir swarm 8 --sandbox docker "$(sleipnir scan --start --diff origin/main)"
 
 ## Reproducers
 
-`scan prove` runs a bash script in a fresh copy of the code at the commit (a detached worktree under the scan's directory,
-removed afterwards), inside the session's sandbox: no network unless the session has `--sandbox-network`, no host
+`scan prove` runs a bash script in a fresh copy of the code at the commit (a detached worktree under the scan's `work/`
+directory, removed afterwards), inside the session's sandbox: no network unless the session has `--sandbox-network`, no host
 environment, no keys. `--sandbox docker` runs the image of the repository's language (Go, Rust, Java, Python, Ruby, Node), and
 a Go module's dependencies are fetched into the container before its network goes off, so a reproducer can build and
 run the code offline (see the sandbox in [SECURITY.md](SECURITY.md)). A session without a sandbox refuses to prove. The script prints, each on a line of its own and only when
@@ -140,6 +191,11 @@ a check passes:
 The run is *reproduced* when it printed the last two and exited 0, *not reproduced* when it reached the target without the
 harm, and *inconclusive* otherwise (including a timeout: 5 minutes by default, 30 at most).
 
+Every run that reproduced is kept in the scan's `proofs/` directory, rewritten with the report: `proofs/README.md` indexes
+them, and each `proofs/LEAD-N/` (the lead's N-th reproduced run) holds `reproduce.sh`, its `output.txt`, `proof.json` and a `README.md` with the claim,
+the trace, the outcome and how to run it again, so a proof can be shared on its own. Like the report, they name no agent. A
+scan made before this layout gets its `proofs/` filled on its next report (`/scan report SCAN`, or `sleipnir scan --report SCAN`).
+
 ## Where it lives
 
 ```text
@@ -149,4 +205,5 @@ harm, and *inconclusive* otherwise (including a timeout: 5 minutes by default, 3
 .sleipnir/scan/SCAN/BRIEF.md       the protocol the goal points at
 .sleipnir/scan/SCAN/REPORT.md      the report, with findings.json, findings.sarif, map.json, findings.csv and
                                    report.html (the report as a page that prints to PDF)
+.sleipnir/scan/SCAN/proofs/        every reproduced run, self-contained (see Reproducers)
 ```

@@ -61,6 +61,7 @@ func (s *Swarm) escalateStalls() {
 		ev["held_s"] = int(held[i].Seconds())
 		s.emit(events.TypeSwarmStall, ev)
 	}
+	s.stopStalled()
 }
 
 // stallPacket is the diagnosis of a finding for the manager. Everything in it is harness-written except a task's progress line,
@@ -90,6 +91,9 @@ func (s *Swarm) stallPacket(f Stall, held time.Duration) string {
 		}
 	}
 	b.WriteString("\n" + stallRemedy(f.Kind, s.cfg.PersistentPools))
+	if after := s.stallStop(); after > 0 && stoppable(f.Kind) && f.Agent != "" {
+		fmt.Fprintf(&b, " If it still holds in %d minutes, the harness stops %s and returns its task to todo.", int(after/time.Minute), f.Agent)
+	}
 	return b.String()
 }
 
@@ -112,6 +116,11 @@ func stallRemedy(k StallKind, pools bool) string {
 		return "Decide: give the idle workers the work the objective still needs, or let them stay idle if nothing is left."
 	case StallManagerWaitingOnIdle:
 		return "Decide: start a worker on the open work, or close the tasks nobody needs."
+	case StallTaskOverrun:
+		if pools {
+			return "Decide: mail the worker to finish with what it has, or revise the task smaller (a persistent pool refuses a handover)."
+		}
+		return "Decide: mail the worker to finish with what it has, hand the task over to a fresh worker (task handover), or revise the task smaller."
 	case StallReviewOverrun:
 		return "Decide: mail the reviewer to report what it has now, or stop it (retire) and give the review to another reviewer with a narrower brief."
 	}

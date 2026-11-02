@@ -271,6 +271,13 @@ func (m *Manager) pruneOne(ctx context.Context, opts PruneOptions, e ownedEntry,
 			keep("its .git does not point at its registration")
 			return
 		}
+		// The private git directory's commondir is as writable as the tree: one that names another repository's objects
+		// and refs would have salvage commit onto that repository's branch.
+		if !samePath(repo.CommonDir(), m.st.base.CommonDir()) {
+			keep("its git directory does not share this repository's objects and refs")
+			return
+		}
+
 		st, err := repo.Status(ctx)
 		if err != nil {
 			keep("cannot read its state: " + err.Error())
@@ -388,7 +395,7 @@ func (m *Manager) salvage(ctx context.Context, repo *gitx.Repo, mk *marker) erro
 	if err != nil {
 		return err
 	}
-	msg := m.withAgentTrailer("Unfinished work of "+mk.Agent+", salvaged after its session ended", mk.Agent)
+	msg := m.withAgentTrailer("Save unfinished work\n\nThe session that made these changes ended before they were finished.", mk.Agent)
 	after, err := repo.CommitAllWith(ctx, msg, m.agentAuthor(mk.Agent), workCommit)
 	if err != nil || after == "" || after == before {
 		return err

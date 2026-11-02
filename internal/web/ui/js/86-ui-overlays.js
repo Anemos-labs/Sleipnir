@@ -113,7 +113,7 @@
     p.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a) return; closeMenu(false); const k = a.dataset.a;
       if (k === 'rename') ui.dialogs.rename(S);
       else if (k === 'restart') ui.settingsPage('run');
-      else if (k === 'stop') ui.confirm({ title: 'Stop the run', text: 'Stop <b>' + esc(S.name) + '</b>? ' + SL.stopAsk(S) + ' The session stays open and its log is kept.', ok: 'Stop the run', danger: true, run: () => { const r2 = SL.act.interrupt('turn'); ui.toast(r2.ok ? SL.stopText(S) : (r2.why || 'nothing was running'), 'warm'); } });
+      else if (k === 'stop') ui.confirm({ title: 'Stop the run', text: 'Stop <b>' + esc(S.name) + '</b>? ' + SL.stopAsk(S) + ' The session stays open and its log is kept.', ok: 'Stop the run', danger: true, run: () => { const r2 = SL.act.stopAll(); if (r2 && r2.ok === false) ui.toast(r2.why || 'nothing was running', 'warm'); } });
       else ui.closeSessionAsk(S);
     });
   };

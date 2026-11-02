@@ -122,7 +122,7 @@ func Open(dir string) (*Run, error) {
 	for _, n := range bad {
 		r.issues = append(r.issues, Mismatch{Kind: KindLog, Detail: fmt.Sprintf("events.jsonl line %d is not a valid event and was skipped", n)})
 	}
-	if b, terr := os.ReadFile(filepath.Join(dir, "task.json")); terr == nil {
+	if b, terr := readTaskFile(filepath.Join(dir, "task.json")); terr == nil {
 		var t rl.Task
 		if uerr := json.Unmarshal(b, &t); uerr != nil {
 			return nil, fmt.Errorf("traj: open %s: task.json: %w", dir, uerr)
@@ -147,6 +147,29 @@ const maxEventLine = events.MaxEventBytes
 // readEvents parses events.jsonl. It returns the events, whether the final line
 // was torn (cut off by a crash, and so dropped), and the numbers of any earlier
 // lines that were skipped because they did not parse.
+// maxTaskFile bounds task.json: a task is a prompt and a few settings.
+const maxTaskFile = 4 << 20
+
+// readTaskFile reads a run's task.json: a regular file only, opened without waiting on a FIFO, at most maxTaskFile bytes.
+func readTaskFile(path string) ([]byte, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|openNonblock, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	b, err := io.ReadAll(io.LimitReader(f, maxTaskFile+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > maxTaskFile {
+		return nil, fmt.Errorf("%s is larger than %d MiB", path, maxTaskFile>>20)
+	}
+	return b, nil
+}
+
 func readEvents(path string) (evs []events.Event, torn bool, bad []int, err error) {
 	// Only a regular file has an end: a device or a pipe in the log's place (or a link to one) would be read for ever.
 	if fi, err := os.Stat(path); err != nil {

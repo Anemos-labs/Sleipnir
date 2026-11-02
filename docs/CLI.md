@@ -148,6 +148,7 @@ commands:
   approve NAME [--yes]                remember a project entry for this project (shows what it would run and asks first)
   revoke NAME                         forget an approval
   test [NAME...] [--trust-project]    start the servers and list the tools they offer (project entries still need approval)
+  serve [flags]                       be an MCP server on stdio, so another harness can hand goals to Sleipnir (docs/MCP.md)
 ```
 <!-- /flags -->
 
@@ -321,7 +322,7 @@ Usage of chat:
   -mailman
         swarm: route worker mail through a mailman agent that digests bursts (default: config swarm.mailman; --mailman=false turns it off for this run). Its model: --role-model mailman=<model>
   -manager-answers-after duration
-        swarm: a worker's question the person has not answered in this long is answered by the manager for them, if it is no more dangerous than --manager-answers-up-to; the person's question is withdrawn and says who answered (default: config permissions.manager_answers_after; 0 waits for the person)
+        swarm: a worker's question the person has not answered in this long is answered by the manager for them, if it is no more dangerous than --manager-answers-up-to; the person's question is withdrawn and says who answered (default: config permissions.manager_answers_after; 0 waits for the person, whatever the configuration says)
   -manager-answers-up-to string
         swarm: the most dangerous question the manager answers after --manager-answers-after: low (routine: inside the workspace, nothing guarded), medium (also the network, files outside the workspace, commands that cannot be checked beforehand) or high (also the high-risk class, guarded paths and your ask rules) (default: config permissions.manager_answers_up_to, else medium)
   -manager-approves
@@ -480,7 +481,7 @@ flags:
   -mailman
         swarm: route worker mail through a mailman agent that digests bursts (default: config swarm.mailman; --mailman=false turns it off for this run). Its model: --role-model mailman=<model>
   -manager-answers-after duration
-        swarm: a worker's question the person has not answered in this long is answered by the manager for them, if it is no more dangerous than --manager-answers-up-to; the person's question is withdrawn and says who answered (default: config permissions.manager_answers_after; 0 waits for the person)
+        swarm: a worker's question the person has not answered in this long is answered by the manager for them, if it is no more dangerous than --manager-answers-up-to; the person's question is withdrawn and says who answered (default: config permissions.manager_answers_after; 0 waits for the person, whatever the configuration says)
   -manager-answers-up-to string
         swarm: the most dangerous question the manager answers after --manager-answers-after: low (routine: inside the workspace, nothing guarded), medium (also the network, files outside the workspace, commands that cannot be checked beforehand) or high (also the high-risk class, guarded paths and your ask rules) (default: config permissions.manager_answers_up_to, else medium)
   -manager-approves
@@ -721,7 +722,7 @@ flags:
   -pull
         with --rerun: fast-forward the checked-out branch from its upstream first
   -report
-        rewrite SCAN's report (REPORT.md, findings.json, findings.sarif, map.json) from its ledger and print where it is
+        rewrite SCAN's report (REPORT.md, findings.json, findings.sarif, map.json, proofs/) from its ledger and print where it is
   -rerun
         create a new scan of what SCAN scanned, at HEAD, and print the goal that drives it
   -since OLD
@@ -909,12 +910,15 @@ prices per million tokens. Only chat models are listed (`--all` lists the others
 models take and give (OpenAI's own, Ollama's, vLLM's) is taken to list chat models. With no `--provider` it asks every provider whose key is set, and Heimdallm (its
 catalogue is public), at once, and prints `provider/model` references that `--model` takes; a provider that does not answer is named on stderr. Words, `--tools`,
 `--reasoning`, `--max-price` and `--min-context` narrow the list; favorites (`models fav add|rm|list`, kept in your user config as `models.favorites`) come first,
-marked `*`. In the chat, `/model ` completes from the same list. Project config is never trusted here.
+marked `*`. `models default` prints the default model a new session starts on and the file or variable it comes from; `models default provider/model`
+keeps that model as `models.default` in your user config (`--role ROLE`: as `models.roles.ROLE`), so it survives a restart, and says when a project's
+file or `SLEIPNIR_MODEL` still outranks it. A model chosen with `/model` lasts only as long as its session. In the chat, `/model ` completes from the same list. Project config is never trusted here.
 
 <!-- flags: models -->
 ```text
 usage: sleipnir models [words...] [flags]
        sleipnir models fav [add|rm] provider/model...
+       sleipnir models default [--role ROLE] [provider/model]
 
 Lists the models of every provider whose key is set (and Heimdallm), as references that --model takes. Each word narrows the
 search (all must appear, any case). Favorites, marked *, come first.
@@ -2645,7 +2649,7 @@ flags:
 | `/stats` | the stats page (`ctrl+t`): cost, tokens, cache hit, what the cache saved at list price, the prompt layer by layer |
 | `/context` | token size of each prompt layer: constitution, shared pin, role pin, notes, spine, verbatim thread |
 | `/compact [focus]` | fold the older thread now; the optional text says what to keep in view (a declared, priced rebase; `docs/EXTENDING.md` section 7) |
-| `/agents` | the team's agents and tasks written into the scrollback (`ctrl+g` is the cockpit); in a single-agent session it says so |
+| `/agents [stop ID\|all]` | the team's agents and tasks written into the scrollback (`ctrl+g` is the cockpit); in a single-agent session it says so. `/agents stop ID` stops a worker that is stuck: its run ends, the tasks it held go back to `todo` with the attempt counted, the harness does not restart it on them, and the manager is told. The web interface has the same command and a ■ Stop button in a working agent's drawer; the manager's own turn is interrupted instead (Esc, or Stop). `/agents stop all` stops the whole team: the manager's turn ends, every worker stops, the open tasks are canceled, and nothing starts until you write again (the web interface's ■ Stop all and Stop the run do the same; so does a message that only asks the team to stop, such as `stop all your agents`) |
 | `/model [ref]` | show the model; with a reference (`provider/model`), move this conversation to it (a menu of every model of your providers opens after `/model `, typing filters it). A team starts again on the new model, with the manager's conversation (the workers start again) and the roles that name their own model kept; the reference is checked first, so a typo or a provider without a key ends nothing. `/roles role=model` checks its references the same way |
 | `/effort [level]` | inspect or change reasoning effort for subsequent agent requests without restarting; each model uses its closest supported level. `default` restores the provider default. The preference survives session resume; changing it may invalidate the message cache. A run left alone sets it with `sleipnir run --effort <level>` |
 | `/plan [prompt]` | switch to read-only mode; with a prompt, submit it for planning immediately. Bare `/plan` changes mode without sending a request. Delegated planning work is also instructed to remain read-only. Use `/mode accept-edits` when ready to implement |
@@ -2653,7 +2657,7 @@ flags:
 | `/budget [usd\|off]` | show or set the dollar budget for the turns from now on |
 | `/allow <rule>` | allow for the rest of the session what would otherwise ask: `tests`, `Bash(go test:*)`, `Edit(src/**)` |
 | `/verbose [on\|off]` · `/anim [on\|off]` | show or hide notices and tool errors · turn the motion on or off |
-| `/jobs [stop ID]` | the background jobs the agents started (`bash` with `run_in_background`: a dev server, a watcher, a long test run), running ones first, each with the local addresses its output named (`http://localhost:5173/`; a wildcard host is shown as `localhost`, at most four per job); `/jobs stop ID` ends one and everything it started. It answers at once, beside a running turn |
+| `/jobs [stop ID \| log ID]` | the background jobs the agents started (`bash` with `run_in_background`: a dev server, a watcher, a long test run), running ones first, each with the local addresses its output named (`http://localhost:5173/`; a wildcard host is shown as `localhost`, at most four per job), then the strays: process groups an agent's finished command left running (`server &` inside an ordinary command), each with its live processes; `/jobs stop ID` ends a job and everything it started, or a stray; `/jobs log ID` prints a job's whole command and the end of its output (64 KiB at most). It answers at once, beside a running turn |
 | `/sessions` · `/cwd` | the newest sessions (resume one with `sleipnir --resume <id>`) · the directory the session works in |
 | `/new` · `/resume [id]` | start the conversation again, empty · continue an earlier session (the newest of this project, or the id `/sessions` shows) |
 | `/restart [flags]` | start the chat again with other flags; the model, mode and the flags the session started with (a team stays a team) stay, and the conversation comes along (a single agent's, or a team's manager and its board; not into git worktrees) |

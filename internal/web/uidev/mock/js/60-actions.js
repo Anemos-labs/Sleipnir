@@ -186,6 +186,7 @@
   });
   act('newChat', sid => { const S = ses(sid); if (!S) return; S.meta.goalText = ''; return ACT.restartTeam({ swarm: S.meta.swarm, force: true }, sid); });
   act('pruneSessions', (older, keep, apply) => SL.sessions.prune(older, keep, apply));
+  act('saveDefaultModel', (ref, role) => { const r = role || 'default'; D.saved = Object.assign({}, D.saved || {}); D.saved[r === 'manager' ? 'default' : r] = { key: r === 'default' || r === 'manager' ? 'models.default' : 'models.roles.' + r, ref, from: '~/.sleipnir/config.json', layer: 'user' }; if (r === 'manager') D.saved.manager = D.saved.default; SL.bus.emit('models-changed'); return { ok: true, data: { ok: true, role: r, file: '~/.sleipnir/config.json' } }; });
   act('favModel', ref => { if (G.favs.has(ref)) G.favs.delete(ref); else G.favs.add(ref); const m = D.model(ref); if (m) m.fav = G.favs.has(ref); SL.bus.emit('models-changed'); });
   act('trustDir', (dir, on) => { let d = G.trustDirs.find(x => x.dir === dir); if (!d) { d = { dir, files: 3, saved: '', now: '', state: 'not trusted' }; G.trustDirs.push(d); } d.state = on ? 'trusted (today)' : 'not trusted'; d.now = on ? 'unchanged' : d.now; G.ver++; SL.bus.emit('trust-changed'); });
   act('setProvider', (id, patch) => { const p = G.providers.find(x => x.id === id); if (p) { Object.assign(p, patch); G.ver++; } });

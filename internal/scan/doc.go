@@ -8,7 +8,7 @@
 // it names is refused, so nothing in the report rests on code that is not there.
 //
 // A lead becomes a finding only when agents that did not file it confirm it, and, from the depth's proof bar up, when a
-// reproducer run in the session's sandbox shows it. Severity is computed from the impact, how reachable the code is and how
-// hard it is to exploit, not chosen. The report (REPORT.md, findings.json, findings.sarif and map.json) is rewritten after
+// reproducer run in the session's sandbox shows it. Severity is computed, not chosen: the base score of the lead's CVSS v3.1
+// vector, by the specification's formula, gives its band, and a lead nothing reaches or with no practical exploit is low at most. The report (REPORT.md, findings.json, findings.sarif and map.json) is rewritten after
 // every change, so it can be read while the scan runs.
 package scan

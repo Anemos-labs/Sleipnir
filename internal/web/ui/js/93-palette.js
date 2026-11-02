@@ -40,7 +40,7 @@
     '/team': a => { if (a) serverLine('/team ' + a, '/team'); else ui.teams.forSession(S_()); },
     '/swarm': a => { const n = parseInt(a, 10); if (isNaN(n)) return ui.settingsPage('run'); restart(n); },
     '/restart': a => { const flags = U.splitArgs(a); if (!flags.length) return ui.settingsPage('run'); const S = S_(); ui.confirm({ title: 'Start again', text: 'Restart <b>' + esc(S.name) + '</b> with <span class="mono">' + esc(flags.map(f => /\s/.test(f) ? '"' + f + '"' : f).join(' ')) + '</span>? The current run is closed (its checkpoints stay) and the conversation carries over.', ok: 'Restart', danger: true, run: () => onOk(SL.act.restart(flags), () => ui.toast('started again: ' + flags.join(' '), 'ok')) }); },
-    '/agents': () => SL.views.show('cockpit'),
+    '/agents': a => { if (a) serverLine('/agents ' + a, '/agents'); else SL.views.show('cockpit'); },
     /* the lines that wait for the turn are the server's (meta.queued): it lists, drops and clears them as the terminal does */
     '/queue': a => serverLine('/queue' + (a ? ' ' + a : ''), '/queue'),
     '/steer': a => { if (!a) return ui.toast('/steer needs text: tell the running turn something', 'warm'); onOk(SL.act.steer('mgr', a), () => ui.toast('steer sent to the manager')); },

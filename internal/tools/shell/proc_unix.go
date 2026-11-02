@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -81,6 +82,65 @@ func liveMembers(pgid int) (alive, ok bool) {
 		}
 	}
 	return false, seen
+}
+
+// groupMembers lists the live processes of each process group of pgids, at most max per group, lowest pid first, each with its
+// command line (clipped). ok is false when /proc cannot be read (macOS, BSD): it lists nothing then.
+func groupMembers(pgids []int, max int) (members map[int][]Member, ok bool) {
+	ents, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil, false
+	}
+	want := make(map[int]bool, len(pgids))
+	for _, g := range pgids {
+		want[g] = true
+	}
+	members = map[int][]Member{}
+	for _, e := range ents {
+		name := e.Name()
+		if name == "" || name[0] < '0' || name[0] > '9' {
+			continue
+		}
+		b, err := os.ReadFile("/proc/" + name + "/stat")
+		if err != nil {
+			continue // exited while we were looking
+		}
+		ok = true
+		s := string(b)
+		i := strings.LastIndexByte(s, ')') // the command name may contain anything
+		if i < 0 || i+2 >= len(s) {
+			continue
+		}
+		f := strings.Fields(s[i+2:]) // state ppid pgrp ...
+		if len(f) < 3 || f[0] == "Z" || f[0] == "X" {
+			continue
+		}
+		g, err := strconv.Atoi(f[2])
+		if err != nil || !want[g] {
+			continue
+		}
+		pid, err := strconv.Atoi(name)
+		if err != nil {
+			continue
+		}
+		cmd := ""
+		if raw, err := os.ReadFile("/proc/" + name + "/cmdline"); err == nil {
+			cmd = strings.TrimSpace(strings.ReplaceAll(string(raw), "\x00", " "))
+		}
+		if cmd == "" { // a process that cleared its arguments: its name, from stat
+			if j := strings.IndexByte(s, '('); j >= 0 && j < i {
+				cmd = "[" + s[j+1:i] + "]"
+			}
+		}
+		members[g] = append(members[g], Member{PID: pid, Cmd: clip(tidyOutput(cmd), 200)})
+	}
+	for g, ms := range members {
+		sort.Slice(ms, func(a, b int) bool { return ms[a].PID < ms[b].PID })
+		if len(ms) > max {
+			members[g] = ms[:max]
+		}
+	}
+	return members, ok
 }
 
 // exitFrom translates Unix signal exits to 128+signal and preserves wait errors when no process

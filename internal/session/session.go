@@ -37,6 +37,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/harden"
 	"github.com/anemos-labs/sleipnir/internal/hooks"
 	"github.com/anemos-labs/sleipnir/internal/kv"
+	"github.com/anemos-labs/sleipnir/internal/machine"
 	"github.com/anemos-labs/sleipnir/internal/memory"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/plan"
@@ -106,7 +107,7 @@ type Options struct {
 	// AskTimeout is how long a question to the person waits for its answer before it is refused (perm.Config.AskTimeout); zero waits.
 	AskTimeout time.Duration
 	// ManagerAnswersAfter, when positive, overrides permissions.manager_answers_after: in a team, how long a worker's question waits
-	// for the person before the manager answers it for them (perm.Config.Fallback). ManagerAnswersUpTo, when set, overrides
+	// for the person before the manager answers it for them (perm.Config.Fallback). Negative is never, whatever the configuration says. ManagerAnswersUpTo, when set, overrides
 	// permissions.manager_answers_up_to: the most dangerous kind of question it may answer.
 	ManagerAnswersAfter time.Duration
 	ManagerAnswersUpTo  perm.Danger
@@ -287,9 +288,10 @@ type Session struct {
 	// team is the team the swarm was built with (Team).
 	team []TeamSlot
 
-	lastPerm         string // the permission state last written to the log (keepPermissions)
-	restoredMode     string // what a resumed session got back (restorePermissions)
-	unattendedBypass bool   // bypass was chosen because nobody can answer (Options.Unattended)
+	lastPerm         string     // the permission state last written to the log (keepPermissions)
+	permMu           sync.Mutex // held while keepPermissions reads the permission state and writes it to the log
+	restoredMode     string     // what a resumed session got back (restorePermissions)
+	unattendedBypass bool       // bypass was chosen because nobody can answer (Options.Unattended)
 	restoredRules    int
 	// modelRef is the provider/model the session runs on (empty when the provider was given as a value).
 	modelRef string
@@ -358,6 +360,8 @@ type Session struct {
 	hooks       *hooks.Runner
 	hookAdapter *hookAdapter
 	shell       *shell.Manager
+	// machine is the share of the computer the agents' commands and verification runs live in (resources configuration).
+	machine *machine.Budget
 
 	// refused are the commands that were refused for want of anyone to ask (permaudit.go), for the hint a run prints at its end.
 	refusedMu sync.Mutex
@@ -408,6 +412,9 @@ type Result struct {
 	// cost.Model.Plan): a summary shows CostUSD+ListUSD marked as the plan's. Budgets count CostUSD only.
 	ListUSD float64
 	Plan    bool
+	// Stopped is set when the message was a request to stop the team (StopRequest): the harness stopped the whole team instead of
+	// running the manager, and this is the line that says what it stopped.
+	Stopped string
 }
 
 // New builds a session.
@@ -660,7 +667,10 @@ func New(ctx context.Context, o Options) (*Session, error) {
 			}
 		}()
 	}
-	shOpts := shell.Options{BaseEnv: o.ShellEnv, Wrap: o.ShellWrap, Tmp: s.tmp}
+	// One share of the machine for every agent's commands and every verification run, shared through slot files with the
+	// other Sleipnir processes of the same state directory.
+	s.machine = machine.New(machineSettings(s.cfg.Resources), filepath.Join(stateRoot(o.Home), "run", "slots"))
+	shOpts := shell.Options{BaseEnv: o.ShellEnv, Wrap: o.ShellWrap, Tmp: s.tmp, Machine: s.machine}
 	if o.ShellEnv == nil {
 		// Programs a plugin needs that were located or found outside PATH (plugin.PrepareNeeds).
 		if bin := plugin.PrepareNeeds(stateRoot(o.Home), plugs); bin != "" {
@@ -703,6 +713,11 @@ func newID(t time.Time) string {
 }
 
 // stateRoot is where sessions are stored: $SLEIPNIR_HOME, else ~/.sleipnir.
+// machineSettings are the machine-share settings of the resources configuration.
+func machineSettings(r config.Resources) machine.Settings {
+	return machine.Settings{CPUs: r.CPUs, HeavySlots: r.HeavySlots, MemoryReserveMB: r.MemoryReserveMB, Priority: r.Priority, Unlimited: r.Unlimited}
+}
+
 func stateRoot(home string) string {
 	if v := os.Getenv("SLEIPNIR_HOME"); v != "" {
 		return v
@@ -863,7 +878,7 @@ func (s *Session) buildPerm() error {
 			roles[swarm.MailmanRoleName] = perm.RoleProfile{Mode: perm.ModePlan}
 		}
 	}
-	ask := append(append([]string(nil), protectedConfigDirs...), s.cfg.Permissions.Ask...)
+	ask := append(append(append([]string(nil), protectedConfigDirs...), linkedConfigDirs(o.Root, o.Home, o.TrustProject)...), s.cfg.Permissions.Ask...)
 	after, upTo, err := s.managerAnswers()
 	if err != nil {
 		return fmt.Errorf("permissions: %w", err)
@@ -878,6 +893,9 @@ func (s *Session) buildPerm() error {
 		return fmt.Errorf("permissions: %w", err)
 	}
 	s.Perm = e
+	if s.hooks != nil { // a PermissionRequest hook's condition is judged with the rules that made the engine ask
+		s.hooks.AskRules, s.hooks.Home = func() []string { return e.Rules(perm.Ask) }, o.Home
+	}
 	return nil
 }
 

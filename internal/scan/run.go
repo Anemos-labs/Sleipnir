@@ -6,6 +6,8 @@ import "strings"
 // file and every report made from it are the same bytes for the same history.
 type Run struct {
 	Slug string `json:"slug"`
+	// Name is what the scan reads, as a report's title gives it: the project's folder name.
+	Name string `json:"name,omitempty"`
 	// Commit is the commit the scan reads: every citation is checked against it, whatever the work tree holds later.
 	Commit  string `json:"commit"`
 	Depth   string `json:"depth"`
@@ -41,7 +43,8 @@ type Inventory struct {
 	// Functions are kept in functions.json, written once when the scan starts: they never change, and scan.json is written
 	// after every call.
 	Functions []Func `json:"-"`
-	// Skipped counts the tracked files left out (vendored, generated, binary, too large), by reason.
+	// Skipped counts the tracked files left out, by reason. Every file is scanned now (File.Kind), so it holds only files git
+	// could not read; a scan made before kept its counts of vendored, generated, binary and too large files here.
 	Skipped map[string]int `json:"skipped,omitempty"`
 }
 
@@ -50,6 +53,9 @@ type File struct {
 	Path  string `json:"path"`
 	Lang  string `json:"lang"`
 	Lines int    `json:"lines"`
+	// Kind is what the file is when it is not code a person wrote (KindVendored, KindBinary...), and Bytes its size.
+	Kind  string `json:"kind,omitempty"`
+	Bytes int    `json:"bytes,omitempty"`
 	// Test is a test file: scanned for what it reveals, but a lead whose trace is only in tests is test-only.
 	Test bool `json:"test,omitempty"`
 	// Funcs and Complexity sum the file's functions.
@@ -170,6 +176,8 @@ const (
 	LeadConfirmed = "confirmed" // the verifiers confirmed it, and it is proven where the depth asks for proof
 	LeadUnproven  = "unproven"  // confirmed, but the depth wants a reproduction and none reproduced it yet
 	LeadRejected  = "rejected"  // the verifiers rejected it
+	LeadDisputed  = "disputed"  // ruled on by more verifiers than the depth asks for without them agreeing: settled, reported apart
+	LeadDeferred  = "deferred"  // recorded past the scan's stopping point (Run.intake): kept and reported, never verified
 )
 
 // Rejection reasons.
@@ -183,8 +191,11 @@ type Lead struct {
 	Category string `json:"category"`
 	Claim    string `json:"claim"`
 	// Trace runs from the entry point to the sink, each step a checked cite.
-	Trace   []Step `json:"trace"`
-	Impact  string `json:"impact"`
+	Trace []Step `json:"trace"`
+	// CVSS is the filer's CVSS v3.1 base vector, in the form ParseCVSS gives; the severity is computed from its score. Impact is
+	// the level a lead filed before leads carried vectors gave instead.
+	CVSS    string `json:"cvss,omitempty"`
+	Impact  string `json:"impact,omitempty"`
 	Reach   string `json:"reach"`
 	Exploit string `json:"exploit"`
 	// Points are the attack-surface points the trace goes through.
@@ -197,6 +208,10 @@ type Lead struct {
 	Proofs   []Proof   `json:"proofs,omitempty"`
 	// Duplicate is the lead this one repeats, when a verifier rejected it as a duplicate.
 	Duplicate string `json:"duplicate,omitempty"`
+	// Late says the lead was filed after every shard was hunted, and Deferred why it is not verified when the scan's stopping
+	// rules held it back (Run.intake).
+	Late     bool   `json:"late,omitempty"`
+	Deferred string `json:"deferred,omitempty"`
 }
 
 // Step is one step of a trace.
@@ -205,8 +220,8 @@ type Step struct {
 	Note string `json:"note"`
 }
 
-// Verdict is one verifier's ruling on a lead. A verifier may correct the reachability or exploitability it found; the lead's
-// severity then uses the most cautious of the corrections.
+// Verdict is one verifier's ruling on a lead. A verifier may correct the reachability, the exploitability or the CVSS vector it
+// found; the lead's severity then uses the most cautious of the corrections (the lowest-scoring vector).
 type Verdict struct {
 	By      string `json:"by"`
 	Role    string `json:"role"`
@@ -215,6 +230,7 @@ type Verdict struct {
 	Note    string `json:"note"`
 	Reach   string `json:"reach,omitempty"`
 	Exploit string `json:"exploit,omitempty"`
+	CVSS    string `json:"cvss,omitempty"`
 	// Cites back the verifier's argument: a guard the filer missed, a caller that cannot pass the input.
 	Cites []Cite `json:"cites,omitempty"`
 }

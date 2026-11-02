@@ -27,14 +27,15 @@ func pidExists(pid int) bool {
 func procStart(pid int) int64 { return 0 }
 
 // configureCmd makes context cancellation kill the started process on this platform; no process
-// group is created.
-func configureCmd(cmd *exec.Cmd) {
+// group is created, and nothing is left to stop afterwards.
+func configureCmd(cmd *exec.Cmd) (stop func()) {
 	cmd.Cancel = func() error {
 		if cmd.Process == nil {
 			return nil
 		}
 		return cmd.Process.Kill()
 	}
+	return func() {}
 }
 
 // killGroup has no effect on platforms without workspace process-group termination support.

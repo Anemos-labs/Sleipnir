@@ -104,6 +104,10 @@ func FromFixture(ctx context.Context, dir string, opts FixtureOptions) (*rl.Task
 	if opts.RepoRoot == "" {
 		return nil, errors.New("fixture: RepoRoot is required")
 	}
+	// The ID names the directory replaced under RepoRoot: it must be a task ID before anything there is removed (".git" is not).
+	if !env.ValidTaskID(spec.ID) {
+		return nil, fmt.Errorf("fixture %q: not a valid task id", spec.ID)
+	}
 	start, err := readTree(filepath.Join(dir, "start"), opts.limits())
 	if err != nil {
 		return nil, fmt.Errorf("fixture %s: start/: %w", spec.ID, err)

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -126,10 +127,15 @@ func TestInventoryCountsWhatThePersonWrote(t *testing.T) {
 			t.Errorf("%s is not in the inventory: %v", p, inv.Files)
 		}
 	}
-	for _, p := range []string{"vendor/lib/x.go", "web/app.min.js", "assets/logo.png", "docs/README.md", "package-lock.json", "server/data/fixture.json"} {
-		if _, ok := got[p]; ok {
-			t.Errorf("%s should be left out", p)
+	// nothing is left out: what no person wrote is scanned too, marked by kind
+	for p, kind := range map[string]string{"vendor/lib/x.go": KindVendored, "web/app.min.js": KindGenerated, "assets/logo.png": KindBinary,
+		"docs/README.md": KindOther, "package-lock.json": KindGenerated, "server/data/fixture.json": KindData, "server/handler.go": ""} {
+		if f, ok := got[p]; !ok || f.Kind != kind {
+			t.Errorf("%s: kind %q (listed %v), want %q", p, f.Kind, ok, kind)
 		}
+	}
+	if got["vendor/lib/x.go"].Funcs != 0 || got["assets/logo.png"].Lines != 0 || got["assets/logo.png"].Bytes == 0 {
+		t.Errorf("vendored functions or binary lines counted: %+v %+v", got["vendor/lib/x.go"], got["assets/logo.png"])
 	}
 	if !got["server/handler_test.go"].Test || got["server/handler.go"].Test {
 		t.Error("test files are not told apart")
@@ -151,14 +157,14 @@ func TestInventoryCountsWhatThePersonWrote(t *testing.T) {
 	if f := fn["tools/util.py:parse"]; f.Line != 1 || f.End != 6 || f.Complexity != 5 {
 		t.Errorf("parse = %+v, want lines 1-6, complexity 5 (if, for, if, and)", f)
 	}
-	if inv.Skipped["vendored or built"] != 1 || inv.Skipped["generated"] != 2 {
+	if len(inv.Skipped) != 0 {
 		t.Errorf("skipped = %v", inv.Skipped)
 	}
 	focused, err := TakeInventory(context.Background(), repo, commit, "web")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(focused.Files) != 1 || focused.Files[0].Path != "web/app.js" {
+	if len(focused.Files) != 2 || focused.Files[0].Path != "web/app.js" || focused.Files[1].Path != "web/app.min.js" {
 		t.Errorf("a focus on web/ gave %v", focused.Files)
 	}
 }
@@ -389,13 +395,13 @@ func TestAScanFromMapToReport(t *testing.T) {
 	// the filer files with a trace; the harness computes the severity
 	lead := mustOK(t, tl, "hunter", map[string]any{"action": "lead", "title": "Command injection in /ping", "category": "command-injection",
 		"claim": "Anyone can run shell commands on the server by sending host=x;id to GET /ping.", "trace": pingTrace,
-		"impact": "critical", "reach": "external", "exploit": "trivial", "points": []string{"P1", "P2"}, "fix": "exec ping with host as its own argument, after validating it"})
+		"cvss": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "reach": "external", "exploit": "trivial", "points": []string{"P1", "P2"}, "fix": "exec ping with host as its own argument, after validating it"})
 	if !strings.HasPrefix(lead, "L1 filed") || !strings.Contains(lead, "severity critical") {
 		t.Fatalf("lead: %s", lead)
 	}
 	mustFail(t, tl, "hunter2", map[string]any{"action": "lead", "title": "Same thing", "category": "command-injection",
 		"claim": "Anyone can run shell commands on the server through the ping handler.", "trace": pingTrace[2:],
-		"impact": "critical", "reach": "external", "exploit": "trivial"}, "same category and sink")
+		"cvss": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "reach": "external", "exploit": "trivial"}, "same category and sink")
 	mustFail(t, tl, "hunter", map[string]any{"action": "verdict", "id": "L1", "confirm": true, "note": "I checked my own trace and it holds up fine"}, "is yours")
 	mustFail(t, tl, "v1", map[string]any{"action": "verdict", "id": "L1", "confirm": false, "reason": "mitigated", "note": "there is a check somewhere upstream of this"}, "cites the guard")
 	out = mustOK(t, tl, "v1", map[string]any{"action": "verdict", "id": "L1", "confirm": true, "note": "routes.go registers /ping with no middleware; host flows into sh -c unescaped"})
@@ -434,7 +440,7 @@ func TestAScanFromMapToReport(t *testing.T) {
 	r, _ = st.Snapshot("")
 	dir := RunDir(st.Root(), r.Slug)
 	md, _ := os.ReadFile(filepath.Join(dir, ReportFile))
-	for _, want := range []string{"## Findings (1)", "L1 · CRITICAL · Command injection in /ping", "`server/handler.go:15`", "GET /ping", "Entry points (1)"} {
+	for _, want := range []string{"## Findings", "### L1 · Command injection in /ping", "| **Critical 9.8** | Confirmed, reproduced |", "`server/handler.go:15`", "| Entry points | 1 |"} {
 		if !strings.Contains(string(md), want) {
 			t.Errorf("REPORT.md lacks %q:\n%s", want, md)
 		}
@@ -486,7 +492,8 @@ func TestAScanFromMapToReport(t *testing.T) {
 	}
 	// the exports: one CSV row per lead, a page that escapes what the agents wrote
 	rows, err := csv.NewReader(strings.NewReader(string(CSV(r)))).ReadAll()
-	if err != nil || len(rows) != 2 || rows[0][0] != "id" || rows[1][0] != "L1" || rows[1][2] != "critical" || rows[1][8] != "server/handler.go" {
+	if err != nil || len(rows) != 2 || rows[0][0] != "id" || rows[1][0] != "L1" || rows[1][2] != "critical" || rows[1][8] != "server/handler.go" ||
+		rows[1][len(rows[1])-2] != "9.8" || rows[1][len(rows[1])-1] != "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H" {
 		t.Fatalf("findings.csv: %v %q", err, rows)
 	}
 	page := HTML(r)
@@ -507,19 +514,19 @@ func TestAScanFromMapToReport(t *testing.T) {
 func TestOnlyTheFilerAmendsALeadAndOnlyBeforeAVerdict(t *testing.T) {
 	tl, _ := harness(t, "survey")
 	mustOK(t, tl, "hunter", map[string]any{"action": "lead", "title": "XSS in render", "category": "xss",
-		"claim":  "A name with markup is written into innerHTML, so a crafted name runs script in the page.",
-		"trace":  []map[string]any{{"file": "web/app.js", "line": 3, "quote": `el.innerHTML = "<b>" + name + "</b>";`, "note": "name goes into innerHTML"}},
-		"impact": "medium", "reach": "external", "exploit": "moderate"})
-	mustFail(t, tl, "other", map[string]any{"action": "lead", "id": "L1", "impact": "high"}, "only the filer")
-	out := mustOK(t, tl, "hunter", map[string]any{"action": "lead", "id": "L1", "reach": "internal"})
-	if !strings.Contains(out, "L1 amended") || !strings.Contains(out, "severity low") {
+		"claim": "A name with markup is written into innerHTML, so a crafted name runs script in the page.",
+		"trace": []map[string]any{{"file": "web/app.js", "line": 3, "quote": `el.innerHTML = "<b>" + name + "</b>";`, "note": "name goes into innerHTML"}},
+		"cvss":  "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "reach": "external", "exploit": "moderate"})
+	mustFail(t, tl, "other", map[string]any{"action": "lead", "id": "L1", "cvss": "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}, "only the filer")
+	out := mustOK(t, tl, "hunter", map[string]any{"action": "lead", "id": "L1", "reach": "internal", "cvss": "av:n/ac:l/pr:h/ui:r/s:c/c:l/i:l/a:n"})
+	if !strings.Contains(out, "L1 amended") || !strings.Contains(out, "severity medium (CVSS 4.8, CVSS:3.1/AV:N/AC:L/PR:H/UI:R/S:C/C:L/I:L/A:N") {
 		t.Fatalf("amend: %s", out)
 	}
 	out = mustOK(t, tl, "v", map[string]any{"action": "verdict", "id": "L1", "confirm": true, "note": "render is called with the user's display name, unescaped"})
 	if !strings.Contains(out, "now confirmed") {
 		t.Fatalf("survey depth needs one verifier and no proof: %s", out)
 	}
-	mustFail(t, tl, "hunter", map[string]any{"action": "lead", "id": "L1", "impact": "high"}, "has verdicts")
+	mustFail(t, tl, "hunter", map[string]any{"action": "lead", "id": "L1", "cvss": "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}, "has verdicts")
 }
 
 func TestProveRunsInACopyAndJudgesByTheMarkers(t *testing.T) {
@@ -574,6 +581,49 @@ if [ -f marker.txt ]; then echo ` + MarkerReproduced + `; fi
 	}
 	if _, err := os.Stat(filepath.Join(root, "marker.txt")); !os.IsNotExist(err) {
 		t.Error("the reproducer wrote into the project")
+	}
+	// the copy is gone; the report writes the reproduction into the scan's proofs directory, self-contained and without
+	// agent names, so it can be shared
+	r.Leads = append(r.Leads, Lead{ID: "L1", Title: "Command injection | in ping", Category: "injection", Claim: "host reaches the shell",
+		Trace: []Step{{Cite: Cite{File: "server/handler.go", Line: 3}, Note: "host goes to sh -c"}}, By: "hunter-7"})
+	pr.By = "prover-9"
+	// a run that did not reproduce is not a proof: it stays in the ledger, not in proofs/
+	r.Leads[0].Proofs = append(r.Leads[0].Proofs, Proof{By: "prover-9", Script: "true", Outcome: ProofInconclusive, Exit: 1}, pr)
+	for i := range r.DepthInfo().Verifiers {
+		r.Leads[0].Verdicts = append(r.Leads[0].Verdicts, Verdict{By: "verifier-" + strconv.Itoa(i), Role: RoleVerifier, Confirm: true, Note: "holds"})
+	}
+	r.Leads[0].Verdicts = append(r.Leads[0].Verdicts, Verdict{By: "defender-1", Role: RoleDefender, Confirm: true, Note: "no guard"})
+	if err := WriteReport(root, r); err != nil {
+		t.Fatal(err)
+	}
+	ev := filepath.Join(RunDir(root, r.Slug), filepath.FromSlash(ProofDir("L1", 1)))
+	if b, err := os.ReadFile(filepath.Join(ev, ProofScriptOut)); err != nil || string(b) != good {
+		t.Errorf("script not kept: %q %v", b, err)
+	}
+	if b, err := os.ReadFile(filepath.Join(ev, ProofOutput)); err != nil || !strings.Contains(string(b), MarkerReproduced) {
+		t.Errorf("output not kept: %q %v", b, err)
+	}
+	if b, err := os.ReadFile(filepath.Join(ev, ProofReadme)); err != nil || !strings.Contains(string(b), r.Commit) ||
+		!strings.Contains(string(b), "server/handler.go:3") || !strings.Contains(string(b), "independent") {
+		t.Errorf("readme: %s %v", b, err)
+	}
+	var rec struct{ Lead, Commit, Outcome string }
+	b, err := os.ReadFile(filepath.Join(ev, ProofRecord))
+	if err != nil || json.Unmarshal(b, &rec) != nil || rec.Lead != "L1" || rec.Commit != r.Commit || rec.Outcome != ProofReproduced {
+		t.Errorf("record: %s %v", b, err)
+	}
+	if strings.Contains(string(b), "prover-9") || strings.Contains(string(b), "hunter-7") {
+		t.Errorf("the record names an agent: %s", b)
+	}
+	if idx, err := os.ReadFile(filepath.Join(RunDir(root, r.Slug), ProofsDir, ProofReadme)); err != nil ||
+		!strings.Contains(string(idx), "(l1-1/README.md)") || !strings.Contains(string(idx), `Command injection \| in ping`) {
+		t.Errorf("index: %s %v", idx, err)
+	}
+	if md, _ := os.ReadFile(filepath.Join(RunDir(root, r.Slug), ReportFile)); !strings.Contains(string(md), "(proofs/l1-1/README.md)") {
+		t.Error("the report does not link the proof")
+	}
+	if es, err := os.ReadDir(filepath.Join(RunDir(root, r.Slug), ProofsDir)); err != nil || len(es) != 2 {
+		t.Errorf("proofs dir holds %d entries (%v), want the index and the proof", len(es), err)
 	}
 	notRepro := "echo " + MarkerExercised + " >/dev/null; grep -q host server/handler.go && echo " + MarkerExercised + "\nif false; then echo " + MarkerReproduced + "; fi\n"
 	if pr, err := p.Prove(ctx, root, r, "L1", "prover", notRepro, time.Minute); err != nil || pr.Outcome != ProofNotReproduce {
@@ -761,8 +811,8 @@ func TestAReviewCoversWhatTheChangeWrote(t *testing.T) {
 	}
 	tl := NewTool(st, func(c string) Code { return CodeAt(repo, c) })
 	lead := map[string]any{"action": "lead", "title": "Command injection in Ping", "category": "command-injection",
-		"claim":  "Anyone can run shell commands on the server by sending host=x;id to the ping handler.",
-		"impact": "critical", "reach": "external", "exploit": "trivial"}
+		"claim": "Anyone can run shell commands on the server by sending host=x;id to the ping handler.",
+		"cvss":  "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "reach": "external", "exploit": "trivial"}
 	lead["trace"] = []map[string]any{{"file": "server/handler.go", "line": 1, "quote": "package server", "note": "the package, untouched by the change"}}
 	mustFail(t, tl, "hunter", lead, "a line the change added or modified")
 	lead["trace"] = []map[string]any{
@@ -808,5 +858,52 @@ func TestHeuristicFunctionsAreBounded(t *testing.T) {
 	}
 	if got := heuristicFunctions("ruby", "b.rb", []byte("def a\n  if x\n  end\nend\ndef b\nend\n")); len(got) != 2 {
 		t.Fatalf("functions: %+v", got)
+	}
+}
+
+func TestNothingTrackedIsLeftOutOfTheShards(t *testing.T) {
+	inv := Inventory{Files: []File{
+		{Path: "app/main.go", Lang: "go", Lines: 400, Funcs: 20},
+		{Path: "bin/tool", Lang: KindBinary, Kind: KindBinary, Bytes: 5 << 20},
+		{Path: "bin/tool2", Lang: KindBinary, Kind: KindBinary, Bytes: 5 << 20},
+		{Path: "data/huge.sql", Lang: "sql", Kind: KindLarge, Bytes: 100 << 20},
+		{Path: "lib", Lang: KindSubmodule, Kind: KindSubmodule},
+		{Path: "vendor/x/x.go", Lang: "go", Kind: KindVendored, Lines: 4000},
+	}}
+	shards := MakeShards(inv, Depth{ShardFuncs: 1000, ShardLines: 2000})
+	n := 0
+	for _, s := range shards {
+		n += len(s.Files)
+		if s.Lines > 2000 {
+			t.Errorf("%s weighs %d lines", s.ID, s.Lines)
+		}
+		for _, f := range s.Files {
+			if f == "bin/tool" && s.Lines == 0 {
+				t.Errorf("a binary weighs nothing in %s", s.ID)
+			}
+		}
+	}
+	if n != len(inv.Files) {
+		t.Errorf("shards hold %d of %d files", n, len(inv.Files))
+	}
+	for p, want := range map[string]string{"site/index.html": KindOther, "web/big.js": KindLarge, "Dockerfile": "", ".env": "", "dist/a.js": KindVendored} {
+		size := 10
+		if p == "web/big.js" {
+			size = 2 << 20
+		}
+		if _, kind := classify(p, size); kind != want {
+			t.Errorf("classify(%s) = %q, want %q", p, kind, want)
+		}
+	}
+}
+
+func TestABinaryIsQuotedByAStringItHolds(t *testing.T) {
+	code := fakeCode{"bin/agent": "\x7fELF\x00\x01\x02garbage\x00build-id=opaque-test-value-42\x00\x03more\n\x00tail"}
+	if _, _, err := CheckCite(context.Background(), code, Cite{File: "bin/agent", Line: 1, Quote: "build-id=opaque-test-value-42"}); err != nil {
+		t.Fatalf("a string the binary holds: %v", err)
+	}
+	if _, _, err := CheckCite(context.Background(), code, Cite{File: "bin/agent", Line: 1, Quote: "not in the binary at all"}); err == nil ||
+		!strings.Contains(err.Error(), "as strings prints it") {
+		t.Fatalf("a quote that is not there: %v", err)
 	}
 }

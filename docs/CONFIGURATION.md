@@ -139,6 +139,7 @@ Settings that could send your API key to another host, run commands or widen wha
 | `providers.<name>.options` | provider-specific behaviour, may hold URLs |
 | `providers.<name>.auth`, `.dialect` | choose which credential is sent and how; a ChatGPT sign-in is never sent on a project's choice, trusted or not |
 | `providers.<name>.allow_hosts`, `.allow_insecure_http` | say where your key may go: dropped from **every** project layer, trusted or not (section 6) |
+| `resources.*` | how much of your machine the agents' commands may take: dropped from **every** project layer, trusted or not (section 6) |
 | `permissions.mode` | `bypass` and `yolo` turn off the prompts |
 | `permissions.allow` | pre-approves actions |
 | `permissions.roles.<role>.mode`, `.allow` | the same, per role |
@@ -262,7 +263,7 @@ configured provider: from then on a bare marketplace id such as `deepseek/deepse
 
 | Key | Type | Default | Applied | Meaning |
 |---|---|---|---|---|
-| `default` | string | none | yes | `provider/model` used when neither `--model` nor `SLEIPNIR_MODEL` is given. It must contain a `/`; a bare id such as `gpt-5` is a validation error here (it is fine after `--model`) |
+| `default` | string | none | yes | `provider/model` used when neither `--model` nor `SLEIPNIR_MODEL` is given. It must contain a `/`; a bare id such as `gpt-5` is a validation error here (it is fine after `--model`). A model chosen for a running session (`/model` in the chat, Use on the web page's Models) lasts as long as that session; `sleipnir models default provider/model` and Default on the Models page write it here in your user file, and `sleipnir models default` alone shows the value a start reads and the file or variable it comes from |
 | `roles` | object | none | yes | Role name to `provider/model` for swarm roles (`manager`, `worker`-style roles, your own definitions, `mailman`). Lowest priority: `--role-model role=provider/model` and `model:` in an agent definition (`docs/EXTENDING.md`) come first. An entry for a role a session does not have is not an error: one file may serve projects with different roles. The role `compactor` is not an agent: it names the model that writes the compaction summaries for every agent (`qwen/qwen3.8-flash-next` is a cheap choice). It shares no cache with the agent, so it reads the thread at full input price, and it is used only while the thread fits three quarters of its context window; past that, and when no `compactor` is set, each agent compacts on its own model and its own cache. A compactor that writes 5 of its last 8 patches in a form that cannot be used (JSON that does not parse, a tool call in place of the patch) is benched for the session: every agent compacts on its own model, the compactor is asked again every 10th compaction, and it writes the summaries again once 3 of those probes in a row were usable. The chat and the log say when it is benched and when it is back. The role `judge` is not an agent either: it names the model that judges a standing goal (`/goal`). Without it the session's model judges; with it, when its model differs from the session's, a "done" from the judge is confirmed by a second judgment on the session's model, the goal is met only when both find it met, and the `goal.judge` record names the judge's model and the confirmation's verdict. The roles `embedder` and `reranker` are not agents: `embedder` optionally names an embeddings model (an OpenAI-compatible `POST /embeddings` on its provider) with which the lesson memory of standing goals, saved in `~/.sleipnir/lessons.json` (docs/UX.md), finds lessons by meaning as well as by keyword; `reranker` optionally names a model behind `POST /rerank` that orders what was found. Their costs, as their endpoints report them, count with the judge's. `--no-memory` turns both off for a session. In the chat, `/roles` shows what each role runs on, and `/roles ` opens a menu of the roles and then, after the `=` of one, of the models (the chat restarts with the choice) |
 | `favorites` | list | none | yes | `provider/model` references that `sleipnir models` lists first, marked `*` (`sleipnir models fav add REF`, `rm`, `list` edit it in your user config) |
 
@@ -423,6 +424,51 @@ from https down to http) is a request of its own: it is decided by the same rule
 when nobody can be asked. A redirect that stays on the site (adding `www.`, an upgrade to https, another path) is not asked
 about, but a deny rule that covers it refuses it.
 
+### `resources`
+
+A team of agents runs many commands at once, and the compilers, test runners and bundlers they call each size
+themselves for a machine of their own: one worker per core and whatever memory they find. Eight agents building at once
+ask for eight times the machine. `resources` keeps every agent's commands, and those of every other Sleipnir process
+that uses the same state directory (`~/.sleipnir`, or `$SLEIPNIR_HOME`), inside one share of the computer, so the person
+using it keeps a machine that answers:
+
+- **Heavy commands take turns.** A foreground `bash` command that runs a build, a test suite, an install or a bundler
+  (`go test`, `cargo build`, `npm ci`, `npm run build`, `npx vitest`, `pytest`, `make`, `./scripts/test.sh`, ... a
+  lexical guess that errs towards light; a command that runs a program rather than builds one, such as `go run`,
+  `cargo run`, `dotnet run` or `docker compose up`, is light, while `docker compose build` is heavy) and every verification run (`swarm` done checks and the integration queue)
+  takes one of `heavy_slots` slots before it starts. The slots are files under `<state>/run/slots/` locked by the
+  operating system: a slot whose holder died is free again at once. A command that waits says so live
+  (`[sleipnir: waiting for a free slot: ...]`) and in its result (`[waited 42s before starting: ...]`); the wait is not
+  part of its timeout. Background jobs (`run_in_background`) take no slot: they are servers more often than builds.
+- **Commands are told how many workers to start.** `SLEIPNIR_JOBS`, `CARGO_BUILD_JOBS`, `CMAKE_BUILD_PARALLEL_LEVEL`,
+  `GOMAXPROCS`, `GOFLAGS=-p=N`, `PYTEST_XDIST_AUTO_NUM_WORKERS`, `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`,
+  `MKL_NUM_THREADS`, `RAYON_NUM_THREADS`, `VITEST_MAX_THREADS`, `VITEST_MAX_FORKS`, `UV_CONCURRENT_BUILDS` and
+  `BUNDLE_JOBS` are set to `cpus / heavy_slots` unless the environment sets them already. `MAKEFLAGS` is left alone (a
+  `-j` there would run a serial Makefile in parallel); the runtime context asks agents to pass `$SLEIPNIR_JOBS` to tools
+  that only take a flag (`make -j`, `ninja -j`, `playwright --workers`, `jest --maxWorkers`).
+- **Commands run at low priority.** Nice 10 and the lowest best-effort I/O priority on Linux (inherited by everything
+  the command starts, from its first instruction), nice 10 on other Unix systems, the below-normal priority class on
+  Windows (verification runs on Windows keep the normal one).
+- **Memory is guarded** (Linux, where `/proc/meminfo` and the cgroup's `memory.max` are read). A heavy command waits, at
+  most two minutes, while free memory is below `memory_reserve_mb`. When free memory falls below half of it, the
+  agents' command (or background job, or process a finished command left running) whose processes hold the most
+  resident memory, at least 64 MiB, is stopped, one at a time with a pause of five seconds; its result says why
+  (`[stopped by Sleipnir: the machine was running out of memory ...]`) and a job's status reads
+  `killed (the machine was running out of memory)`.
+
+| Key | Type | Default | Applied | Meaning |
+|---|---|---|---|---|
+| `cpus` | integer | all but a quarter of the cores, at least two left free | at start | Cores the agents' commands may use together. The cores are those the harness may run on, within its cgroup's CPU limit |
+| `heavy_slots` | integer | `cpus / 4`, at least 1 | at start | Builds, test runs, installs and verification runs at once on the machine |
+| `memory_reserve_mb` | integer | 15% of the memory, between 1024 and 8192, at most half of it | at start | Memory kept free for the rest of the machine (MiB) |
+| `priority` | `"low"` or `"normal"` | `"low"` | at start | Scheduling and I/O priority of the agents' commands |
+| `unlimited` | boolean | `false` | at start | Turns every limit above off |
+
+On a 24-core machine with 32 GiB the defaults are 18 CPUs, 4 slots of 4 workers and 4.8 GiB kept free; on an 8-core
+laptop, 6 CPUs and one slot of 6 workers. Only your user file sets `resources`: a project file's is dropped, trusted or
+not, and `SLEIPNIR_RESOURCES_CPUS` and the like work as for every section. A command run inside a container sandbox
+(`--sandbox`) takes its slot and its worker counts, but its priority is the container's.
+
 ### Recording and training data
 
 There is no section for them. Every session writes its event log and blobs to `<state>/sessions/<id>/` (`events.jsonl`,
@@ -539,7 +585,7 @@ of what steps 4 and 5 would decide; see `docs/SECURITY.md`.
 | `default` | Reads inside the workspace and read-only shell commands are allowed; everything else asks. A read-only git command asks too in a repository whose own configuration names a program git would run (`core.fsmonitor`, a filter, a diff driver, a gpg program, or an include) |
 | `accept-edits` | Also writes inside the workspace (file tools, redirections, `mkdir`, `touch`, `cp`, `mv`, `rm`, `rmdir`, `tee` on workspace paths) and the commands that build, check and test a project, a Python virtual environment of the workspace included (`go test`, `npm test`, `cargo build`, `pytest`, `make test`, `.venv/bin/pip install`… the `--allow tests` list), and reads of public websites with `web_fetch` and `web_search` (a host on this machine, the local network or a cloud metadata service still asks; the host is judged without DNS, see SECURITY.md); `ask` and `deny` rules still win |
 | `plan` | Read-only. Writes, network access and commands that are not provably read-only are refused with a message that says to present a plan. An `allow` rule still carves an exception (say `Edit(docs/plan.md)`) |
-| `bypass` | Full control, and it never asks: what would have been a question is refused with the reason it was flagged and a request to do it a safer way. That is the very dangerous (the high-risk class: `sudo`, a recursive delete of the workspace, home or `/`, or of a path only known when the command runs such as `rm -rf "$DIR"`, a forced push to a shared branch, disk tools, shutdown, and persistence: a write to a shell startup file, a user service or login item, `~/.local/bin`, `~/.gitconfig` or a package index configuration, a cron or `at` job, `systemctl enable`, a global git setting that runs a program, a command that prints a stored credential such as `gh auth token`; see SECURITY.md) and the paths an `ask` rule names (the built-in ones guard `.sleipnir/`, `.claude/` and git hooks, whose contents steer later sessions). Hard denies, `deny` rules and guarded paths without an `allow` rule refuse as always. A file whose name is only known when the command runs is allowed, or refused when a `deny` rule may cover it; it never asks (`cat "$F"`; see SECURITY.md) |
+| `bypass` | Full control, and it never asks: what would have been a question is refused with the reason it was flagged and a request to do it a safer way. That is the very dangerous (the high-risk class: `sudo`, a recursive delete of the workspace, home or `/`, or of a path only known when the command runs such as `rm -rf "$DIR"`, a forced push to a shared branch, disk tools, shutdown, and persistence: a write to a shell startup file, a user service or login item, `~/.local/bin`, `~/.gitconfig` or a package index configuration, a cron or `at` job, `systemctl enable`, a global git setting that runs a program, a command that prints a stored credential such as `gh auth token`; see SECURITY.md) and the paths an `ask` rule names (the built-in ones guard `.sleipnir/`, `.claude/`, `.agents/skills/` and git hooks, whose contents steer later sessions). Hard denies, `deny` rules and guarded paths without an `allow` rule refuse as always. A file whose name is only known when the command runs is allowed, or refused when a `deny` rule may cover it; it never asks (`cat "$F"`; see SECURITY.md) |
 | `yolo` | Never asks anything, for runs with nobody there: what `bypass` allows, and the high-risk class too. Hard denies, `deny` rules and guarded paths still refuse, and so does a rule that would have asked (an `ask` rule): refusing is not a question. For sandboxes. `--continue` never brings `bypass` or `yolo` back |
 
 Switch a running chat with `/mode <m>` or `/plan`. `/plan <prompt>` also submits

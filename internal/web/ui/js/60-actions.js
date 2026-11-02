@@ -140,7 +140,18 @@
   /** What Stop the run says: the goal is named only when one was running. */
   SL.stopText = S => 'stopped' + (goalRuns(S) ? ': the goal is paused' : '');
   /** What the Stop the run confirmation says will happen. */
-  SL.stopAsk = S => 'Every agent is interrupted' + (goalRuns(S) ? ' and the goal is paused' : '') + '.';
+  SL.stopAsk = S => (isTeam(S) ? 'Every agent stops, the manager included, the open tasks are canceled, and nothing starts until you write again' : 'Its turn is interrupted') + (goalRuns(S) ? '; the goal is paused' : '') + '.';
+  /** Is S a team (a manager with workers, or slots for them)? */
+  const isTeam = S => !!(S && ((S.meta && S.meta.swarm > 0) || (S.roster && S.roster.length > 1)));
+  /** Stop the run of S (POST /stop): a team stops as a whole, whether or not its manager has a turn running (the workers of an idle
+   *  manager are a run too): every worker, the manager's turn and the open tasks, and nothing starts until the person writes again.
+   *  The server's line says what was stopped; it is toasted. A single agent's turn is interrupted. */
+  act('stopAll', sid => {
+    const S = ses(sid); if (!S) return { ok: false };
+    if (S.replay) return { ok: false, why: 'go live first: a replay never changes the session' };
+    if (why(S)) return refuse(S);
+    return send(whenStarted(() => api().post(tab(S) + '/stop')), d => toast(String((d && d.line) || SL.stopText(S)), 'warm'), r => { if (r && r.code === 'idle') { toast(r.message || 'nothing was running', 'warm'); return true; } return false; });
+  });
   /** Interrupt the running turn (Esc): the manager's turn stops, the workers with it, and the goal is paused. The person talks to the manager only, so no single worker can be interrupted. */
   act('interrupt', (target, sid) => {
     const S = ses(sid); if (!S) return { ok: false };
@@ -155,6 +166,15 @@
     if (agent !== 'mgr') return { ok: false, why: 'you talk to the manager only: tell it, and it tells the worker' };
     if (why(S)) return refuse(S);
     return send(api().post(tab(S) + '/steer', { text }));
+  });
+  /** Stop a worker that is stuck (`/agents stop ID`): its run ends, its task goes back to todo and the manager is told. The server's
+   *  line says what happened (or why nothing could be stopped); it is toasted. The manager's own turn is interrupted instead. */
+  act('stopAgent', (agent, sid) => {
+    const S = ses(sid); if (!S) return { ok: false }; agent = String(agent || '');
+    if (!agent || agent === 'mgr') return { ok: false, why: 'the manager is not stopped this way: interrupt its turn (Esc, or Stop)' };
+    if (S.replay) return { ok: false, why: 'go live first: a replay never changes the session' };
+    if (why(S)) return refuse(S);
+    return send(whenStarted(() => api().post(tab(S) + '/command', { line: '/agents stop ' + agent })), d => { const out = String((d && d.output) || '').trim(); if (out) toast(out, /^agents:/.test(out) ? 'warm' : 'ok'); });
   });
   /** A line that waits for the turn (meta.queued) is taken out of the queue; the answer carries its whole text, which an edit puts back
    *  in the composer. A line still on its way to the server has no id yet. */
@@ -202,7 +222,7 @@
     const busy = SL.calc.turnRunning(S.wm) || S.meta.running === true, local = busy ? { id: '', text: display, local: true } : null;
     if (local) { S.ui.queued.push(local); S.touch(); }
     const body = { text: full, clientId: api().cid() }; if (opt && opt.autoFix) body.autoFix = true; if (opt && opt.autoMerge) body.autoMerge = true; if (full !== display) body.display = display;
-    return send(whenStarted(() => api().post(tab(S) + '/messages', body)), res => { if (local && !(res && res.queued)) { const i = S.ui.queued.indexOf(local); if (i >= 0) { S.ui.queued.splice(i, 1); S.touch(); } } },
+    return send(whenStarted(() => api().post(tab(S) + '/messages', body)), res => { if (res && res.stopped) toast(String(res.stopped), 'warm'); /* the message asked the team to stop: the harness stopped it */ if (local && !(res && res.queued)) { const i = S.ui.queued.indexOf(local); if (i >= 0) { S.ui.queued.splice(i, 1); S.touch(); } } },
       () => { if (local) { const i = S.ui.queued.indexOf(local); if (i >= 0) { S.ui.queued.splice(i, 1); S.touch(); } } return false; });
   });
   /** A slash line the page has no handler for (custom commands, skills, MCP prompts, /mcp reconnect): the server runs it. */
@@ -291,6 +311,8 @@
     const on = !G.favs.has(ref); if (on) G.favs.add(ref); else G.favs.delete(ref); const m = D.model(ref); if (m) m.fav = on; G.ver++; SL.bus.emit('models-changed');
     return send(api().post('/api/models/fav', { ref, on }), null, () => { if (on) G.favs.delete(ref); else G.favs.add(ref); if (m) m.fav = !on; G.ver++; SL.bus.emit('models-changed'); return false; });
   });
+  /** keep ref as the default model of role in the user's configuration (models.default, or models.roles.ROLE): every later start reads it */
+  act('saveDefaultModel', (ref, role) => send(api().post('/api/models/default', { ref, role: role || 'default' }), () => { if (SL.data) SL.data.load('models', { force: true }); }));
   act('trustDir', (dir, on) => {
     const after = () => { if (SL.data) { SL.data.load('trust', { force: true }); SL.data.load('projects', { force: true }); } };
     if (!on) return send(api().post('/api/trust', { dir, on: false }), after);

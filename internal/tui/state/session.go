@@ -606,10 +606,13 @@ func (s *State) dropAllAsks() {
 // wake (n, note), the bound on wakes, a worker whose mail no longer wakes the manager, and a shutdown with agents still running.
 func (s *State) onSupervision(e events.Event, t time.Time) {
 	var p struct {
-		Reason     string `json:"reason"`
-		Unfinished string `json:"unfinished"`
-		Note       string `json:"note"`
-		N          int    `json:"n"`
+		Reason     string   `json:"reason"`
+		Unfinished string   `json:"unfinished"`
+		Note       string   `json:"note"`
+		N          int      `json:"n"`
+		Phase      string   `json:"phase"`
+		Workers    []string `json:"workers"`
+		Canceled   []string `json:"canceled"`
 	}
 	if !s.decode(e.Data, maxPayload, &p) {
 		return
@@ -633,6 +636,15 @@ func (s *State) onSupervision(e events.Event, t time.Time) {
 	case events.TypeSwarmWakeLimit:
 		sup.WakeLimits++
 		s.line(e.Seq, t, e.Agent, FeedNote, GlyphWarn, "peer mail no longer wakes "+clip(e.Agent, textID), "")
+	case events.TypeSwarmStop:
+		if p.Phase == "lifted" {
+			s.line(e.Seq, t, "", FeedNote, GlyphInfo, "the stop is lifted: you wrote again", "")
+			return
+		}
+		sup.Stops++
+		detail := strconv.Itoa(len(p.Workers)) + " " + stopNoun(len(p.Workers), "worker") + " stopped, " +
+			strconv.Itoa(len(p.Canceled)) + " open " + stopNoun(len(p.Canceled), "task") + " canceled"
+		s.line(e.Seq, t, "", FeedNote, GlyphWarn, "you stopped the team: nothing starts until you write again", detail)
 	default:
 		s.line(e.Seq, t, "", FeedNote, GlyphWarn, "the swarm shut down with agents still running", "")
 	}
@@ -640,3 +652,11 @@ func (s *State) onSupervision(e events.Event, t time.Time) {
 
 // fmtRate writes a request rate as a whole number.
 func fmtRate(r float64) string { return strconv.FormatFloat(math.Round(r), 'f', 0, 64) }
+
+// stopNoun is noun, with an s unless n is 1.
+func stopNoun(n int, noun string) string {
+	if n == 1 {
+		return noun
+	}
+	return noun + "s"
+}

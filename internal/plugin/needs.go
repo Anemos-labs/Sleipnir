@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/mcp"
 )
 
 // Needs: the programs and tool servers outside Sleipnir that a plugin uses
@@ -435,8 +436,8 @@ func configuredServers(home string) map[string]string {
 	}
 	for name, s := range doc.MCP {
 		out[name] = s.Command
-		if s.Command == "" {
-			out[name] = s.URL
+		if s.Command == "" { // a remote server's path and query can hold its token: what is shown is scheme and host
+			out[name] = mcp.ServerConfig{URL: s.URL}.Redacted().URL
 		}
 	}
 	return out

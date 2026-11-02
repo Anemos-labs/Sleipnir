@@ -7,6 +7,7 @@ package swarm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -39,20 +40,20 @@ func TestSameFileConflictIsSentBackAndResolved(t *testing.T) {
 	var r *isoRig
 	sc := script{
 		"be-1": {
-			act(writeCall("shared.txt", "line one\nline two by be-1\nline three\n")),
+			act(writeCall("shared.txt", "line one\nline two by the backend\nline three\n")),
 			func(*rvCall) rvReply { // finish after fe-1 has written too
 				poll(10*time.Second, func() bool { return r.cwd("fe-1") != "" })
 				return rvReply{Tools: []rvToolCall{doneCall("T1", "changed line two")}}
 			},
 		},
 		"fe-1": {
-			act(writeCall("shared.txt", "line one\nline two by fe-1\nline three\n")),
+			act(writeCall("shared.txt", "line one\nline two by the frontend\nline three\n")),
 			func(*rvCall) rvReply { // finish second: be-1's task is merged and in review
 				poll(10*time.Second, func() bool { return r.task("T1").Status == StatusReview })
 				return rvReply{Tools: []rvToolCall{doneCall("T2", "changed line two")}}
 			},
 			act(catCall("shared.txt")), // the conflict came back as the result of done
-			act(writeCall("shared.txt", "line one\nline two by be-1 and fe-1\nline three\n")),
+			act(writeCall("shared.txt", "line one\nline two by both\nline three\n")),
 			act(doneCall("T2", "resolved together with be-1")),
 		},
 	}
@@ -76,7 +77,7 @@ func TestSameFileConflictIsSentBackAndResolved(t *testing.T) {
 			t.Fatalf("fe-1 was never told %q", want)
 		}
 	}
-	if got := r.sawText("fe-1", "shared.txt"); !strings.Contains(got, "<<<<<<<") || !strings.Contains(got, "line two by be-1") || !strings.Contains(got, "line two by fe-1") {
+	if got := r.sawText("fe-1", "shared.txt"); !strings.Contains(got, "<<<<<<<") || !strings.Contains(got, "line two by the backend") || !strings.Contains(got, "line two by the frontend") {
 		t.Fatalf("fe-1's tree should hold both versions in conflict markers after the bounce:\n%s", got)
 	}
 	// Advisory only: two writers on one file raised an alert that names the agents and
@@ -94,7 +95,7 @@ func TestSameFileConflictIsSentBackAndResolved(t *testing.T) {
 	if !rep.Applied {
 		t.Fatalf("report %+v", rep)
 	}
-	if got := readText(t, r.repo+"/shared.txt"); got != "line one\nline two by be-1 and fe-1\nline three\n" {
+	if got := readText(t, r.repo+"/shared.txt"); got != "line one\nline two by both\nline three\n" {
 		t.Fatalf("the user's checkout has %q", got)
 	}
 }
@@ -706,6 +707,11 @@ func testActiveClaimRefresh(t *testing.T, resume bool) {
 	if got := readText(t, filepath.Join(r.cwd("be-1"), "a.txt")); got != "preserved draft\n" {
 		t.Fatalf("refresh lost the worker's draft: %q", got)
 	}
+	// The commit that recorded the draft before the merge reads as history: the task's work in progress, not the agent.
+	log := gitOut(t, r.cwd("be-1"), "log", "--format=%s", "-n", "5")
+	if strings.Contains(log, "sleipnir: work by") || !strings.Contains(log, "Work in progress: Edit a") {
+		t.Fatalf("the draft's commit should name the task's work, log:\n%s", log)
+	}
 }
 
 // Isolation changes no byte a worker sends before its own tool results: the tool list
@@ -908,5 +914,170 @@ func TestAFileEditedDuringTheApplyIsNotReportedAsApplied(t *testing.T) {
 	}
 	if strings.Join(got, ",") != "b.txt" {
 		t.Fatalf("the session was told %q, want only b.txt", got)
+	}
+}
+
+// A worker that stops without task done is told once, like one that calls done, that
+// its change names a board task; its next stop goes through.
+func TestImplicitStopIsToldAboutRunReferences(t *testing.T) {
+	sc := script{
+		"be-1": {
+			act(writeCall("notes.txt", "// see task T12 for the reason\n")),
+		},
+	}
+	r := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 2}, verify: true}, sc.fn())
+	r.sw.StartManager()
+	r.mustSpawn("backend", "write notes", "notes.txt")
+	r.waitStatus("T1", StatusReview)
+	if !r.prov.sawEver("names team members or board tasks") {
+		t.Fatal("the worker was never told that its change names a board task")
+	}
+}
+
+// A worker that claims another task while its checkout holds a draft of the task it is on records that draft under the
+// task it belongs to, not the one it claims.
+func TestClaimingAnotherTaskRecordsTheDraftUnderItsOwnTask(t *testing.T) {
+	waiting, proceed := make(chan struct{}), make(chan struct{})
+	claimed := make(chan struct{})
+	sc := script{
+		"be-1": {
+			act(writeCall("a.txt", "draft of T1\n")),
+			func(c *rvCall) rvReply {
+				close(waiting)
+				<-proceed
+				return act(rvToolCall{"task", map[string]any{"action": "claim", "id": "T3"}})(c)
+			},
+			func(c *rvCall) rvReply {
+				close(claimed)
+				return rvReply{Text: "claimed"}
+			},
+		},
+		"fe-1": {act(writeCall("b.txt", "merged dependency\n")), act(doneCall("T2", "edited b"))},
+	}
+	r := newIsoRig(t, isoOpts{verify: true}, sc.fn())
+	r.sw.StartManager()
+	r.mustSpawn("backend", "edit a", "a.txt")
+	select {
+	case <-waiting:
+	case <-time.After(5 * time.Second):
+		t.Fatal("worker did not reach its claim")
+	}
+	r.mustSpawn("frontend", "edit b", "b.txt")
+	r.waitStatus("T2", StatusReview)
+	if _, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "polish c", Role: "backend", Files: []string{"c.txt"}}); err != nil {
+		t.Fatal(err)
+	}
+	close(proceed)
+	select {
+	case <-claimed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the claim did not finish")
+	}
+	log := gitOut(t, r.cwd("be-1"), "log", "--format=%s|%(trailers:key=Sleipnir-Task,valueonly,separator=)", "-n", "5")
+	if !strings.Contains(log, "Work in progress: Edit a|T1") || strings.Contains(log, "Polish c") {
+		t.Fatalf("the draft should be recorded under T1, log:\n%s", log)
+	}
+}
+
+// A task whose worker stopped without finishing goes to the next worker with the draft the first one left in its tree: in a
+// team build the first worker's model went away, the manager gave its HTTP API task to another backend worker, and that one
+// began the 36 files again from the integration branch.
+func TestTheNextWorkerOnATaskContinuesTheDraftOfTheOneThatStopped(t *testing.T) {
+	var told, listed bool
+	var mu sync.Mutex
+	sc := script{
+		"be-1": {act(writeCall("a.txt", "half of T1\n")), func(*rvCall) rvReply { return rvReply{Err: errors.New("provider: server (http 503): no endpoints")} }},
+		"be-2": {
+			func(c *rvCall) rvReply {
+				mu.Lock()
+				told, listed = c.Sees("be-1 worked on T1 before you"), c.Sees("Files it changed: a.txt")
+				mu.Unlock()
+				return act(catCall("a.txt"))(c)
+			},
+			act(doneCall("T1", "finished a")),
+		},
+	}
+	// Two attempts: the harness does not restart be-1 in place (that would spend the manager's last one), and the task goes back.
+	r := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 4, MaxAttempts: 2}}, sc.fn())
+	r.sw.StartManager()
+	r.mustSpawn("backend", "edit a", "a.txt")
+	r.waitStatus("T1", StatusTodo)
+	if tk := r.task("T1"); tk.Status != StatusTodo || tk.LastOwner != "be-1" {
+		t.Fatalf("T1 = %+v, want todo with last owner be-1", tk)
+	}
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: "T1", By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	r.waitStatus("T1", StatusReview)
+	if got := r.sawText("be-2", "a.txt"); got != "half of T1\n" {
+		t.Errorf("be-2 read a.txt as %q, want be-1's draft", got)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !told || !listed {
+		t.Errorf("be-2's assignment does not say be-1's draft is in its tree (told=%v, files listed=%v)", told, listed)
+	}
+	log := gitOut(t, r.cwd("be-2"), "log", "--format=%s|%(trailers:key=Sleipnir-Task,valueonly,separator=)", "-n", "6")
+	if !strings.Contains(log, "Work in progress: Edit a|T1") {
+		t.Errorf("be-1's draft was not recorded under T1, log:\n%s", log)
+	}
+}
+
+// The same holds when the manager gives the task to a worker it already has (spawn reuse): its tree gets the draft too.
+func TestAReusedWorkerContinuesTheDraftOfTheOneThatStopped(t *testing.T) {
+	sc := script{
+		"be-1": {act(writeCall("a.txt", "half of T1\n")), func(*rvCall) rvReply { return rvReply{Err: errors.New("provider: server (http 503): no endpoints")} }},
+		"be-2": {
+			act(writeCall("c.txt", "other work\n")), act(doneCall("T2", "edited c")), func(*rvCall) rvReply { return rvReply{Text: "T2 done"} },
+			act(catCall("a.txt")), act(doneCall("T1", "finished a")),
+		},
+	}
+	r := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 4, MaxAttempts: 2}}, sc.fn())
+	r.sw.StartManager()
+	r.mustSpawn("backend", "edit a", "a.txt")
+	r.waitStatus("T1", StatusTodo)
+	r.mustSpawn("backend", "edit c", "c.txt")
+	r.waitStatus("T2", StatusReview)
+	rvWait(t, "be-2 to be idle", func() bool { return r.idle("be-2") })
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: "T1", Agent: "be-2", By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	r.waitStatus("T1", StatusReview)
+	if got := r.sawText("be-2", "a.txt"); got != "half of T1\n" {
+		t.Errorf("the reused be-2 read a.txt as %q, want be-1's draft", got)
+	}
+}
+
+// And when a worker with a tree of its own claims the task itself: the claim's answer names the draft's files.
+func TestAWorkerThatClaimsTheTaskContinuesTheDraftOfTheOneThatStopped(t *testing.T) {
+	var answered bool
+	var mu sync.Mutex
+	sc := script{
+		"be-1": {act(writeCall("a.txt", "half of T1\n")), func(*rvCall) rvReply { return rvReply{Err: errors.New("provider: server (http 503): no endpoints")} }},
+		"be-2": {
+			act(writeCall("c.txt", "other work\n")), act(doneCall("T2", "edited c")),
+			act(rvToolCall{"task", map[string]any{"action": "claim", "id": "T1"}}),
+			func(c *rvCall) rvReply {
+				mu.Lock()
+				answered = c.Sees("Files it changed: a.txt")
+				mu.Unlock()
+				return act(catCall("a.txt"))(c)
+			},
+			act(doneCall("T1", "finished a")),
+		},
+	}
+	r := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 4, MaxAttempts: 2}}, sc.fn())
+	r.sw.StartManager()
+	r.mustSpawn("backend", "edit a", "a.txt")
+	r.waitStatus("T1", StatusTodo)
+	r.mustSpawn("backend", "edit c", "c.txt")
+	r.waitStatus("T1", StatusReview)
+	if got := r.sawText("be-2", "a.txt"); got != "half of T1\n" {
+		t.Errorf("be-2 read a.txt as %q after its claim, want be-1's draft", got)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !answered {
+		t.Error("the claim's answer does not name the draft's files")
 	}
 }

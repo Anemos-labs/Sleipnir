@@ -78,6 +78,14 @@ func (h *webHostImpl) routes(srv *web.Server) {
 		}
 		ok(w, snap)
 	})
+	h.tabRoute(srv, "GET /api/sessions/{id}/tools/{agent}/{tid}", web.RouteOpts{WriteTimeout: time.Minute}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
+		d, err := t.toolDetail(r.Context(), r.PathValue("agent"), r.PathValue("tid"))
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		ok(w, d)
+	})
 	h.tabRoute(srv, "PATCH /api/sessions/{id}", web.RouteOpts{MaxBody: 4 << 10}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
 		var body struct {
 			Name string `json:"name"`
@@ -92,7 +100,8 @@ func (h *webHostImpl) routes(srv *web.Server) {
 		ok(w, map[string]any{"tab": t.Summary()})
 	})
 	h.tabRoute(srv, "POST /api/sessions/{id}/stop", web.RouteOpts{NoBody: true}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
-		if err := t.Interrupt(r.Context(), "turn"); err != nil {
+		line, err := t.StopAll(r.Context())
+		if err != nil {
 			if we := (*wire.Error)(nil); errors.As(err, &we) && we.Code == "idle" {
 				writeErr(w, werr(http.StatusConflict, "idle", "nothing was running"))
 				return
@@ -100,7 +109,7 @@ func (h *webHostImpl) routes(srv *web.Server) {
 			writeErr(w, err)
 			return
 		}
-		ok(w, okBody)
+		ok(w, map[string]any{"ok": true, "line": line})
 	})
 	h.tabRoute(srv, "DELETE /api/sessions/{id}", web.RouteOpts{NoBody: true, WriteTimeout: closeLimit + time.Minute}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
 		h.mu.Lock()

@@ -509,9 +509,20 @@ func managerApprovesFlag(fs *flag.FlagSet) func() *bool {
 // person before the manager answers it for them, and the most dangerous kind it may answer (perm.Config.Fallback). Unset leaves
 // permissions.manager_answers_after and manager_answers_up_to.
 func managerAnswersFlags(fs *flag.FlagSet) (after *time.Duration, upTo *string) {
-	after = fs.Duration("manager-answers-after", 0, "swarm: a worker's question the person has not answered in this long is answered by the manager for them, if it is no more dangerous than --manager-answers-up-to; the person's question is withdrawn and says who answered (default: config permissions.manager_answers_after; 0 waits for the person)")
+	after = fs.Duration("manager-answers-after", 0, "swarm: a worker's question the person has not answered in this long is answered by the manager for them, if it is no more dangerous than --manager-answers-up-to; the person's question is withdrawn and says who answered (default: config permissions.manager_answers_after; 0 waits for the person, whatever the configuration says)")
 	upTo = fs.String("manager-answers-up-to", "", "swarm: the most dangerous question the manager answers after --manager-answers-after: low (routine: inside the workspace, nothing guarded), medium (also the network, files outside the workspace, commands that cannot be checked beforehand) or high (also the high-risk class, guarded paths and your ask rules) (default: config permissions.manager_answers_up_to, else medium)")
 	return after, upTo
+}
+
+// managerAnswersGiven is the wait --manager-answers-after asks for: a given 0 is "never" (negative, which overrides the
+// configuration), not the zero of a flag left out, which leaves the wait to the configuration.
+func managerAnswersGiven(fs *flag.FlagSet, after time.Duration) time.Duration {
+	given := false
+	fs.Visit(func(f *flag.Flag) { given = given || f.Name == "manager-answers-after" })
+	if given && after == 0 {
+		return -1
+	}
+	return after
 }
 
 // trainingLogsHelp is the help of --training-logs.

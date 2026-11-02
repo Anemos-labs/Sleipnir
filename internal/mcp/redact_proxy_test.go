@@ -19,6 +19,8 @@ func TestRedactURLWithTemplates(t *testing.T) {
 		"https://api.example.com/token-abc":                                   "https://api.example.com/...",
 		"https://${H1}${H2}${H3}${H4}${H5}${H6}${H7}${H8}${H9}${H10}${H11}/p": "https://${H1}${H2}${H3}${H4}${H5}${H6}${H7}${H8}${H9}${H10}${H11}/...",
 		"not a url ${X} sk-secret":                                            "(invalid url)",
+		"https://${HOST:-gw.example.com/sk-secret}/v1":                        "https://${HOST}/...",
+		"https://${HOST-user:secret@gw}/v1":                                   "https://${HOST}/...",
 	} {
 		if got := redactURL(raw); got != want {
 			t.Errorf("redactURL(%q) = %q, want %q", raw, got, want)

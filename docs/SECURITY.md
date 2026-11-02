@@ -102,7 +102,7 @@ project" below).
 ### Trusting a project
 
 What a repository brings that the harness reads as text or settings (its instruction files and what they import, `.sleipnir/config.json`
-and `config.local.json`, `.mcp.json`, the skills, commands and agents under `.sleipnir` and `.claude` (through the in-project directory links the loaders
+and `config.local.json`, `.mcp.json`, the skills, commands and agents under `.sleipnir` and `.claude`, the skills under `.agents` (through the in-project directory links the loaders
 follow), and the project's own plugins under `.sleipnir/plugins`) is used only when the project is
 trusted. There are two ways to say so: `--trust-project` for one run, and a remembered yes, which a `chat` asks for at its start (`sleipnir
 trust add` does it without a session). The remembered yes is kept in `trust.json` in the state directory, for one working directory, as a
@@ -322,7 +322,7 @@ in it whose rest is only known when the command runs (`"$TMPDIR/$X"`) could leav
 that the variable is the cause; it is never routine.
 
 `bypass` asks only about the very dangerous: the high-risk class, and a write into a directory whose contents steer later sessions
-(`.sleipnir/`, `.claude/`, git hooks and config). A file whose name is only known when the command runs (`cat "$F"`, `echo x > "$OUT"`)
+(`.sleipnir/`, `.claude/`, `.agents/skills/`, git hooks and config). A file whose name is only known when the command runs (`cat "$F"`, `echo x > "$OUT"`)
 cannot be checked against the built-in protections or the rules, so `bypass` allows it, unless a `deny` rule of the person's may cover
 it: any `Read` rule for a read, any `Edit` rule for a write, since a name with no known beginning may be any file and the unknown part
 of one whose beginning names a directory (`"docs/$X"`, `"$TMPDIR/$X"`) may hold a `../` that leads out of it. Such a name is then

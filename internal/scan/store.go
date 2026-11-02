@@ -94,7 +94,7 @@ func (s *Store) create(commit, depth, focus string, inv Inventory, base string, 
 		}
 		slug = fmt.Sprintf("%s-%d", name, n)
 	}
-	r := &Run{Slug: slug, Commit: commit, Depth: d.ID, Focus: focus, Created: now.Format(time.RFC3339), Inventory: inv,
+	r := &Run{Slug: slug, Name: filepath.Base(s.root), Commit: commit, Depth: d.ID, Focus: focus, Created: now.Format(time.RFC3339), Inventory: inv,
 		Shards: MakeShards(inv, d), Base: base, Changes: changes, Previous: prev}
 	fb, err := json.Marshal(inv.Functions)
 	if err != nil {
@@ -259,6 +259,9 @@ func Load(root, slug string) (*Run, error) {
 	if !ValidSlug(slug) {
 		return nil, fmt.Errorf("no scan %q", slug)
 	}
+	if err := insideRoot(root, RunDir(root, slug)); err != nil {
+		return nil, err
+	}
 	b, err := readRecord(filepath.Join(RunDir(root, slug), "scan.json"))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("no scan %q", slug)
@@ -333,6 +336,25 @@ func (s *Store) Update(slug string, fn func(r *Run) error) (*Run, error) {
 	}
 	s.changed(r)
 	return cloneRun(r), nil
+}
+
+// Report marks the scan's report as written from the ledger as it is now and writes the report files: the report phase is
+// done once nothing before it is missing. It returns the scan as marked.
+func (s *Store) Report(slug string) (*Run, error) {
+	r, err := s.Update(slug, func(r *Run) error {
+		n := 0
+		for _, p := range Check(r).Problems {
+			if p.Phase != PhaseReport {
+				n++
+			}
+		}
+		r.Reported = &Mark{Version: r.Version + 1, Problems: n}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return r, WriteReport(s.root, r)
 }
 
 // View runs fn on the scan under the store's lock, changing nothing.
@@ -419,4 +441,28 @@ func WriteAtomic(root, path string, data []byte) error {
 		return err
 	}
 	return nil
+}
+
+// insideRoot refuses a directory under root that a link in the project leads elsewhere: the scan records and proofs of a project
+// are its own, and a .sleipnir/scan that is a link must not read another project's ledger or make files outside it. A
+// directory that does not exist yet is judged by its nearest existing ancestor.
+func insideRoot(root, dir string) error {
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return err
+	}
+	p := dir
+	for {
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			if real != realRoot && !strings.HasPrefix(real, realRoot+string(filepath.Separator)) {
+				return fmt.Errorf("%s leads outside the project", dir)
+			}
+			return nil
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return nil
+		}
+		p = parent
+	}
 }

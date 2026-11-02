@@ -236,6 +236,7 @@ flags:
 	if *askTimeout < 0 || *askGrace < 0 || *managerAfter < 0 {
 		return usageError(fs, "web: --ask-timeout, --ask-grace and --manager-answers-after must not be negative")
 	}
+	*managerAfter = managerAnswersGiven(fs, *managerAfter)
 	if fixture != "" {
 		if err := fixtureAllowed(fixture, *addr); err != nil {
 			return usageError(fs, "web: "+err.Error())

@@ -659,6 +659,25 @@ func (e *SetupError) Error() string {
 
 // buildSnapshot creates a snapshot in a temporary directory and moves it into
 // place atomically. It runs on the manager's own context, not a caller's, so
+// subdirInTree checks repo.subdir of a task (when it names one) in tree: it is a directory, and with links resolved it is still
+// inside the tree. The subdirectory becomes the rollout's workspace root, which the file tools authorize: a link in the repository,
+// or one setup put there, must not make that root a directory outside the tree. when says at what point it was looked for.
+func subdirInTree(tree, subdir, when string) error {
+	if subdir == "" {
+		return nil
+	}
+	sub := filepath.Join(tree, filepath.FromSlash(subdir))
+	if fi, err := os.Stat(sub); err != nil || !fi.IsDir() {
+		return fmt.Errorf("repo.subdir %q does not exist %s", subdir, when)
+	}
+	realTree, terr := filepath.EvalSymlinks(tree)
+	realSub, serr := filepath.EvalSymlinks(sub)
+	if terr != nil || serr != nil || (realSub != realTree && !strings.HasPrefix(realSub, realTree+string(filepath.Separator))) {
+		return fmt.Errorf("repo.subdir %q leads outside the repository", subdir)
+	}
+	return nil
+}
+
 // one cancelled rollout does not fail the setup others are waiting for.
 func (m *Workspaces) buildSnapshot(ctx context.Context, task rl.Task, src *repoSource, key string) (*snapshot, error) {
 	final := filepath.Join(m.root, "snaps", key)
@@ -697,10 +716,8 @@ func (m *Workspaces) buildSnapshot(ctx context.Context, task rl.Task, src *repoS
 	if err != nil {
 		return nil, Infra("materialize "+src.ident, err)
 	}
-	if task.Repo.Subdir != "" {
-		if fi, err := os.Stat(filepath.Join(s.tree, filepath.FromSlash(task.Repo.Subdir))); err != nil || !fi.IsDir() {
-			return nil, Infra("materialize "+src.ident, fmt.Errorf("repo.subdir %q does not exist at that commit", task.Repo.Subdir))
-		}
+	if err := subdirInTree(s.tree, task.Repo.Subdir, "at that commit"); err != nil {
+		return nil, Infra("materialize "+src.ident, err)
 	}
 
 	// 2. the home the setup commands (and later the rollouts) start from
@@ -724,6 +741,10 @@ func (m *Workspaces) buildSnapshot(ctx context.Context, task rl.Task, src *repoS
 	// base.git it left behind (its config can name programs git runs) is removed, not reused; and the tree must still be a
 	// directory, not a link setup put in its place, before the host hashes what is under it.
 	if err := treeIsDir(s); err != nil {
+		return nil, Infra("snapshot", err)
+	}
+	// setup runs in the tree and could put a link where repo.subdir was: the root a rollout works in is checked again
+	if err := subdirInTree(s.tree, task.Repo.Subdir, "after setup"); err != nil {
 		return nil, Infra("snapshot", err)
 	}
 	if err := removeAllNoFollow(s.base); err != nil {

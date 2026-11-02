@@ -130,6 +130,9 @@ func (s *Swarm) budgetExceeded(spent float64) {
 // startErr is budgetErr for starting new work (a worker run, a successor, a restart or a retry): it also refuses once the spend has
 // reached the budget's reserve, which is kept for the runs already going and for the manager's report.
 func (s *Swarm) startErr() error {
+	if s.Stopped() {
+		return ErrStopped
+	}
 	if err := s.budgetErr(); err != nil {
 		return err
 	}

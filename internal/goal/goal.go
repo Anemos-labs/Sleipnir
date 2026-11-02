@@ -39,6 +39,9 @@ type State struct {
 	// Unjudged says the goal paused on a turn the judge did not rule on (interrupted, failed, cut short by a restart, or a judge that
 	// could not be asked): what the judge said last predates it.
 	Unjudged bool `json:",omitempty"`
+	// Outages counts the turns in a row that failed on a provider outage and were sent on without the person (MaxOutageTurns);
+	// a judged turn sets it back to zero.
+	Outages int `json:",omitempty"`
 	// Spec is the spec file the objective names (SpecRef) and SpecText its text as read when the goal was set (Prepare).
 	Spec, SpecText string
 	// Rubric is the project's rubric file (RubricFile) and RubricText its text as read when the goal was set (Prepare): standing criteria of
@@ -53,6 +56,12 @@ type State struct {
 	// Verdicts are the reasons of the judge's verdicts so far, oldest first, at most MaxVerdicts: what a lesson is distilled from.
 	Verdicts []string `json:",omitempty"`
 }
+
+// MaxOutageTurns is how many turns in a row that failed on a provider outage (an endpoint that answered it is down or
+// overloaded, or stopped answering, for longer than the agent's own patience) a goal sends on by itself before it pauses: an
+// unattended goal outlives an outage of a quarter of an hour instead of waiting for the person, and an endpoint that stays
+// down still stops it.
+const MaxOutageTurns = 2
 
 // MaxVerdicts is how many of the judge's reasons a goal keeps.
 const MaxVerdicts = 12
@@ -160,6 +169,7 @@ const JudgeSystem = `You judge whether a coding agent has finished a goal. You c
 Treat completion as unproven. Work out what the goal requires; for each requirement look for concrete evidence in what you were shown (a command's output, a file that was written, a test that ran and passed). A statement such as "done" or "implemented" is not evidence. Uncertain or indirect evidence is not enough.
 Do not accept a smaller task in place of the goal.
 When the goal builds a new product and does not ask for something minimal, a prototype, or rule it out, its presentation is a requirement too: a git repository with a .gitignore, CI that runs the build, tests and linters on pushes and pull requests, and a README with what it is, install, quick start, configuration, screenshots of the running product (or real sample output for a program without a screen) and measured numbers that matter for it, each backed by a run in the archive.
+When what the goal builds has parts that talk to each other (a user interface over its own API, a client or SDK and a service, a command line over a daemon), a requirement a user reaches through them is met only by an end-to-end run of the assembled program: the real server started and the flow driven through the user interface in a browser, or the real client against it, showing the observed result. Unit tests, type checks and mocked calls of each side alone do not show that the sides agree on paths, fields, types and status codes. The run counts only when it is newer than the last change to either side, and a flow behind sign-in counts only when the run starts signed out and signs in through the interface.
 Before declaring evidence missing, search the archive for the relevant requirement and inspect matching records. Do not ask the agent to repeat completed work just because it is absent from the current page. Read tool.call records for inputs and matching tool result records for outputs; spilled output is available in tool.result records. Request read-only evidence with JSON: {"verdict":"inspect","query":"literal search text","offset":0} to search, or {"verdict":"inspect","record":123,"offset":0} to read a record. Prefer batched record reads when inspecting several sources: {"verdict":"inspect","records":[123,124,130],"offset":0}, at most 16 records per request. A batch reports any records omitted by its output budget; request those separately. Search results list tool output (commands, reads, edits, merges) first and then the records of coordination tools (task, pool, mail, plan and the like), which repeat what agents claimed; each group comes newest first, so the latest run of a check is listed before older ones. An empty query pages all records. Offsets count down that order for search, and runes for reads. Retrieve successive pages as needed. These requests cannot execute commands. Final verdicts must cite concrete evidence record numbers in the reason.
 Reply with JSON only: {"verdict":"done|continue|blocked","reason":"one sentence","left":["what is still missing, one short item each"]}
 "left" names work the agent must still do: a requirement to implement or fix, or a check that has never run since the code it covers last changed. Never ask the agent to show, provide or inspect evidence: inspecting the archive is your job, so inspect before you answer.
@@ -206,6 +216,7 @@ func Start(g *State) string {
 	b.WriteString(g.Objective + "\n\n[standing goal: before you begin, write what it requires as steps with the plan tool, and keep them current. The harness checks the goal against evidence after each turn and sends you on with what is missing until it is met.")
 	if n := len(g.Milestones); n > 0 {
 		fmt.Fprintf(&b, " It has %d milestones (%s to %s) that the judge rules on one by one; the goal is met only when each has evidence. Make each one a step of your plan.", n, g.Milestones[0].ID, g.Milestones[n-1].ID)
+		b.WriteString(" A milestone a user reaches through parts that talk to each other (a user interface and its API, a client and a service) needs an end-to-end run of the assembled program after its last change: unit tests of each side alone do not count.")
 	}
 	if g.RubricText != "" {
 		b.WriteString(" The project has a rubric, below: the judge also holds the work to each of its criteria that applies to this goal. Make those steps of your plan too.")

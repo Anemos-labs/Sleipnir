@@ -185,9 +185,8 @@ func expandTemplate(tmpl string, files []hiddenFile, p plan) string {
 			dirs = append(dirs, shq(d))
 		}
 	}
-	tmpl = strings.ReplaceAll(tmpl, "{files}", strings.Join(names, " "))
-	tmpl = strings.ReplaceAll(tmpl, "{dirs}", strings.Join(dirs, " "))
-	return tmpl
+	// One pass over the template: a file name that holds "{dirs}" is text of the expansion, never a placeholder of its own.
+	return strings.NewReplacer("{files}", strings.Join(names, " "), "{dirs}", strings.Join(dirs, " ")).Replace(tmpl)
 }
 
 func planGo(ctx context.Context, r *repo, parent, commit string, files []hiddenFile) (plan, error) {

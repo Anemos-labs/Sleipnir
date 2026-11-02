@@ -124,6 +124,14 @@ type Config struct {
 	// review while the manager works on other things, is a finding (default 12;
 	// negative turns those two kinds off).
 	StallTurns int
+	// TaskTimeout is how long a worker may hold one assignment before the stall sweep names it (task_overrun): the worker is
+	// told to finish with what it has, hand the task over or block it (default 90 minutes; negative turns the kind off). A
+	// reviewer's task has its own bound (review_overrun).
+	TaskTimeout time.Duration
+	// StallStop is how long a finding about a worker's own run (claimed_no_progress, review_overrun, task_overrun) may hold
+	// after it was escalated to the manager before the harness stops the worker itself: its tasks go back to todo with the
+	// attempt counted (default 20 minutes; negative: the harness never stops a worker for a stall).
+	StallStop time.Duration
 
 	// HoldManager makes a final answer of the manager wait for the board: while
 	// workers are running or tasks are unreviewed, the manager's Stop is vetoed with a
@@ -309,8 +317,13 @@ type Swarm struct {
 	// handedBack holds the tasks returned to todo after their worker's automatic restarts on them ran out, at the revision they
 	// were returned at: the repair does not start them on that worker again, they are the manager's to assign. Guarded by mu.
 	handedBack map[string]uint64
-	queued     map[string]queuedSpawn // parents waiting for a free member of their role (spawnqueue.go), by task id; guarded by mu
-	members    map[string]*member
+	// runRefWarned holds the tasks whose worker was told, at the revision named, that its change names team members or
+	// board tasks (runRefNotice); the next done goes through, so the notice never holds a task. Guarded by mu.
+	runRefWarned map[string]uint64
+	// teamIDs holds the id of every team member registered in the run, retired ones included (everyMember). Guarded by mu.
+	teamIDs map[string]bool
+	queued  map[string]queuedSpawn // parents waiting for a free member of their role (spawnqueue.go), by task id; guarded by mu
+	members map[string]*member
 	// arriving (under mu) holds the IDs of agents that are being added to the team: the task is assigned to the agent before the
 	// agent is registered, and the stall sweep must not read that interval as an owner that left (arrive).
 	arriving map[string]bool
@@ -351,6 +364,7 @@ type Swarm struct {
 	budgetLowOnce           atomic.Bool // the spend reached the budget's reserve (budgetLow)
 
 	wk      waker                    // waking an idle manager (wake.go)
+	halt    teamStop                 // the person stopped the team (halt.go)
 	mgrSeen atomic.Pointer[Snapshot] // the board as the manager's newest request showed it
 	solo    soloRun                  // the manager's requests in its current run while the team has nothing to do (emptyBoardLine)
 	mail    *mailroom                // mailman mode (mailman.go); nil when it is off
@@ -715,6 +729,7 @@ func (s *Swarm) RunManager(ctx context.Context, goal string) (*agent.Result, err
 		return nil, errors.New("the manager is already running")
 	}
 	s.HumanInput()
+	s.LiftStop() // the person wrote again: what they ask for may start (halt.go)
 	return s.runManager(ctx, m, goal, "")
 }
 
@@ -729,12 +744,17 @@ func (s *Swarm) runManager(ctx context.Context, m *member, goal, mail string) (r
 		s.stopWorkers("interrupted", false)
 	})
 	defer stop()
+	// The person's stop (StopAll) ends the turn as an interrupt does; it stops the workers itself, so the turn has a context of its own,
+	// which the stop above does not watch.
+	turnCtx, endTurn := context.WithCancel(ctx)
+	defer endTurn()
+	defer s.setManagerTurn(endTurn)()
 	// A run the harness started (a wake, which comes with a note as mail) can be ended by a person's goal without stopping the workers: it has a
 	// context of its own.
-	runCtx := ctx
+	runCtx := turnCtx
 	if mail != "" {
 		var end context.CancelFunc
-		runCtx, end = context.WithCancel(ctx)
+		runCtx, end = context.WithCancel(turnCtx)
 		defer end()
 		s.wk.setRun(end)
 		defer s.wk.setRun(nil)
@@ -753,7 +773,7 @@ func (s *Swarm) runManager(ctx context.Context, m *member, goal, mail string) (r
 		}()
 		res, err = m.a.Run(runCtx, goal)
 		lastVersion, unchanged := uint64(0), 0
-		for s.cfg.PersistentPools && runCtx.Err() == nil && s.budgetErr() == nil {
+		for s.cfg.PersistentPools && runCtx.Err() == nil && s.budgetErr() == nil && !s.Stopped() {
 			if err != nil && !errors.Is(err, agent.ErrStepLimit) {
 				break
 			}

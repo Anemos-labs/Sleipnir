@@ -64,7 +64,25 @@ const (
 	// no accepted review covers), and at least reviewOverrunFloor. A review that walks the same code
 	// over and over finds what its first pass found; the reviewer is told to write the report with what it has.
 	StallReviewOverrun StallKind = "review_overrun"
+	// StallTaskOverrun: a running worker that is not a reviewer has held its current assignment for longer than
+	// Config.TaskTimeout. Whatever it is doing, a task that takes that long is too big or going nowhere: the worker is told to
+	// finish with what it has, hand the task over, or block it saying why.
+	StallTaskOverrun StallKind = "task_overrun"
 )
+
+// defaultTaskTimeout is Config.TaskTimeout when it is zero.
+const defaultTaskTimeout = 90 * time.Minute
+
+// taskTimeout is the bound of task_overrun (0: the kind is off).
+func (s *Swarm) taskTimeout() time.Duration {
+	switch {
+	case s.cfg.TaskTimeout < 0:
+		return 0
+	case s.cfg.TaskTimeout == 0:
+		return defaultTaskTimeout
+	}
+	return s.cfg.TaskTimeout
+}
 
 // reviewStarvedAfter is how long a submission may wait in review, whatever the manager's turn count, before
 // StallReviewStarved holds: a manager that waits on a long review with long timeouts takes few turns, and a
@@ -79,7 +97,7 @@ var reviewOverrunFloor = 10 * time.Minute
 var idleCapacityAfter = 15 * time.Minute
 
 // StallKinds lists every stall kind in a fixed order.
-var StallKinds = []StallKind{StallClaimedNoProgress, StallManagerWaitingOnIdle, StallOrphanedTask, StallBlockedCycle, StallReviewStarved, StallIdleCapacity, StallReviewOverrun}
+var StallKinds = []StallKind{StallClaimedNoProgress, StallManagerWaitingOnIdle, StallOrphanedTask, StallBlockedCycle, StallReviewStarved, StallIdleCapacity, StallReviewOverrun, StallTaskOverrun}
 
 // Stall is one finding of the sweep. Every field is harness-written: ids, kinds and
 // counts, never text an agent wrote.
@@ -112,21 +130,36 @@ type stallState struct {
 	review  map[string]reviewClock // "T3#rev": when the review clock (re)started
 	waiting bool                   // the manager's latest coordination call is wait
 	refused bool                   // a manager wait was just refused (see waitRefused)
-	// since is when each active finding was first seen by escalateStalls, and escalated the findings it escalated.
+	// since is when each active finding was first seen by escalateStalls, escalated the findings it escalated, and stopped
+	// the findings whose worker the harness stopped (stopStalled).
 	since     map[string]time.Time
 	escalated map[string]bool
+	stopped   map[string]bool
+	// between, set only by tests before the swarm runs, is called at the two points a review read and a sweep can interleave:
+	// "get" after task get read the task and before it is noted, "sweep" after the sweep's board snapshot and before its lock.
+	between func(at string)
+}
+
+func (st *stallState) at(point string) {
+	if st.between != nil {
+		st.between(point)
+	}
 }
 
 // reviewClock is when a submission's review clock (re)started: the manager's turn count and the time.
 type reviewClock struct {
 	turns int64
 	at    time.Time
+	// read says the manager's reading of this revision already restarted the clock once, and restart that the next sweep
+	// restarts it. Only the first read counts: a manager that reads the same submission again and again without deciding it
+	// starves it all the same.
+	read, restart bool
 }
 
 // init makes the maps; the zero value is not ready for use.
 func (st *stallState) init() {
 	st.active, st.raised, st.orphans, st.review = map[string]Stall{}, map[StallKind]int{}, map[string]bool{}, map[string]reviewClock{}
-	st.since, st.escalated = map[string]time.Time{}, map[string]bool{}
+	st.since, st.escalated, st.stopped = map[string]time.Time{}, map[string]bool{}, map[string]bool{}
 }
 
 // stallTurns is the turn bound of the turn-based kinds (0: they are off).
@@ -197,8 +230,7 @@ func lessTaskID(a, b string) bool {
 }
 
 // noteCoordination records the manager's coordination calls for the stall sweep: a
-// wait marks it as waiting, any other call ends that, and a task call that names a
-// task restarts that task's review clock (the manager looked at it).
+// wait marks it as waiting, and any other call ends that.
 func (s *Swarm) noteCoordination(agentID, tool, taskID string) {
 	if agentID == "" || agentID != s.ManagerID() {
 		return
@@ -206,12 +238,25 @@ func (s *Swarm) noteCoordination(agentID, tool, taskID string) {
 	s.stalls.mu.Lock()
 	defer s.stalls.mu.Unlock()
 	s.stalls.waiting = tool == "wait"
-	if tool == "task" && taskID != "" {
-		for k := range s.stalls.review {
-			if id, _, _ := strings.Cut(k, "#"); id == taskID {
-				delete(s.stalls.review, k)
-			}
-		}
+}
+
+// noteReviewRead records that the manager read t, the task in review as task get returned it: the first
+// read of a revision restarts that revision's review clock, since the manager looked at
+// it. Reading it again does not: in a team run the manager called task get on five
+// submissions every few minutes for half an hour, deciding none, and each read cleared
+// the finding the sweep had just raised. A decision is a new revision, with a clock of
+// its own. A read before the sweep first sees the revision leaves a clock for the sweep
+// to start.
+func (s *Swarm) noteReviewRead(agentID string, t Task) {
+	if agentID == "" || agentID != s.ManagerID() || t.ID == "" || t.Status != StatusReview {
+		return
+	}
+	key := t.ID + "#" + strconv.FormatUint(t.Rev, 10)
+	s.stalls.mu.Lock()
+	defer s.stalls.mu.Unlock()
+	if c := s.stalls.review[key]; !c.read {
+		c.read, c.restart = true, true
+		s.stalls.review[key] = c
 	}
 }
 
@@ -283,6 +328,7 @@ type memberView struct {
 // counters, and updates the sweep's own memory (orphan candidates, review clocks).
 func (s *Swarm) stallFindings() []Stall {
 	snap := s.Board.Snapshot()
+	s.stalls.at("sweep")
 	mgr := s.ManagerID()
 	s.mu.Lock()
 	views := make(map[string]memberView, len(s.members))
@@ -360,6 +406,28 @@ func (s *Swarm) stallFindings() []Stall {
 				id, task, int(ran/time.Minute), covers, int(work/time.Minute))})
 	}
 
+	// task_overrun: a worker has held one assignment past the team's bound, whatever it does meanwhile.
+	if bound := s.taskTimeout(); bound > 0 {
+		for id, v := range views {
+			if !v.running || v.manager || v.service || v.role == ReviewerRole || v.runSince.IsZero() {
+				continue
+			}
+			task := currentTask(snap, id)
+			t, ok := snap.Task(task)
+			if !ok || t.Status != StatusDoing || t.Pool != nil {
+				continue // a pool leader's task is its members' work, which each of them is held to
+			}
+			since, ok := s.review.beganAt(t.ID, t.Rev)
+			if !ok {
+				since = v.runSince
+			}
+			if ran := s.deps.Now().Sub(since); ran > bound {
+				out = append(out, Stall{Kind: StallTaskOverrun, Task: task, Agent: id, Notify: id,
+					Detail: fmt.Sprintf("%s has worked on %s for %d minutes, past the team's bound of %d", id, task, int(ran/time.Minute), int(bound/time.Minute))})
+			}
+		}
+	}
+
 	s.stalls.mu.Lock()
 	defer s.stalls.mu.Unlock()
 
@@ -434,8 +502,8 @@ func (s *Swarm) stallFindings() []Stall {
 			key := t.ID + "#" + strconv.FormatUint(t.Rev, 10)
 			inReview[key] = true
 			since, ok := s.stalls.review[key]
-			if !ok {
-				s.stalls.review[key] = reviewClock{turns: mv.turns, at: now}
+			if !ok || since.restart {
+				s.stalls.review[key] = reviewClock{turns: mv.turns, at: now, read: since.read}
 				continue
 			}
 			n, waited := mv.turns-since.turns, now.Sub(since.at)
@@ -446,6 +514,13 @@ func (s *Swarm) stallFindings() []Stall {
 			case waited >= reviewStarvedAfter:
 				out = append(out, Stall{Kind: StallReviewStarved, Task: t.ID, Agent: mgr, Notify: mgr,
 					Detail: fmt.Sprintf("%s has waited in review for %d minutes", t.ID, int(waited/time.Minute))})
+			}
+		}
+		// Prune against the board as it is now, under the lock noteReviewRead takes: a revision submitted after snap was taken
+		// may already carry the manager's first read, which a prune by snap would drop.
+		for _, t := range s.Board.Snapshot().Tasks {
+			if t.Status == StatusReview {
+				inReview[t.ID+"#"+strconv.FormatUint(t.Rev, 10)] = true
 			}
 		}
 		for key := range s.stalls.review {
@@ -583,6 +658,13 @@ func stallNudge(f Stall, k int64, pools bool) string {
 	case StallReviewOverrun:
 		return "Stall check: " + f.Detail + ". A second walk over the same code finds what the first did. Write the report now with what you have: " +
 			"the findings so far in priority order, what you checked and found fine, and what you did not reach, named as unverified; then task done."
+	case StallTaskOverrun:
+		out := "hand it over (task handover) with what you learned"
+		if pools {
+			out = "say why on the task (task update) and block it"
+		}
+		return "Stall check: " + f.Detail + ". A task that runs this long is too big or going nowhere. Finish now with what works (task done, naming what is left), " +
+			out + ", or block it on what you wait for. If nothing changes the harness stops this run and the task goes back to the manager."
 	}
 	return "Stall check: " + f.Detail
 }

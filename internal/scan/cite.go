@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -45,6 +46,9 @@ func (g *gitCode) Read(ctx context.Context, file string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s is not a file of the scanned commit", file)
 	}
+	if len(b) > maxCiteFile { // a source file worth citing is far smaller; a huge blob would be split and cached whole
+		return nil, fmt.Errorf("%s is larger than %d MiB; cite a source file", file, maxCiteFile>>20)
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if len(g.order) >= codeCacheFiles {
@@ -58,6 +62,7 @@ func (g *gitCode) Read(ctx context.Context, file string) ([]byte, error) {
 
 // Quote bounds.
 const (
+	maxCiteFile   = 4 << 20 // bytes of a file a citation is checked against
 	maxQuoteLines = 15
 	maxQuoteRunes = 1200
 	minQuoteRunes = 6
@@ -116,6 +121,9 @@ func CheckCite(ctx context.Context, code Code, c Cite) (Cite, string, error) {
 	}
 	if at := findQuote(lines, want, 0, len(lines)); at >= 0 {
 		return Cite{File: file, Line: at + 1, Quote: quote}, fmt.Sprintf("(%s: the quote is at line %d, not near %d: kept at %d)", file, at+1, c.Line, at+1), nil
+	}
+	if bytes.IndexByte(data[:min(len(data), 8000)], 0) >= 0 {
+		return Cite{}, "", fmt.Errorf("%s is a binary and the quote is not in it: quote a string it holds, exactly as strings prints it (6 characters or more), or cite the file that builds or loads it", file)
 	}
 	return Cite{}, "", errors.New(notThere(file, lines, c.Line))
 }

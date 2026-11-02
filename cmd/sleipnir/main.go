@@ -538,7 +538,7 @@ func cmdMock(ctx context.Context, args []string) error {
 	engines := fs.Int("engines", 2, "number of independent engines (each with its own prefix cache)")
 	fs.Parse(args)
 	srv := mock.New(mock.Config{Engines: *engines, Engine: mock.EngineConfig{BlockTokens: 16, MinCacheTokens: 64}}, nil)
-	hs := &http.Server{Addr: *addr, Handler: srv.Handler()}
+	hs := &http.Server{Addr: *addr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 3*time.Second)

@@ -359,6 +359,10 @@ func (h *sessionHost) Turn(ctx context.Context, goal string) app.TurnResult {
 		out.Message = tools.SanitizeForTerminal(err.Error()) + "\n" + hint
 	}
 	h.judgeGoal(ctx, err, &out)
+	if res != nil && res.Stopped != "" {
+		// the message asked the team to stop, and the harness stopped it (session.StopRequest); the goal's note follows
+		out.Note = strings.TrimSpace(res.Stopped + "\n" + out.Note)
+	}
 	return out
 }
 
@@ -614,7 +618,7 @@ var chatCommands = []chatCommand{
 	{"stats", "", "the stats page (ctrl+t): cost, cache, what it saved, the prompt's layers"},
 	{"context", "", "layer sizes of the current prompt"},
 	{"compact", "[focus]", "fold the older thread now"},
-	{"agents", "", "the team's agents and tasks (ctrl+g: the cockpit)"},
+	{"agents", "[stop ID]", "the team's agents and tasks (ctrl+g: the cockpit); stop a worker that is stuck: its task goes back to todo"},
 	{"steer", "TEXT", "tell the running turn something without stopping it: the agent reads it with its next step"},
 	{"queue", "[drop N|clear]", "the lines typed while a turn runs, sent when it is over: list them, drop one, or clear them"},
 	{"model", "[provider/model]", "show the model, or change it: a single agent moves its conversation (the prompt cache starts over), a team starts again on it"},
@@ -633,7 +637,7 @@ var chatCommands = []chatCommand{
 	{"swarm", "<n> [flags]", "start again as a manager and n workers: /swarm 8 --verify \"go test {dirs}\" --isolation worktree"},
 	{"team", "[list|save NAME|load NAME|show NAME|rm NAME]", "saved teams (loadouts): save this team, start again as a saved one, or print one to share"},
 	{"sessions", "", "the newest sessions; resume one with sleipnir --resume <id>"},
-	{"jobs", "[stop ID]", "the background jobs the agents started (dev servers, watchers) with the local addresses they serve; stop one"},
+	{"jobs", "[stop ID | log ID]", "the background jobs the agents started (dev servers, watchers) with the local addresses they serve, and the processes their finished commands left running; stop one, or read a job's output"},
 	{"cwd", "", "the directory this session works in"},
 	{"mode", "<m>", "default | accept-edits | plan | bypass | yolo"},
 	{"plan", "[prompt]", "switch to read-only mode; with a prompt, start planning it"},

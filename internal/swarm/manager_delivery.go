@@ -55,6 +55,9 @@ func (t *taskTool) deliver(ctx context.Context, c *tools.Call, in taskIn) *tools
 	if message == "" {
 		message = "Apply verified team work"
 	}
+	if re := runRefs(s.everyMember(), boardRef); re != nil && re.MatchString(message) {
+		return tools.Errorf("the commit message names team members or board tasks (%s), which mean nothing to a reader of the project's history: describe the change itself and call deliver again", strings.TrimSpace(re.FindString(message)))
+	}
 	req := perm.Request{Agent: c.Env.Agent, Role: c.Env.Role, Tool: "task", Input: c.Input,
 		Cwd: root, Paths: paths, Writes: true, VerifiedIntegration: true,
 		Summary: "commit verified integration to " + root}

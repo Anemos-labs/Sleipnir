@@ -121,7 +121,7 @@
       case 'local': push(m, 'mgr', { k: 'local', title: ev.title, html: ev.html, t: ev.t }, ev); break;
       case 'tool': {
         if (A) A.calls++; m.steps++;
-        const e = { k: 'tool', ag: ev.id, name: ev.name, arg: ev.arg, out: ev.out, ok: ev.ok !== false, refused: !!ev.refused, reason: ev.reason, file: ev.file, add: ev.add, del: ev.del, task: ev.task || (A && A.task), t: ev.t };
+        const e = { k: 'tool', ag: ev.id, name: ev.name, arg: ev.arg, out: ev.out, ok: ev.ok !== false, refused: !!ev.refused, reason: ev.reason, file: ev.file, add: ev.add, del: ev.del, task: ev.task || (A && A.task), t: ev.t, tid: ev.tid || '' };
         if (ev.refused) { m.refused++; e.ok = false; }
         if (ev.mem) m.mem++;   // the memory tool saved or removed a note: the Memory item of the rail counts it until the view is opened
         push(m, chOf(ev.id), e, ev);

@@ -61,6 +61,8 @@ type runState struct {
 	// asked marks a run the watchdog stopped while it waited for the person to answer a question: a restart would ask again,
 	// so the harness does not restart it on its own (restart.go).
 	asked bool
+	// stopped marks a run the person or the stall sweep stopped as stuck (stop.go): the harness does not restart it on its own.
+	stopped bool
 }
 
 // member is one registered agent.
@@ -358,6 +360,12 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 func (s *Swarm) register(m *member, builtShared *kv.Layer) {
 	s.mu.Lock()
 	s.members[m.id] = m
+	if !m.service {
+		if s.teamIDs == nil {
+			s.teamIDs = map[string]bool{}
+		}
+		s.teamIDs[m.id] = true
+	}
 	cur := s.shared
 	s.mu.Unlock()
 	if cur != builtShared && cur != nil {
@@ -603,9 +611,10 @@ func (s *Swarm) reserve(m *member) (*runState, context.Context, bool) {
 	root := s.rootCtx
 	s.wg.Add(1)
 	s.mu.Unlock()
-
 	m.mu.Lock()
-	if m.life != lifeIdle {
+	// The person's stop is read under m.mu: StopAll sets it before it locks each member, so either StopAll sees this run and stops
+	// it, or this sees the stop and starts nothing (halt.go).
+	if m.life != lifeIdle || s.Stopped() {
 		m.mu.Unlock()
 		s.wg.Done()
 		return nil, nil, false
@@ -1159,7 +1168,11 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 			}
 			// Isolated run: the harness commits the tree and merges it on the worker's
 			// behalf, exactly as for a worker that calls done.
-			out := s.integrate(ctx, m, t, taskCommitMessage(t, summary))
+			if notice := s.runRefNotice(ctx, m, t); notice != "" {
+				s.notify(m.id, "request", "You stopped without finishing "+id+". "+notice)
+				continue
+			}
+			out := s.integrate(ctx, m, t, taskCommitMessage(t, summary, "", s.everyMember()))
 			if s.checkTaskGate(t) != nil {
 				s.retryChangedScope(m, t)
 				continue
