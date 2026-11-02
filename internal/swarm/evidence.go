@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -561,9 +562,31 @@ func isTestWords(w []string) bool {
 			break
 		}
 	}
+	if strings.ContainsRune(w[0], '/') && isCheckScript(prog) {
+		// run by its path (./test.sh, scripts/verify.sh, bin/check); a bare `test` is the shell's condition command
+		return true
+	}
 	switch prog {
 	case "go":
 		return sub == "test" || sub == "vet"
+	case "bundle", "uv", "poetry", "pipenv", "pdm", "hatch":
+		// bundle exec rspec, uv run pytest: the runner is the command after the wrapper's verb
+		for i, x := range rest {
+			if x == sub {
+				return (sub == "exec" || sub == "run") && wrappedTest(rest[i+1:])
+			}
+		}
+		return false
+	case "rake", "rails":
+		for _, x := range rest {
+			switch x {
+			case "-T", "--tasks", "-n", "--dry-run", "-P", "--prereqs", "-D", "--describe", "-W", "--where":
+				return false // lists or describes tasks, or runs none of their actions
+			}
+		}
+		return sub == "test" || sub == "spec" || strings.HasPrefix(sub, "test:") || strings.HasPrefix(sub, "spec:")
+	case "deno", "mix", "swift", "composer":
+		return sub == "test"
 	case "npm", "pnpm", "yarn", "bun":
 		if sub == "test" || sub == "t" {
 			return true
@@ -576,7 +599,17 @@ func isTestWords(w []string) bool {
 			}
 		}
 		return false
-	case "npx":
+	case "npx", "bunx":
+		if sub == "playwright" {
+			// the subcommand is the first word after playwright that is not a flag: merge-reports test is not a test run
+			i := slices.Index(rest, "playwright")
+			for _, x := range rest[i+1:] {
+				if !strings.HasPrefix(x, "-") {
+					return x == "test"
+				}
+			}
+			return false
+		}
 		return sub == "jest" || sub == "vitest" || sub == "mocha"
 	case "pytest", "py.test", "jest", "vitest", "ctest", "rspec", "phpunit", "tox", "nox":
 		return true
@@ -598,12 +631,75 @@ func isTestWords(w []string) bool {
 	case "dotnet":
 		return sub == "test"
 	case "bash", "sh", "zsh":
-		for i, x := range rest {
-			if x == "-c" && i+1 < len(rest) {
-				t, _ := classifyCommand(rest[i+1])
-				return t
-			}
+		if inner, ok := shellScript(rest); ok {
+			t, _ := classifyCommand(inner)
+			return t
 		}
+		return shellRunsCheckScript(rest)
+	}
+	return false
+}
+
+// shellScript is the command string of `bash -c '…'` (rest is what follows the shell), and whether there is one.
+func shellScript(rest []string) (string, bool) {
+	for i, x := range rest {
+		if x == "-c" && i+1 < len(rest) {
+			return rest[i+1], true
+		}
+	}
+	return "", false
+}
+
+// shellRunsCheckScript reports whether a shell given rest runs a project's check script (isCheckScript): the first operand
+// after the shell's options (-o pipefail and -O name take a value) names it. -n only reads the script for its syntax.
+func shellRunsCheckScript(rest []string) bool {
+	for i := 0; i < len(rest); i++ {
+		switch x := rest[i]; {
+		case x == "-n" || x == "--noexec":
+			return false
+		case x == "-o" || x == "+o" || x == "-O" || x == "+O":
+			i++
+		case x == "--":
+			return i+1 < len(rest) && isCheckScript(path.Base(rest[i+1]))
+		case strings.HasPrefix(x, "-") || strings.HasPrefix(x, "+"):
+		default:
+			return isCheckScript(path.Base(x))
+		}
+	}
+	return false
+}
+
+// wrappedTest reports whether the words after a wrapper's verb (bundle exec, uv run) run a test: the runner may follow the
+// wrapper's own options, an option's value (uv run --python 3.12 pytest) or a "--" separator.
+func wrappedTest(w []string) bool {
+	for j, x := range w {
+		if x == "--" {
+			return isTestWords(w[j+1:])
+		}
+		if isTestWords(w[j:]) {
+			return true
+		}
+		if !strings.HasPrefix(x, "-") && (j == 0 || !strings.HasPrefix(w[j-1], "-")) {
+			return false // the command the wrapper runs, and it is not a test runner
+		}
+	}
+	return false
+}
+
+// isCheckScript reports whether prog, the base name of the program a command runs, is a project's own test or check script
+// (scripts/verify.sh, ./test.sh, bin/check): a script named for checking that a worker runs as it is, or through bash or sh. A
+// worker whose `bash scripts/verify.sh` ran RuboCop, the unit tests and the browser tests was reported as having run no tests.
+func isCheckScript(prog string) bool {
+	name, ext := prog, path.Ext(prog)
+	if ext != "" {
+		if ext != ".sh" && ext != ".bash" {
+			return false
+		}
+		name = strings.TrimSuffix(prog, ext)
+	}
+	switch name {
+	case "test", "tests", "check", "verify", "ci", "run-tests", "run_tests":
+		return true
 	}
 	return false
 }
@@ -627,6 +723,17 @@ func classifyCommand(cmd string) (isTest, masked bool) {
 	for _, c := range cs[last+1:] {
 		if len(c.words) > 0 {
 			masked = true
+		}
+	}
+	if w := stripWrappers(cs[last].words); len(w) > 0 {
+		switch path.Base(w[0]) {
+		case "bash", "sh", "zsh":
+			// bash -c 'rake test | tail -40' ends with tail's status, not the test's
+			if inner, ok := shellScript(w[1:]); ok {
+				if _, im := classifyCommand(inner); im {
+					masked = true
+				}
+			}
 		}
 	}
 	return true, masked
