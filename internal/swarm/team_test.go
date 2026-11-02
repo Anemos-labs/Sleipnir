@@ -216,10 +216,13 @@ func TestAutoDocsBacksOffAPassItsWorkerStoppedOn(t *testing.T) {
 			pass = tk
 		}
 	}
-	if pass.ID == "" || pass.Owner == "" {
+	owner := pass.Owner
+	if owner == "" {
+		owner = pass.LastOwner // its worker may already have stopped on the 503 and handed it back
+	}
+	if pass.ID == "" || owner == "" {
 		t.Fatalf("no pass started: %+v", r.sw.Board.Snapshot().Tasks)
 	}
-	owner := pass.Owner
 	cur := func() Task { tk, _ := r.sw.Board.Snapshot().Task(pass.ID); return tk }
 	rvWait(t, "the stopped pass back in todo", func() bool { tk := cur(); return tk.Status == StatusTodo && tk.Owner == "" && r.idle(owner) })
 	if tk := cur(); tk.Attempts != 1 {
