@@ -141,6 +141,10 @@ type stallState struct {
 type reviewClock struct {
 	turns int64
 	at    time.Time
+	// read says the manager's reading of this revision already restarted the clock once, and restart that the next sweep
+	// restarts it. Only the first read counts: a manager that reads the same submission again and again without deciding it
+	// starves it all the same.
+	read, restart bool
 }
 
 // init makes the maps; the zero value is not ready for use.
@@ -217,8 +221,12 @@ func lessTaskID(a, b string) bool {
 }
 
 // noteCoordination records the manager's coordination calls for the stall sweep: a
-// wait marks it as waiting, any other call ends that, and a task call that names a
-// task restarts that task's review clock (the manager looked at it).
+// wait marks it as waiting, any other call ends that, and the first task call that
+// names a task in review restarts that revision's review clock (the manager looked at
+// it). Reading it again does not: in a team run the manager called task get on five
+// submissions every few minutes for half an hour, deciding none, and each read cleared
+// the finding the sweep had just raised. A decision is a new revision, with a clock of
+// its own.
 func (s *Swarm) noteCoordination(agentID, tool, taskID string) {
 	if agentID == "" || agentID != s.ManagerID() {
 		return
@@ -227,9 +235,10 @@ func (s *Swarm) noteCoordination(agentID, tool, taskID string) {
 	defer s.stalls.mu.Unlock()
 	s.stalls.waiting = tool == "wait"
 	if tool == "task" && taskID != "" {
-		for k := range s.stalls.review {
-			if id, _, _ := strings.Cut(k, "#"); id == taskID {
-				delete(s.stalls.review, k)
+		for k, c := range s.stalls.review {
+			if id, _, _ := strings.Cut(k, "#"); id == taskID && !c.read {
+				c.read, c.restart = true, true
+				s.stalls.review[k] = c
 			}
 		}
 	}
@@ -476,8 +485,8 @@ func (s *Swarm) stallFindings() []Stall {
 			key := t.ID + "#" + strconv.FormatUint(t.Rev, 10)
 			inReview[key] = true
 			since, ok := s.stalls.review[key]
-			if !ok {
-				s.stalls.review[key] = reviewClock{turns: mv.turns, at: now}
+			if !ok || since.restart {
+				s.stalls.review[key] = reviewClock{turns: mv.turns, at: now, read: since.read}
 				continue
 			}
 			n, waited := mv.turns-since.turns, now.Sub(since.at)

@@ -463,6 +463,35 @@ func TestStallReviewStarved(t *testing.T) {
 			t.Fatal("the finding outlived its condition")
 		}
 	})
+	t.Run("seeded: the manager reads the submission over and over without deciding it", func(t *testing.T) {
+		r, mgr, task := setup(t)
+		get := func() {
+			r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "get", "id": task.ID})
+		}
+		get() // the first read restarts the clock
+		r.sw.sweepStalls()
+		for i := 0; i < 4; i++ { // then turn after turn it reads the same submission again and decides nothing
+			mgr.turns.Add(1)
+			get()
+			r.sw.sweepStalls()
+		}
+		f, ok := active(r, StallReviewStarved)
+		if !ok || f.Task != task.ID {
+			t.Fatalf("a submission read again and again but never decided is not found starved: %+v, %v", f, ok)
+		}
+		get()
+		r.sw.sweepStalls()
+		if _, ok := active(r, StallReviewStarved); !ok {
+			t.Fatal("reading the submission again cleared the finding")
+		}
+		if err := r.sw.Board.Accept("mgr", task.ID, ""); err != nil {
+			t.Fatal(err)
+		}
+		r.sw.sweepStalls()
+		if _, ok := active(r, StallReviewStarved); ok {
+			t.Fatal("the finding outlived the decision")
+		}
+	})
 	t.Run("healthy: the manager reads the submission", func(t *testing.T) {
 		r, mgr, task := setup(t)
 		mgr.turns.Add(2)
