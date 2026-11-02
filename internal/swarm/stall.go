@@ -231,19 +231,15 @@ func (s *Swarm) noteCoordination(agentID, tool, taskID string) {
 	s.stalls.waiting = tool == "wait"
 }
 
-// noteReviewRead records that the manager read a task in review (task get): the first
+// noteReviewRead records that the manager read t, the task in review as task get returned it: the first
 // read of a revision restarts that revision's review clock, since the manager looked at
 // it. Reading it again does not: in a team run the manager called task get on five
 // submissions every few minutes for half an hour, deciding none, and each read cleared
 // the finding the sweep had just raised. A decision is a new revision, with a clock of
 // its own. A read before the sweep first sees the revision leaves a clock for the sweep
 // to start.
-func (s *Swarm) noteReviewRead(agentID, taskID string) {
-	if agentID == "" || agentID != s.ManagerID() || taskID == "" {
-		return
-	}
-	t, ok := s.Board.Snapshot().Task(taskID)
-	if !ok || t.Status != StatusReview {
+func (s *Swarm) noteReviewRead(agentID string, t Task) {
+	if agentID == "" || agentID != s.ManagerID() || t.ID == "" || t.Status != StatusReview {
 		return
 	}
 	key := t.ID + "#" + strconv.FormatUint(t.Rev, 10)
@@ -508,6 +504,13 @@ func (s *Swarm) stallFindings() []Stall {
 			case waited >= reviewStarvedAfter:
 				out = append(out, Stall{Kind: StallReviewStarved, Task: t.ID, Agent: mgr, Notify: mgr,
 					Detail: fmt.Sprintf("%s has waited in review for %d minutes", t.ID, int(waited/time.Minute))})
+			}
+		}
+		// Prune against the board as it is now, under the lock noteReviewRead takes: a revision submitted after snap was taken
+		// may already carry the manager's first read, which a prune by snap would drop.
+		for _, t := range s.Board.Snapshot().Tasks {
+			if t.Status == StatusReview {
+				inReview[t.ID+"#"+strconv.FormatUint(t.Rev, 10)] = true
 			}
 		}
 		for key := range s.stalls.review {

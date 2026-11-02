@@ -536,6 +536,30 @@ func TestStallReviewStarved(t *testing.T) {
 			t.Fatalf("a submission the manager read after a refused call was found starved: %+v", stallEvents(r))
 		}
 	})
+	t.Run("healthy: a read of an earlier revision leaves the new submission's first read", func(t *testing.T) {
+		r, mgr, task := setup(t)
+		stale, _ := r.sw.Board.Snapshot().Task(task.ID) // what a task get returned just before the worker submitted again
+		if _, err := r.sw.Board.SendBack("mgr", task.ID, "add a test"); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.sw.Board.Claim("be-1", task.ID); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.sw.Board.Submit("be-1", task.ID, "paginated, tested", "edited api/users_test.go"); err != nil {
+			t.Fatal(err)
+		}
+		r.sw.sweepStalls()
+		r.sw.noteReviewRead("mgr", stale)
+		r.sw.sweepStalls()
+		mgr.turns.Add(2)
+		r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "get", "id": task.ID})
+		r.sw.sweepStalls()
+		mgr.turns.Add(2)
+		r.sw.sweepStalls()
+		if n := raised(r, StallReviewStarved); n != 0 {
+			t.Fatalf("the first read of the new submission did not restart its clock: %+v", stallEvents(r))
+		}
+	})
 	t.Run("healthy: the manager reads the submission", func(t *testing.T) {
 		r, mgr, task := setup(t)
 		mgr.turns.Add(2)
