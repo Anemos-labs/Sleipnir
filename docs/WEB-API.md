@@ -367,6 +367,7 @@ path the permission engine refuses agents to read. A change (revert, restore, ac
 |---|---|---|---|
 | `GET` | `/api/models` | `wire.ModelsView`: the catalogue (cached for 6 hours; `refresh=1` asks every provider again) with favourites, roles and efforts. Query: `q`, `tools=1`, `reasoning=1`, `fav=1`, `max_price`, `min_context`, `all=1`, `tab` | - |
 | `POST` | `/api/models/fav` | `wire.FavRequest`: stars or unstars a model in the user's configuration | - |
+| `POST` | `/api/models/default` | `wire.DefaultRequest`: keeps a model as the default of a role in the user's configuration (`models.default`, or `models.roles.ROLE`), so that every later start reads it; `wire.DefaultReply` names the file written, the default the next start reads with its source, and the layer that still outranks the file, if one does. `GET /api/models` carries the same as `saved` (by role) and `saveFile` | - |
 | `GET` | `/api/sessions/{id}/permissions` | `wire.PermissionsView`: the mode, the order rules are judged in, and the rules in force with their origin | - |
 | `GET` | `/api/sessions/{id}/trust` | `wire.TrustView`: the tab's project files and the trust ledger with each directory's state now | - |
 | `GET` | `/api/trust/challenge` | `?dir=`: `wire.TrustChallenge` for a project of the server, with a confirmation id for its scope. `409 nothing` when there is nothing to trust | - |

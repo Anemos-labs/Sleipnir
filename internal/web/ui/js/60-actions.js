@@ -311,6 +311,8 @@
     const on = !G.favs.has(ref); if (on) G.favs.add(ref); else G.favs.delete(ref); const m = D.model(ref); if (m) m.fav = on; G.ver++; SL.bus.emit('models-changed');
     return send(api().post('/api/models/fav', { ref, on }), null, () => { if (on) G.favs.delete(ref); else G.favs.add(ref); if (m) m.fav = !on; G.ver++; SL.bus.emit('models-changed'); return false; });
   });
+  /** keep ref as the default model of role in the user's configuration (models.default, or models.roles.ROLE): every later start reads it */
+  act('saveDefaultModel', (ref, role) => send(api().post('/api/models/default', { ref, role: role || 'default' }), () => { if (SL.data) SL.data.load('models', { force: true }); }));
   act('trustDir', (dir, on) => {
     const after = () => { if (SL.data) { SL.data.load('trust', { force: true }); SL.data.load('projects', { force: true }); } };
     if (!on) return send(api().post('/api/trust', { dir, on: false }), after);

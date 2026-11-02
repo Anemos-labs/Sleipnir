@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -42,8 +43,11 @@ const (
 type Config struct {
 	// Exe is the Sleipnir binary jobs run (normally os.Executable()).
 	Exe string
-	// Root is the directory jobs run in, and the boundary of a job's cwd.
-	Root string
+	// Roots are the directories a job's cwd must be inside (at least one).
+	Roots []string
+	// Dir is the directory a job runs in when the call names none, and the base
+	// of a relative cwd. Empty: a call must name an absolute cwd.
+	Dir string
 	// Mode is the most permissive mode a job may run in (default DefaultMode).
 	Mode string
 	// Allow rules are passed to every job.
@@ -88,14 +92,30 @@ func New(cfg Config) (*Server, error) {
 	if cfg.MaxJobs <= 0 {
 		cfg.MaxJobs = DefaultMaxJobs
 	}
-	root, err := filepath.Abs(cfg.Root)
-	if err != nil {
-		return nil, err
+	if len(cfg.Roots) == 0 {
+		return nil, errors.New("mcp serve: no root directory for runs")
 	}
-	if real, err := filepath.EvalSymlinks(root); err == nil {
-		root = real
+	roots := make([]string, 0, len(cfg.Roots))
+	for _, r := range cfg.Roots {
+		real, err := realDir(r)
+		if err != nil {
+			return nil, fmt.Errorf("mcp serve: root %s: %v", r, err)
+		}
+		if !slices.Contains(roots, real) {
+			roots = append(roots, real)
+		}
 	}
-	cfg.Root = root
+	cfg.Roots = roots
+	if cfg.Dir != "" {
+		real, err := realDir(cfg.Dir)
+		if err != nil {
+			return nil, fmt.Errorf("mcp serve: directory %s: %v", cfg.Dir, err)
+		}
+		if !Inside(roots, real) {
+			return nil, fmt.Errorf("mcp serve: directory %s is outside the roots %s", cfg.Dir, strings.Join(roots, ", "))
+		}
+		cfg.Dir = real
+	}
 	if cfg.Version == "" {
 		cfg.Version = "dev"
 	}
@@ -343,6 +363,7 @@ func eventLimit(n int) int {
 type StartArgs struct {
 	Goal      string   `json:"goal"`
 	Cwd       string   `json:"cwd,omitempty"`
+	Create    bool     `json:"create,omitempty"`
 	Model     string   `json:"model,omitempty"`
 	Workers   int      `json:"workers,omitempty"`
 	Team      string   `json:"team,omitempty"`
@@ -380,7 +401,7 @@ func Args(cfg Config, a StartArgs) (args []string, dir string, err error) {
 	if len(a.Goal) > maxGoalBytes {
 		return nil, "", fmt.Errorf("goal is over %d bytes", maxGoalBytes)
 	}
-	dir, err = within(cfg.Root, a.Cwd)
+	dir, err = resolveDir(cfg, a.Cwd, a.Create)
 	if err != nil {
 		return nil, "", err
 	}
@@ -446,25 +467,101 @@ func Args(cfg Config, a StartArgs) (args []string, dir string, err error) {
 	return append(args, "-"), dir, nil
 }
 
-// within resolves a job directory against root and refuses one outside it.
-func within(root, cwd string) (string, error) {
-	dir := root
-	if cwd != "" {
-		if filepath.IsAbs(cwd) {
-			dir = filepath.Clean(cwd)
-		} else {
-			dir = filepath.Join(root, cwd)
+// realDir is dir made absolute with its symlinks resolved; it must be a directory.
+func realDir(dir string) (string, error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+	real, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", err
+	}
+	if fi, err := os.Stat(real); err != nil {
+		return "", err
+	} else if !fi.IsDir() {
+		return "", errors.New("not a directory")
+	}
+	return real, nil
+}
+
+// Inside reports whether dir (absolute, symlinks resolved) is one of roots or below one.
+func Inside(roots []string, dir string) bool {
+	for _, root := range roots {
+		rel, err := filepath.Rel(root, dir)
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel) {
+			return true
 		}
 	}
-	real, err := filepath.EvalSymlinks(dir)
+	return false
+}
+
+// resolveDir turns a call's cwd into a job directory inside cfg's roots. A
+// leading ~ is the home directory, a relative cwd is relative to cfg.Dir, and
+// with create a missing directory is made (with its missing parents), but only
+// when the part of the path that exists is inside a root.
+func resolveDir(cfg Config, cwd string, create bool) (string, error) {
+	roots := strings.Join(cfg.Roots, ", ")
+	if cwd == "~" || strings.HasPrefix(cwd, "~/") || strings.HasPrefix(cwd, "~"+string(filepath.Separator)) {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("cwd %s: no home directory: %v", cwd, err)
+		}
+		cwd = filepath.Join(home, cwd[1:])
+	}
+	var dir string
+	switch {
+	case cwd == "" && cfg.Dir == "":
+		return "", fmt.Errorf("cwd is required: pass the absolute path of the project's folder (this server allows folders inside %s; set create to make a new one)", roots)
+	case cwd == "":
+		dir = cfg.Dir
+	case filepath.IsAbs(cwd):
+		dir = filepath.Clean(cwd)
+	case cfg.Dir == "":
+		return "", fmt.Errorf("cwd %s is relative and this server has no default directory: pass an absolute path inside %s", cwd, roots)
+	default:
+		dir = filepath.Join(cfg.Dir, cwd)
+	}
+	// The longest part of dir that exists decides where it is, with its
+	// symlinks resolved; what is missing below it can hold no symlink yet.
+	existing, missing := dir, ""
+	for {
+		if _, err := os.Lstat(existing); err == nil {
+			break
+		}
+		parent := filepath.Dir(existing)
+		if parent == existing {
+			break
+		}
+		missing = filepath.Join(filepath.Base(existing), missing)
+		existing = parent
+	}
+	real, err := filepath.EvalSymlinks(existing)
 	if err != nil {
 		return "", fmt.Errorf("cwd: %v", err)
 	}
-	rel, err := filepath.Rel(root, real)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
-		return "", fmt.Errorf("cwd %s is outside this server's directory %s", cwd, root)
+	target := filepath.Join(real, missing)
+	if !Inside(cfg.Roots, target) {
+		return "", fmt.Errorf("cwd %s is outside this server's roots %s (the person widens them with `sleipnir mcp serve --root DIR`)", cwd, roots)
 	}
-	return real, nil
+	if missing != "" {
+		if !create {
+			return "", fmt.Errorf("cwd %s does not exist: set create to true to make it", cwd)
+		}
+		if err := os.MkdirAll(target, 0o755); err != nil {
+			return "", fmt.Errorf("cwd: %v", err)
+		}
+		// A symlink raced in while the directory was made would show here.
+		if real, err := filepath.EvalSymlinks(target); err != nil || !Inside(cfg.Roots, real) {
+			return "", fmt.Errorf("cwd %s did not stay inside this server's roots %s", cwd, roots)
+		}
+	}
+	if fi, err := os.Stat(target); err != nil {
+		return "", fmt.Errorf("cwd: %v", err)
+	} else if !fi.IsDir() {
+		return "", fmt.Errorf("cwd %s is not a directory", cwd)
+	}
+	return target, nil
 }
 
 // start launches a job.
@@ -563,5 +660,5 @@ func (s *Server) list() map[string]any {
 		st := j.status(0, 0)
 		rows = append(rows, jobLine{Job: st.Job, State: st.State, Goal: clip(st.Goal, 120), ElapsedSec: st.ElapsedSec})
 	}
-	return map[string]any{"jobs": rows, "max_running": s.cfg.MaxJobs, "mode_ceiling": s.cfg.Mode, "root": s.cfg.Root}
+	return map[string]any{"jobs": rows, "max_running": s.cfg.MaxJobs, "mode_ceiling": s.cfg.Mode, "roots": s.cfg.Roots, "default_dir": s.cfg.Dir}
 }

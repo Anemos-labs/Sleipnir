@@ -48,6 +48,9 @@ type Options struct {
 	Home    string
 	Version string
 	Self    string
+	// Model is the --model `sleipnir web` was started with, "" for none: new sessions of the page start on it whatever the
+	// configuration says, so the Models page names it as the source of their default.
+	Model string
 }
 
 // KeyRoutes says whether POST /api/providers/{name}/key (a provider key typed in the browser) is served: a person who uses only the
@@ -109,6 +112,7 @@ func (s *service) register() {
 	srv := s.srv
 	srv.HandleFunc("GET /api/models", s.handleModels, web.RouteOpts{WriteTimeout: 60 * time.Second})
 	srv.HandleFunc("POST /api/models/fav", s.handleFav, web.RouteOpts{})
+	srv.HandleFunc("POST /api/models/default", s.handleDefault, web.RouteOpts{})
 	srv.HandleFunc("GET /api/sessions/{id}/permissions", s.handlePermissions, web.RouteOpts{})
 	srv.HandleFunc("GET /api/sessions/{id}/trust", s.handleTrustView, web.RouteOpts{})
 	srv.HandleFunc("GET /api/trust/challenge", s.handleTrustChallenge, web.RouteOpts{})

@@ -60,10 +60,14 @@ func cmdModels(ctx context.Context, args []string) error {
 	if len(args) > 0 && args[0] == "fav" {
 		return cmdFavorites(os.Stdout, args[1:])
 	}
+	if len(args) > 0 && args[0] == "default" {
+		return cmdDefaultModel(os.Stdout, os.Stderr, args[1:])
+	}
 	fs := newFlagSet("models", flag.ExitOnError)
 	fs.Usage = func() {
 		printHelp(fs.Output(), `usage: sleipnir models [words...] [flags]
        sleipnir models fav [add|rm] provider/model...
+       sleipnir models default [--role ROLE] [provider/model]
 
 Lists the models of every provider whose key is set (and Heimdallm), as references that --model takes. Each word narrows the
 search (all must appear, any case). Favorites, marked *, come first.
@@ -408,6 +412,52 @@ func cmdFavorites(w io.Writer, args []string) error {
 		return err
 	}
 	fmt.Fprintf(w, "%d favorite(s)\n", len(favs))
+	return nil
+}
+
+// cmdDefaultModel shows the default model a new session starts on and the file or variable it comes from, or, given a model, keeps
+// it as that default in the user's own configuration (models.default; models.roles.ROLE with --role), so that every later start reads
+// it. A model chosen with /model or on the web page lasts only as long as its session; this is the one that stays. When a layer above
+// the user's file (a project's file, SLEIPNIR_MODEL) still outranks the saved model, it says which.
+func cmdDefaultModel(w, ew io.Writer, args []string) error {
+	fs := newFlagSet("models default", flag.ContinueOnError)
+	fs.SetOutput(ew)
+	role := fs.String("role", "", "the role whose default to show or keep (manager, backend, judge...); without it, models.default")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 1 {
+		return fmt.Errorf("models default: want at most one provider/model")
+	}
+	show := func() (catalog.SavedDefault, error) {
+		cfg, rep, err := config.Load(config.LoadOpts{})
+		if err != nil {
+			return catalog.SavedDefault{}, err
+		}
+		return catalog.DefaultOf(cfg, rep, *role), nil
+	}
+	if fs.NArg() == 0 {
+		d, err := show()
+		if err != nil {
+			return err
+		}
+		if d.Ref == "" {
+			fmt.Fprintf(w, "%s: not set\n", d.Key)
+			return nil
+		}
+		fmt.Fprintf(w, "%s = %s (from %s)\n", d.Key, oneLineSafe(d.Ref), oneLineSafe(d.Source))
+		return nil
+	}
+	ref := fs.Arg(0)
+	home, _ := os.UserHomeDir()
+	path, err := catalog.SaveDefault(home, *role, ref)
+	if err != nil {
+		return fmt.Errorf("models default: %w", err)
+	}
+	fmt.Fprintf(w, "%s = %s, saved in %s\n", catalog.DefaultKey(*role), ref, path)
+	if d, err := show(); err == nil && d.Ref != ref {
+		fmt.Fprintf(ew, "models default: %s sets %s to %s and wins over your file: change or remove it there\n", oneLineSafe(d.Source), d.Key, oneLineSafe(d.Ref))
+	}
 	return nil
 }
 

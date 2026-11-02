@@ -910,12 +910,15 @@ prices per million tokens. Only chat models are listed (`--all` lists the others
 models take and give (OpenAI's own, Ollama's, vLLM's) is taken to list chat models. With no `--provider` it asks every provider whose key is set, and Heimdallm (its
 catalogue is public), at once, and prints `provider/model` references that `--model` takes; a provider that does not answer is named on stderr. Words, `--tools`,
 `--reasoning`, `--max-price` and `--min-context` narrow the list; favorites (`models fav add|rm|list`, kept in your user config as `models.favorites`) come first,
-marked `*`. In the chat, `/model ` completes from the same list. Project config is never trusted here.
+marked `*`. `models default` prints the default model a new session starts on and the file or variable it comes from; `models default provider/model`
+keeps that model as `models.default` in your user config (`--role ROLE`: as `models.roles.ROLE`), so it survives a restart, and says when a project's
+file or `SLEIPNIR_MODEL` still outranks it. A model chosen with `/model` lasts only as long as its session. In the chat, `/model ` completes from the same list. Project config is never trusted here.
 
 <!-- flags: models -->
 ```text
 usage: sleipnir models [words...] [flags]
        sleipnir models fav [add|rm] provider/model...
+       sleipnir models default [--role ROLE] [provider/model]
 
 Lists the models of every provider whose key is set (and Heimdallm), as references that --model takes. Each word narrows the
 search (all must appear, any case). Favorites, marked *, come first.

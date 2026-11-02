@@ -81,7 +81,94 @@ func (s *service) handleModels(w http.ResponseWriter, r *http.Request) {
 	if cfg == nil {
 		cfg, _, _ = config.Load(config.LoadOpts{Home: opts.Home, Cwd: opts.Cwd, UntrustedProject: true})
 	}
-	reply(w, modelsReply{ModelsView: s.modelsView(res, f, cfg, tc), ConfigNote: s.commentsNote()}, nil)
+	v := s.modelsView(res, f, cfg, tc)
+	v.Saved, v.SaveFile = s.savedModels(tc, v.RoleOrder), s.display(config.UserConfigPath(s.o.Home))
+	reply(w, modelsReply{ModelsView: v, ConfigNote: s.commentsNote()}, nil)
+}
+
+// savedLoad reads the configuration a new session of tc (or, with no tab, of the server's directory) would start from, with the
+// report of where each value came from.
+func (s *service) savedLoad(tc *tabCtx) (*config.Config, *config.Report, error) {
+	if tc != nil {
+		return config.Load(s.loadOpts(tc))
+	}
+	return config.Load(config.LoadOpts{Home: s.o.Home, UntrustedProject: true})
+}
+
+// savedModels are the default models a new session reads (models.default, then the manager and each role of order), with where each
+// comes from; nil when the configuration does not load (the page then shows nothing rather than a guess).
+func (s *service) savedModels(tc *tabCtx, order []string) map[string]wire.SavedModel {
+	cfg, rep, err := s.savedLoad(tc)
+	if err != nil {
+		return nil
+	}
+	out := map[string]wire.SavedModel{}
+	for _, role := range append([]string{"default", "manager"}, order...) {
+		out[role] = s.savedOf(catalog.DefaultOf(cfg, rep, role))
+	}
+	for _, role := range []string{"default", "manager"} {
+		if d := out[role]; s.o.Model != "" && d.Key == "models.default" {
+			out[role] = wire.SavedModel{Key: d.Key, Ref: s.o.Model, From: "--model", Layer: "flag"}
+		}
+	}
+	return out
+}
+
+// savedOf is d as the page shows it: a file in the page's form of paths.
+func (s *service) savedOf(d catalog.SavedDefault) wire.SavedModel {
+	from := d.Source
+	if !strings.HasPrefix(from, "env:") {
+		from = s.display(from)
+	}
+	return wire.SavedModel{Key: d.Key, Ref: d.Ref, From: from, Layer: d.Kind}
+}
+
+// handleDefault is POST /api/models/default: keep a model as the default of a role in the user's configuration, so that a start of
+// the harness, a restarted team and a new session read it. It answers with the default the next start reads for that role and, when a
+// layer above the user's file (a project's file, SLEIPNIR_MODEL) still outranks it, a sentence that says so. Repeating it changes nothing.
+func (s *service) handleDefault(w http.ResponseWriter, r *http.Request) {
+	var req wire.DefaultRequest
+	if !web.DecodeJSON(w, r, &req) {
+		return
+	}
+	req.Ref, req.Role = strings.TrimSpace(req.Ref), strings.TrimSpace(req.Role)
+	if _, _, ok := config.SplitModelRef(req.Ref); !ok || len(req.Ref) > 300 || strings.ContainsAny(req.Ref, " \t\n\x00") {
+		web.WriteError(w, fail(http.StatusBadRequest, "bad_request", "a model is named provider/model (see the catalogue)"))
+		return
+	}
+	if !catalog.ValidRole(req.Role) {
+		web.WriteError(w, fail(http.StatusBadRequest, "bad_request", "a role is named in lower case: manager, backend, judge..."))
+		return
+	}
+	if req.Role == "" {
+		req.Role = "default"
+	}
+	var tc *tabCtx
+	if s.host != nil && s.host.Active() != "" {
+		tc, _ = s.tabByID(s.host.Active())
+	}
+	note := s.commentsNote()
+	path, err := catalog.SaveDefault(s.o.Home, req.Role, req.Ref)
+	if err != nil {
+		web.Logf(r, "default model not saved")
+		web.WriteError(w, fail(http.StatusUnprocessableEntity, "rejected", "your configuration file could not be changed (it does not load: see `sleipnir config`)"))
+		return
+	}
+	web.Logf(r, "default model of %s saved", req.Role)
+	if s.commentsNote() != "" {
+		note = "" // nothing was written: the comments are still there
+	}
+	out := wire.DefaultReply{OK: true, Role: req.Role, File: s.display(path), Note: note}
+	if cfg, rep, err := s.savedLoad(tc); err == nil {
+		out.Saved = s.savedOf(catalog.DefaultOf(cfg, rep, req.Role))
+		switch {
+		case out.Saved.Ref != req.Ref:
+			out.Over = "saved, but " + firstNonEmpty(out.Saved.From, "another layer") + " sets " + out.Saved.Key + " to " + out.Saved.Ref + ", and it wins over your file: change or remove it there"
+		case s.o.Model != "" && s.o.Model != req.Ref && out.Saved.Key == "models.default":
+			out.Over = "saved; this server was started with --model " + s.o.Model + ", which its new sessions start on: start it without --model to use your file"
+		}
+	}
+	reply(w, out, nil)
 }
 
 // modelsReply is wire.ModelsView with ConfigNote: when the user's configuration file has comments, the sentence that warns that a
