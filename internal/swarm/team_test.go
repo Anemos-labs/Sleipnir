@@ -2,8 +2,10 @@ package swarm
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -188,6 +190,75 @@ func TestAutoDocsRetriesTheSamePassWhenItCannotStart(t *testing.T) {
 	}
 	if !r.sw.docsPending() {
 		t.Error("the pass still counts as pending work")
+	}
+}
+
+// A pass its worker stopped on (the docs model has no capacity) waits before it is handed out again, longer after each stop,
+// instead of going straight back to the same worker: without an attempt bound one pass was handed out fifteen times in 75
+// minutes. A return that counts no stop (the manager handed it back) waits for nothing.
+func TestAutoDocsBacksOffAPassItsWorkerStoppedOn(t *testing.T) {
+	var fail atomic.Bool
+	fail.Store(true)
+	cfg := Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "docs"}, MaxAttempts: 2}
+	r := newRVRigWith(t, cfg, func(ctx context.Context, c *rvCall) rvReply {
+		if fail.Load() {
+			return rvReply{Err: errors.New("provider: server (http 503): no endpoints")}
+		}
+		return rvReply{Text: "noted"}
+	}, nil)
+	now := r.sw.deps.Now()
+	r.sw.docsTick(now)
+	r.sw.Board.Restore(&Snapshot{Tasks: []Task{{ID: "T1", Title: "add the cart endpoint", Status: StatusDone, Role: "backend", Files: []string{"api/"}}}})
+	r.sw.docsTick(now)
+	var pass Task
+	for _, tk := range r.sw.Board.Snapshot().Tasks {
+		if strings.HasPrefix(tk.Title, DocsTaskTitle) {
+			pass = tk
+		}
+	}
+	if pass.ID == "" || pass.Owner == "" {
+		t.Fatalf("no pass started: %+v", r.sw.Board.Snapshot().Tasks)
+	}
+	owner := pass.Owner
+	cur := func() Task { tk, _ := r.sw.Board.Snapshot().Task(pass.ID); return tk }
+	rvWait(t, "the stopped pass back in todo", func() bool { tk := cur(); return tk.Status == StatusTodo && tk.Owner == "" && r.idle(owner) })
+	if tk := cur(); tk.Attempts != 1 {
+		t.Fatalf("the stop is counted once: %+v", tk)
+	}
+
+	r.sw.docsTick(now)
+	if cur().Status != StatusTodo {
+		t.Fatal("the stopped pass went straight back to its worker")
+	}
+	if st := r.sw.DocsState(); !strings.Contains(st, "trying again in "+docsBackoff(1).String()) {
+		t.Errorf("state %q", st)
+	}
+	r.sw.docsTick(now.Add(docsBackoff(1) - time.Second))
+	if cur().Status != StatusTodo {
+		t.Fatalf("handed out before its wait of %s", docsBackoff(1))
+	}
+	fail.Store(false)
+	now = now.Add(docsBackoff(1))
+	r.sw.docsTick(now)
+	if tk := cur(); tk.Status == StatusTodo || tk.Owner != owner {
+		t.Fatalf("not handed out after its wait: %+v", tk)
+	}
+
+	// handed back by the manager: no stop is counted, so no wait
+	rvWait(t, owner+" idle", func() bool { return r.idle(owner) && cur().Status != StatusDoing })
+	if err := r.sw.Board.Unassign("mgr", pass.ID, "test: handed back"); err != nil {
+		t.Fatal(err)
+	}
+	if tk := cur(); tk.Status != StatusTodo || tk.Attempts != 1 {
+		t.Fatalf("handed back: %+v", tk)
+	}
+	r.sw.docsTick(now)
+	if tk := cur(); tk.Status == StatusTodo {
+		t.Errorf("a pass handed back without a stop waits: %+v / %q", tk, r.sw.DocsState())
+	}
+
+	if docsBackoff(1) != docsRetry || docsBackoff(2) != 2*docsRetry || docsBackoff(3) != 4*docsRetry || docsBackoff(40) != docsBackoffMax {
+		t.Errorf("backoff %s %s %s %s", docsBackoff(1), docsBackoff(2), docsBackoff(3), docsBackoff(40))
 	}
 }
 
