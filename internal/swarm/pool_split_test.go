@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // A role's members can work two parents side by side: the members an executing pool can spare (not its leader, no open subtask of
@@ -273,5 +274,86 @@ func TestAPoolLeftTodoByAResumeSparesAllButItsLeader(t *testing.T) {
 	s, _ := snap.Task(second.ID)
 	if !slices.Equal(f.Pool.Members, members[:1]) || !slices.Equal(s.Pool.Members, members[1:]) || f.Owner != members[0] {
 		t.Errorf("first pool %v (leader %s), second pool %v; want %v, %v", f.Pool.Members, f.Owner, s.Pool.Members, members[:1], members[1:])
+	}
+}
+
+// A member whose run has no task (mail woke it) counts as busy, so a parent queued for its role waited for it, while the member,
+// which may not claim a top-level task, waited for the parent: a real backend worker called wait and get on the parent queued for
+// it for half an hour. Once the parent has waited tasklessGrace, the harness stops that run, and the next pass starts the parent
+// on the member.
+func TestAQueuedParentStopsARunThatHasNoTask(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 1, Team: []string{"backend"}},
+		func(ctx context.Context, _ *rvCall) rvReply { <-ctx.Done(); return rvReply{Text: "stopped"} })
+	r.sw.StartManager()
+	ms, err := r.sw.ensurePool("backend")
+	if err != nil || len(ms) != 1 {
+		t.Fatalf("pool: %v %v", ms, err)
+	}
+	be := ms[0]
+	if !r.sw.wake(be) {
+		t.Fatal("the member did not start a run")
+	}
+	next, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "auth middleware", Role: "backend", Files: []string{"auth/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res := r.callTool(context.Background(), "spawn", "mgr", "manager", map[string]any{"role": "backend", "task": next.ID}); res.IsError || !strings.Contains(res.Text, "is queued") {
+		t.Fatalf("spawn: %+v", res)
+	}
+	now := r.sw.deps.Now()
+	r.sw.queueTick(now)
+	be.mu.Lock()
+	running := be.life == lifeRunning
+	be.mu.Unlock()
+	if !running {
+		t.Fatal("a run without a task was stopped before the parent had waited tasklessGrace")
+	}
+	r.sw.queueTick(now.Add(tasklessGrace + time.Second))
+	rvWait(t, "the taskless run to end", func() bool {
+		be.mu.Lock()
+		defer be.mu.Unlock()
+		return be.life == lifeIdle
+	})
+	r.sw.queueTick(now.Add(tasklessGrace + 2*time.Second))
+	if n, _ := r.sw.Board.Snapshot().Task(next.ID); n.Status != StatusDoing || n.Owner != be.id {
+		t.Fatalf("%s = %s/%s, want started on %s", next.ID, n.Status, n.Owner, be.id)
+	}
+	rvWait(t, "the manager to be told", func() bool { return mailSent(r, be.id+"'s run had no task while "+next.ID+" waited") == 1 })
+}
+
+// A taskless run that is slow to end after the stop is not stopped and announced again on every pass while the parent waits.
+func TestATasklessRunSlowToEndIsAnnouncedOnce(t *testing.T) {
+	release := make(chan struct{})
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 1, Team: []string{"backend"}},
+		func(ctx context.Context, _ *rvCall) rvReply { <-ctx.Done(); <-release; return rvReply{Text: "stopped"} })
+	r.sw.StartManager()
+	ms, err := r.sw.ensurePool("backend")
+	if err != nil || len(ms) != 1 {
+		t.Fatalf("pool: %v %v", ms, err)
+	}
+	be := ms[0]
+	if !r.sw.wake(be) {
+		t.Fatal("the member did not start a run")
+	}
+	next, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "auth middleware", Role: "backend", Files: []string{"auth/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res := r.callTool(context.Background(), "spawn", "mgr", "manager", map[string]any{"role": "backend", "task": next.ID}); res.IsError || !strings.Contains(res.Text, "is queued") {
+		t.Fatalf("spawn: %+v", res)
+	}
+	now := r.sw.deps.Now()
+	for i := 1; i <= 3; i++ {
+		r.sw.queueTick(now.Add(tasklessGrace + time.Duration(i)*time.Second))
+	}
+	close(release)
+	rvWait(t, "the taskless run to end", func() bool {
+		be.mu.Lock()
+		defer be.mu.Unlock()
+		return be.life == lifeIdle
+	})
+	rvWait(t, "the manager to be told", func() bool { return mailSent(r, be.id+"'s run had no task while "+next.ID+" waited") >= 1 })
+	if n := mailSent(r, be.id+"'s run had no task while "+next.ID+" waited"); n != 1 {
+		t.Errorf("the manager was told %d times, want once", n)
 	}
 }
