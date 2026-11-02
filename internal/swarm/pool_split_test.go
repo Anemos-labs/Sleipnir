@@ -320,3 +320,40 @@ func TestAQueuedParentStopsARunThatHasNoTask(t *testing.T) {
 	}
 	rvWait(t, "the manager to be told", func() bool { return mailSent(r, be.id+"'s run had no task while "+next.ID+" waited") == 1 })
 }
+
+// A taskless run that is slow to end after the stop is not stopped and announced again on every pass while the parent waits.
+func TestATasklessRunSlowToEndIsAnnouncedOnce(t *testing.T) {
+	release := make(chan struct{})
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 1, Team: []string{"backend"}},
+		func(ctx context.Context, _ *rvCall) rvReply { <-ctx.Done(); <-release; return rvReply{Text: "stopped"} })
+	r.sw.StartManager()
+	ms, err := r.sw.ensurePool("backend")
+	if err != nil || len(ms) != 1 {
+		t.Fatalf("pool: %v %v", ms, err)
+	}
+	be := ms[0]
+	if !r.sw.wake(be) {
+		t.Fatal("the member did not start a run")
+	}
+	next, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "auth middleware", Role: "backend", Files: []string{"auth/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res := r.callTool(context.Background(), "spawn", "mgr", "manager", map[string]any{"role": "backend", "task": next.ID}); res.IsError || !strings.Contains(res.Text, "is queued") {
+		t.Fatalf("spawn: %+v", res)
+	}
+	now := r.sw.deps.Now()
+	for i := 1; i <= 3; i++ {
+		r.sw.queueTick(now.Add(tasklessGrace + time.Duration(i)*time.Second))
+	}
+	close(release)
+	rvWait(t, "the taskless run to end", func() bool {
+		be.mu.Lock()
+		defer be.mu.Unlock()
+		return be.life == lifeIdle
+	})
+	rvWait(t, "the manager to be told", func() bool { return mailSent(r, be.id+"'s run had no task while "+next.ID+" waited") >= 1 })
+	if n := mailSent(r, be.id+"'s run had no task while "+next.ID+" waited"); n != 1 {
+		t.Errorf("the manager was told %d times, want once", n)
+	}
+}

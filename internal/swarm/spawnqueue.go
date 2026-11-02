@@ -104,29 +104,37 @@ const tasklessGrace = 2 * time.Minute
 // It reports whether a run was stopped.
 func (s *Swarm) stopTasklessRun(q queuedSpawn, now time.Time) bool {
 	snap := s.Board.Snapshot()
+	reason := "it had no task while " + q.req.TaskID + " waited for a free " + q.req.Role + " member"
 	for _, m := range s.poolMembers(q.req.Role) {
-		m.mu.Lock()
-		rs, task, life := m.run, m.task, m.life
-		var since time.Time
-		taskless := rs != nil && life == lifeRunning && task == "" && len(rs.tasks) == 0
-		if taskless {
-			since = rs.started
-		}
-		m.mu.Unlock()
-		if !taskless || poolHolder(snap, m.id) != "" || soloTaskOf(snap, m.id, "") != "" {
+		if poolHolder(snap, m.id) != "" || soloTaskOf(snap, m.id, "") != "" {
 			continue
 		}
+		// The checks and the stop happen under one hold of m.mu, so a run that claimed a task, or replaced the one looked at,
+		// in between is never the one stopped.
+		m.mu.Lock()
+		rs := m.run
+		if rs == nil || m.life != lifeRunning || m.task != "" || len(rs.tasks) != 0 {
+			m.mu.Unlock()
+			continue
+		}
+		if rs.reason != "" { // already being stopped (by an earlier pass or anyone else): it counts, and is not announced again
+			m.mu.Unlock()
+			return true
+		}
+		since := rs.started
 		if q.at.After(since) {
 			since = q.at
 		}
 		if now.Sub(since) < tasklessGrace {
+			m.mu.Unlock()
 			continue
 		}
-		if s.stopRun(m, "it had no task while "+q.req.TaskID+" waited for a free "+q.req.Role+" member", false) {
-			s.notify(s.ManagerID(), "info", fmt.Sprintf("%s's run had no task while %s waited for a free %s member: the harness stopped it, and starts %s on %s next.",
-				m.id, q.req.TaskID, q.req.Role, q.req.TaskID, m.id))
-			return true
-		}
+		rs.reason, rs.count = reason, false
+		m.mu.Unlock()
+		rs.cancel()
+		s.notify(s.ManagerID(), "info", fmt.Sprintf("%s's run had no task while %s waited for a free %s member: the harness stopped it, and starts %s on %s next.",
+			m.id, q.req.TaskID, q.req.Role, q.req.TaskID, m.id))
+		return true
 	}
 	return false
 }
