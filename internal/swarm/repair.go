@@ -229,6 +229,7 @@ func (t *taskTool) reviseTask(ctx context.Context, c *tools.Call, in taskIn) *to
 		if err := s.Board.resolve(c.Env.Agent, in.ID, in.Text); err != nil {
 			return tools.Errorf("%v", err)
 		}
+		s.wakeBlockedOnResolved(in.ID, in.Text)
 		return text("%s complete: no longer needed (%s)", in.ID, in.Text)
 	}
 	if err := s.Board.revise(c.Env.Agent, in.ID, TaskSpec{Title: in.Title, Desc: in.Description, Kind: in.Kind, Files: in.Files, Deps: in.Deps}, in.Text); err != nil {
