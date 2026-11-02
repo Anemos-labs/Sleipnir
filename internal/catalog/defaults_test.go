@@ -20,6 +20,9 @@ func TestSaveDefaultWritesTheKeyAStartReads(t *testing.T) {
 			t.Errorf("%q is taken for a role", bad)
 		}
 	}
+	if _, err := SaveDefault("", "", "acme/a"); err == nil {
+		t.Error("no home: a relative .sleipnir/config.json would be written in the working directory")
+	}
 	if _, err := SaveDefault(home, "", "nonsense"); err == nil {
 		t.Error("a reference without a provider is kept")
 	}

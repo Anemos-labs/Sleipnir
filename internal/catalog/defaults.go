@@ -65,6 +65,9 @@ func DefaultOf(cfg *config.Config, rep *config.Report, role string) SavedDefault
 // every other setting of the file (its comments are not kept: config.Save writes canonical JSON). For the manager it also removes
 // a models.roles.manager entry of the user's file, which would otherwise outrank the default it writes. It returns the path it wrote.
 func SaveDefault(home, role, ref string) (string, error) {
+	if strings.TrimSpace(home) == "" {
+		return "", fmt.Errorf("no home directory: the user configuration cannot be located")
+	}
 	ref, role = strings.TrimSpace(ref), strings.TrimSpace(role)
 	if err := checkRef(ref); err != nil {
 		return "", err
