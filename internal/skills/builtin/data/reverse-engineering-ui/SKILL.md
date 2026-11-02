@@ -1,6 +1,8 @@
 ---
 name: reverse-engineering-ui
 description: Tear down a live site or web UI into an evidence-backed spec (layout, tokens, components, states, network) and rebuild it as original code. Use to clone or match one.
+license: MIT
+author: Sleipnir; the measured capture and comparison follow the website checks of Craft Anything (github.com/storytold/craft-anything, MIT OR Apache-2.0); no code is copied
 ---
 # Reverse engineering a web UI
 
@@ -8,68 +10,38 @@ Read the `reverse-engineering` skill's boundaries first: rebuild behaviour and s
 name and copy. Never ship the site's images, icons, fonts, logos or text; never bypass logins or bot protection.
 Visit the pages a normal visitor can, at a normal pace.
 
-The output is a teardown folder in the project (for example `docs/research/<site>/`) with screenshots, a tokens
-file and a spec, and then an implementation checked against it.
+The output is a teardown folder in the project (for example `docs/research/<site>/`) with the capture, a tokens
+file and a spec, and then an implementation measured against it.
 
 ## 1. Capture, with a real browser
 
-Use Playwright (or the project's browser tooling). A headless Chromium is enough; save everything to the teardown
-folder so it can be read back and cited.
+`capture.mjs` (beside this file, Playwright only) records what a visitor sees, as measurements: run it from a project
+that has Playwright installed (`npm i -D playwright && npx playwright install chromium` if it has not).
 
-```js
-// capture.mjs: node capture.mjs https://example.com docs/research/example
-import { chromium } from "playwright";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-const [url, out] = process.argv.slice(2);
-await fs.mkdir(out, { recursive: true });
-// Raw HARs can hold cookies, tokens and personal data: keep them outside the repository.
-const raw = await fs.mkdtemp(path.join(os.tmpdir(), "teardown-"));
-const browser = await chromium.launch();
-for (const [name, width] of [["mobile", 375], ["tablet", 768], ["desktop", 1440]]) {
-  const ctx = await browser.newContext({ viewport: { width, height: 900 }, recordHar: { path: `${raw}/${name}.har`, content: "omit" } });
-  const page = await ctx.newPage();
-  await page.goto(url, { waitUntil: "domcontentloaded" });
-  await page.locator("main, [role=main], body").first().waitFor(); // wait for what the capture needs
-  await page.screenshot({ path: `${out}/${name}.png`, fullPage: true });
-  await fs.writeFile(`${out}/${name}.aria.yml`, await page.locator("body").ariaSnapshot());
-  await ctx.close(); // writes the HAR
-}
-await browser.close();
-console.log(`raw HARs in ${raw}`);
+```sh
+node ${SLEIPNIR_SKILL_DIR}/capture.mjs https://example.com docs/research/example/capture --states --har "$(mktemp -d)"
 ```
 
-Read every screenshot you take: images are returned as images. Text dumps alone miss what a page looks like.
+It visits the start page and up to six same-origin pages it links to (navigation links first; `--routes N` changes
+the number) at 390, 768 and 1440 px (`--widths`), and writes for each page a full-page screenshot per width,
+`aria.yml`, and `capture.json`: the layout measured at each width (page width, heading and body text sizes, and for
+each section its padding, gap, items per row and content column), the design values the page uses most (colours in
+hex, fonts, text sizes, spacing, radii, shadows, `:root` custom properties), the outline, headings, links, forms,
+picture sizes, accessibility basics, the errors and failed requests it logs, and the parts that move by themselves.
+`--states` opens each menu, pop-up, disclosure and tab one at a time at the widest and narrowest width and
+photographs it into `states/`. `--dark` captures the dark scheme. Other pages go to `routes/<page>/`, listed in
+`routes.json`. Raw HARs can hold cookies, tokens and personal data, so `--har` takes a folder outside the repository.
 
-Capture the states, not just the first paint: hover and focus on interactive elements, open menus, dialogs,
-toasts, empty, loading and error states, a filled and an invalid form, dark mode
-(`colorScheme: "dark"` in the context), and reduced motion. Name each screenshot after the state.
+Read every screenshot it writes: images are returned as images, and measurements alone miss what a page looks like.
+Then capture what the script cannot reach by itself: hover and focus on interactive elements, toasts, empty, loading
+and error states, a filled and an invalid form, and reduced motion. Name each screenshot after the state.
 
-## 2. Extract design tokens from computed styles
+## 2. Turn the measurements into design tokens
 
-Measure, do not eyeball. Collect the values the page actually uses and cluster them into a scale:
+Measure, do not eyeball: take values from `capture.json`, not from a look at a screenshot. Its `design` lists are
+ordered by use, and `vars` holds the custom properties declared on `:root`, which often are the design system.
 
-```js
-// in page.evaluate: count computed values across visible elements
-const props = ["color", "background-color", "border-color", "font-family", "font-size", "font-weight",
-  "line-height", "letter-spacing", "border-radius", "box-shadow", "padding-top", "padding-left", "gap"];
-const counts = Object.fromEntries(props.map(p => [p, {}]));
-for (const el of document.querySelectorAll("body *")) {
-  const r = el.getBoundingClientRect();
-  if (!r.width || !r.height) continue;
-  const cs = getComputedStyle(el);
-  for (const p of props) { const v = cs.getPropertyValue(p); counts[p][v] = (counts[p][v] || 0) + 1; }
-}
-// also read the custom properties declared on :root, which often are the design system
-const root = getComputedStyle(document.documentElement);
-const vars = [...document.styleSheets].flatMap(s => { try { return [...s.cssRules]; } catch { return []; } })
-  .filter(r => r.selectorText === ":root").flatMap(r => [...r.style]).filter(n => n.startsWith("--"))
-  .map(n => [n, root.getPropertyValue(n).trim()]);
-return { counts, vars };
-```
-
-From the counts, write `tokens.json` (or the project's token format): a colour palette with roles (background,
+From those lists, write `tokens.json` (or the project's token format): a colour palette with roles (background,
 surface, text, muted, accent, border, danger), a type scale, a spacing scale (usually multiples of 4 or 8), radii,
 shadows, breakpoints and motion durations and easings. Rare one-off values are usually accidents; leave them out.
 Pick your own fonts with similar metrics instead of shipping theirs.
@@ -102,7 +74,27 @@ imagery.
 
 ## 6. Compare
 
-Screenshot the rebuild with the same script, the same viewports and states, and put each pair side by side (read
-both images). Fix differences in layout, spacing, type and states that the spec says should match; keep the
-differences that make it your own. A pixel diff (`pixelmatch`, Playwright's `toHaveScreenshot`) is useful for
-regressions in the rebuild, not as a target of identity with the original.
+Serve the rebuild (a preview of its production build, or its built files), capture it with the same command and
+options into another folder, and compare the two:
+
+```sh
+node ${SLEIPNIR_SKILL_DIR}/capture.mjs http://localhost:4173/ docs/research/example/build --states
+node ${SLEIPNIR_SKILL_DIR}/compare.mjs docs/research/example/capture docs/research/example/build
+```
+
+`compare.mjs` pairs the pages by path and prints, per page, **claims** that must hold (the page exists; it does not
+scroll sideways at a width where the original does not; it logs no errors and fails no requests the original does
+not; it has the original's landmarks), **differences** with the exact values on both sides (text sizes, each
+section's padding, items per row and content column, the colours, fonts, sizes and spacing the original uses most,
+the order of the page's parts, accessibility basics) and what was **not compared** (a page or width missing from a
+capture). It exits 1 while a claim fails or anything was not compared: a part that was never measured never passes.
+Differences do not fail by themselves. Fix each one the spec says should match, with the value it gives; keep the
+ones that make the rebuild your own, and say which in the spec.
+
+Then put each pair of screenshots side by side (read both images) for what numbers do not show: imagery, icons,
+alignment and the states. Parts listed as moving by themselves (videos, canvases, animations) hold one frame in a
+screenshot: match how they look and move, not the frame. A pixel diff (`pixelmatch`, Playwright's
+`toHaveScreenshot`) is useful for regressions in the rebuild, not as a target of identity with the original.
+
+Run the comparison again after each round of fixes and keep its last report with the teardown. The work is done when
+it exits 0 and every remaining difference is one you chose.
