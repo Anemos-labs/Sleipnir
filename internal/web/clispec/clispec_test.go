@@ -77,7 +77,7 @@ func TestModesAreTheOnesTheSpecCarries(t *testing.T) {
 		"config": "run", "sessions": "run", "sessions prune": "run", "recon": "run", "sim": "run", "friction": "run", "version": "run",
 		"models": "net", "doctor": "net", "run": "net", "swarm": "net", "demo": "net", "rl eval": "net", "rl rollout": "net",
 		"init": "priv", "logout": "priv", "trust add": "priv", "trust forget": "priv", "mcp approve": "priv", "mcp revoke": "priv",
-		"schedule add": "priv", "schedule rm": "priv", "models fav add": "priv", "models fav rm": "priv", "update": "priv",
+		"schedule add": "priv", "schedule rm": "priv", "models fav add": "priv", "models fav rm": "priv", "models default": "priv", "update": "priv",
 		"mock": "server", "rl serve": "server", "daemon": "server",
 	} {
 		c, ok := Lookup(strings.Fields(path))

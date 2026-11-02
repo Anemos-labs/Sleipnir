@@ -64,7 +64,9 @@ type webRouteEnv struct {
 	Home, Version, Self string
 	// Cwd is the directory of a run that names no tab (--cwd).
 	Cwd string
-	Env func() []string
+	// Model is the --model the server was started with, "" for none: it wins over models.default for every new session of the page.
+	Model string
+	Env   func() []string
 }
 
 // webRoutePackage is a route package the command links in (web_routes_*.go add theirs to webRoutePackages in an init function, so
@@ -240,7 +242,7 @@ func (h *webHostImpl) register(srv *web.Server) {
 	sort.SliceStable(pkgs, func(i, j int) bool { return pkgs[i].order < pkgs[j].order })
 	self, _ := os.Executable()
 	home, _ := os.UserHomeDir()
-	env := webRouteEnv{Home: home, Version: version, Self: self, Cwd: h.d.Cwd, Env: os.Environ}
+	env := webRouteEnv{Home: home, Version: version, Self: self, Cwd: h.d.Cwd, Model: h.d.Model, Env: os.Environ}
 	for _, p := range pkgs {
 		p.register(srv, h, env)
 	}

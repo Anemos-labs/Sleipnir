@@ -52,7 +52,7 @@ func modeOf(path []string) (mode, why string) {
 		return "run", "only with --json; use the Cache view here"
 	case "replay":
 		return "run", "only with --final or --record"
-	case "trust add", "trust forget", "mcp approve", "mcp revoke", "schedule add", "schedule rm", "models fav add", "models fav rm", "init", "logout":
+	case "trust add", "trust forget", "mcp approve", "mcp revoke", "schedule add", "schedule rm", "models fav add", "models fav rm", "models default", "init", "logout":
 		return "priv", ""
 	case "models", "doctor", "update", "run", "swarm", "demo", "rl eval", "rl rollout", "rl reward", "rl export", "rl tasks check":
 		return "net", ""

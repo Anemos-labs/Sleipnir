@@ -1094,6 +1094,15 @@
   },
   {
    "group": "the program (sleipnir ...)",
+   "name": "sleipnir models default",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:models default"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
    "name": "sleipnir models fav add",
    "kind": "program",
    "live": true,
@@ -2594,6 +2603,7 @@
    "inspect",
    "friction",
    "models",
+   "models default",
    "models fav add",
    "models fav list",
    "models fav rm",
@@ -3005,6 +3015,16 @@
      "base-url": "priv",
      "api-key-env": "priv"
     }
+   },
+   "models default": {
+    "mode": "priv",
+    "positionals": [
+     "REF"
+    ],
+    "flags": [
+     "role"
+    ],
+    "modeWith": {}
    },
    "models fav add": {
     "mode": "priv",
