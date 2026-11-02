@@ -560,6 +560,59 @@ func TestStallReviewStarved(t *testing.T) {
 			t.Fatalf("the first read of the new submission did not restart its clock: %+v", stallEvents(r))
 		}
 	})
+	resubmit := func(t *testing.T, r *rvRig, id string) {
+		t.Helper()
+		if _, err := r.sw.Board.SendBack("mgr", id, "add a test"); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.sw.Board.Claim("be-1", id); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.sw.Board.Submit("be-1", id, "paginated, tested", "edited api/users_test.go"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Run("healthy: a submission that lands while task get is being answered keeps its first read", func(t *testing.T) {
+		r, mgr, task := setup(t)
+		once := true
+		r.sw.stalls.between = func(at string) {
+			if at == "get" && once {
+				once = false
+				resubmit(t, r, task.ID) // the manager was given the earlier revision
+			}
+		}
+		r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "get", "id": task.ID})
+		r.sw.sweepStalls()
+		mgr.turns.Add(2)
+		r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "get", "id": task.ID})
+		r.sw.sweepStalls()
+		mgr.turns.Add(2)
+		r.sw.sweepStalls()
+		if n := raised(r, StallReviewStarved); n != 0 {
+			t.Fatalf("the first read of the new submission did not restart its clock: %+v", stallEvents(r))
+		}
+	})
+	t.Run("seeded: a submission read while the sweep runs keeps that read", func(t *testing.T) {
+		r, mgr, task := setup(t)
+		once := true
+		r.sw.stalls.between = func(at string) {
+			if at == "sweep" && once {
+				once = false
+				resubmit(t, r, task.ID) // submitted and read after the sweep's snapshot, before it prunes
+				r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "get", "id": task.ID})
+			}
+		}
+		r.sw.sweepStalls()
+		r.sw.sweepStalls()
+		for i := 0; i < 3; i++ { // reading it again turn after turn restarts nothing
+			mgr.turns.Add(1)
+			r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "get", "id": task.ID})
+			r.sw.sweepStalls()
+		}
+		if _, ok := active(r, StallReviewStarved); !ok {
+			t.Fatal("a read the sweep pruned let a later read restart the clock")
+		}
+	})
 	t.Run("healthy: the manager reads the submission", func(t *testing.T) {
 		r, mgr, task := setup(t)
 		mgr.turns.Add(2)

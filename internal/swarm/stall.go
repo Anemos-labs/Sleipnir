@@ -135,6 +135,15 @@ type stallState struct {
 	since     map[string]time.Time
 	escalated map[string]bool
 	stopped   map[string]bool
+	// between, set only by tests before the swarm runs, is called at the two points a review read and a sweep can interleave:
+	// "get" after task get read the task and before it is noted, "sweep" after the sweep's board snapshot and before its lock.
+	between func(at string)
+}
+
+func (st *stallState) at(point string) {
+	if st.between != nil {
+		st.between(point)
+	}
 }
 
 // reviewClock is when a submission's review clock (re)started: the manager's turn count and the time.
@@ -319,6 +328,7 @@ type memberView struct {
 // counters, and updates the sweep's own memory (orphan candidates, review clocks).
 func (s *Swarm) stallFindings() []Stall {
 	snap := s.Board.Snapshot()
+	s.stalls.at("sweep")
 	mgr := s.ManagerID()
 	s.mu.Lock()
 	views := make(map[string]memberView, len(s.members))

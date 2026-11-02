@@ -234,6 +234,7 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 	case "get":
 		var read Task // the revision the manager is given, not whatever the board holds a moment later
 		r := s.readTaskNoted(c, in.ID, "task get", func(t Task) string { read = t; return "" })
+		s.stalls.at("get")
 		if r != nil && !r.IsError {
 			s.noteReviewRead(me, read)
 		}
