@@ -88,7 +88,7 @@
   },
   {
     "name": "bash_output",
-    "description": "Read output from a background bash job. Returns what the job has printed since the byte offset `since` (or since your last read when omitted), its status (running, exited N, killed) and the next offset.",
+    "description": "Read output from a background bash job. Returns what the job has printed since the byte offset `since` (or since your last read when omitted), its status (running, exited N, killed) and the next offset. Set wait to block up to that many seconds (at most 120) until the job prints something new or ends, instead of reading again and again.",
     "input_schema": {
       "properties": {
         "id": {
@@ -97,6 +97,10 @@
         },
         "since": {
           "description": "Byte offset to read from; omit to continue from your last read",
+          "type": "integer"
+        },
+        "wait": {
+          "description": "Seconds to wait, at most 120",
           "type": "integer"
         }
       },
