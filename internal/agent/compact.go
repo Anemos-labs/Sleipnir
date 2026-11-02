@@ -635,7 +635,7 @@ func (a *Agent) applyCommit(rp *readyPatch, why string) error {
 		}
 		a.cfg.OnPromote(a.cfg.ID, props)
 	}
-	a.cfg.Sink.Notice(a.cfg.ID, "info", fmt.Sprintf("compacted %d turns (%s→%s tokens)", res.RemovedTurns, tokenCount(res.SnapTokens), tokenCount(res.SpineAdded+res.RetainedTokens)))
+	a.cfg.Sink.Notice(a.cfg.ID, "info", compactNotice(res.RemovedTurns, res.MaskedResults, res.SnapTokens, res.SpineAdded+res.RetainedTokens))
 	a.saveSnapshot()
 	return nil
 }
@@ -815,4 +815,26 @@ func tokenCount(n int) string {
 		return fmt.Sprintf("%.1fk", float64(n)/1000)
 	}
 	return fmt.Sprintf("%dk", n/1000)
+}
+
+// compactNotice is the line a commit of a compaction shows: how many turns it folded into notes and how many old tool results
+// it shortened, with the prompt's size before and after. A commit that only shortened results used to read "compacted 0 turns
+// (51k→39k tokens)", as though nothing had happened while the prompt shrank by a quarter.
+func compactNotice(turns, masked, before, after int) string {
+	var parts []string
+	if turns > 0 || masked == 0 {
+		parts = append(parts, fmt.Sprintf("compacted %d %s", turns, pickWord(turns == 1, "turn", "turns")))
+	}
+	if masked > 0 {
+		parts = append(parts, fmt.Sprintf("shortened %d old tool %s", masked, pickWord(masked == 1, "result", "results")))
+	}
+	return fmt.Sprintf("%s (%s→%s tokens)", strings.Join(parts, ", "), tokenCount(before), tokenCount(after))
+}
+
+// pickWord is one when cond holds, else other.
+func pickWord(cond bool, one, other string) string {
+	if cond {
+		return one
+	}
+	return other
 }
