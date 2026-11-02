@@ -33,8 +33,8 @@ sh scripts/gen-cli-docs.sh --check
 echo "== the web interface's CLI spec matches docs/CLI.md"
 sh scripts/gen-clispec.sh --check
 
-echo "== the web interface's JavaScript tests"
-if command -v node >/dev/null 2>&1; then node --test internal/web/uidev/test/*.test.mjs; else echo "node is not installed: skipped (CI runs them)"; fi
+echo "== the JavaScript tests (web interface, built-in skill scripts)"
+if command -v node >/dev/null 2>&1; then node --test internal/web/uidev/test/*.test.mjs internal/skills/builtin/test/*.test.mjs; else echo "node is not installed: skipped (CI runs them)"; fi
 
 echo "== cache simulation documentation is current"
 simulation_before=$(mktemp)

@@ -61,8 +61,8 @@ jobs:
         run: sh scripts/gen-cli-docs.sh --check
       - name: the web interface's CLI spec matches docs/CLI.md
         run: sh scripts/gen-clispec.sh --check
-      - name: the web interface's JavaScript tests
-        run: node --test internal/web/uidev/test/*.test.mjs
+      - name: the JavaScript tests (web interface, built-in skill scripts)
+        run: node --test internal/web/uidev/test/*.test.mjs internal/skills/builtin/test/*.test.mjs
       - name: Cache economics simulator block is current
         run: |
           cp docs/CACHE-ECONOMICS.md /tmp/cache-economics.before
