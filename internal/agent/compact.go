@@ -817,9 +817,10 @@ func tokenCount(n int) string {
 	return fmt.Sprintf("%dk", n/1000)
 }
 
-// compactNotice is the line a commit of a compaction shows: how many turns it folded into notes and how many old tool results
-// it shortened, with the prompt's size before and after. A commit that only shortened results used to read "compacted 0 turns
-// (51k→39k tokens)", as though nothing had happened while the prompt shrank by a quarter.
+// compactNotice is the line a commit of a compaction shows: how many turns it folded into the spine and how many old tool
+// results it shortened, with before the thread's size when the compaction was planned (its snapshot) and after the tokens
+// it kept plus the spine lines it added. A commit that only shortened results used to read "compacted 0 turns (51k→39k
+// tokens)", as though nothing had happened while the thread shrank by a quarter.
 func compactNotice(turns, masked, before, after int) string {
 	var parts []string
 	if turns > 0 || masked == 0 {
