@@ -7,7 +7,9 @@ package perm
 // check, mypy, pyright, tsc --noEmit, eslint) on the preset's terms: every file they name inside the workspace, none of the options that
 // make them write the project's files or install (workspaceRefused). Formatters are not among them: a rule for gofmt -l would allow
 // gofmt -l -w. Everything that writes or executes anything else stays denied by plan mode; the engine understands shell syntax, so
-// "go test ./... && rm -rf x" is not allowed by its first half. Callers must not change the slice.
+// "go test ./... && rm -rf x" is not allowed by its first half. In plan mode these rules let a check run, not write the outputs it is
+// told to (go test -o, -coverprofile, -c, pytest --junitxml): the engine still refuses those (crule.runOnly). Callers must not change
+// the slice.
 var ReadOnlyAllow = []string{
 	"Bash(go test:*)", "Bash(go vet:*)", "Bash(pytest:*)", "Bash(npm test:*)", "Bash(npm run test:*)", "Bash(pnpm test:*)", "Bash(yarn test:*)",
 	"Bash(python -m pytest:*)", "Bash(python3 -m pytest:*)", "Bash(python -m unittest:*)", "Bash(python3 -m unittest:*)",
@@ -29,6 +31,7 @@ func (e *Engine) PlanOnly(allow ...string) *Engine {
 	cfg := e.cfg
 	cfg.Mode, cfg.Allow, cfg.Ask, cfg.Roles, cfg.Prompter = ModePlan, allow, nil, nil, nil
 	cfg.Delegate, cfg.Audit, cfg.Persist = nil, nil, nil
+	cfg.runOnly = true // the rules let checks run, not write the outputs they name (go test -o, pytest --junitxml)
 	p, err := NewEngine(cfg)
 	if err != nil {
 		return nil
