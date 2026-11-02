@@ -3,6 +3,7 @@ package machine
 import (
 	"context"
 	"errors"
+	"io"
 	"os/exec"
 	"runtime"
 	"slices"
@@ -161,9 +162,13 @@ func TestStartLowersThePriorityOfTheCommandAndItsChildren(t *testing.T) {
 	}
 	b := newBudget(Settings{}, "", 4, 0, nil)
 	// the child of the shell reads its own nice value. Outside Linux the nice value is lowered just after the command starts
-	// (startLow), so the shell waits a moment before it starts the child: a child started in the first instants keeps the
-	// priority it was started with, and on a macOS CI runner that is -10.
-	cmd := exec.Command("sh", "-c", "sleep 0.5; sh -c 'ps -o nice= -p $$'")
+	// (startLow), so the shell waits on its stdin until Start has returned before it starts the child: a child started in the
+	// first instants keeps the priority the test runs at.
+	cmd := exec.Command("sh", "-c", "read go; sh -c 'ps -o nice= -p $$'")
+	release, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -171,6 +176,10 @@ func TestStartLowersThePriorityOfTheCommandAndItsChildren(t *testing.T) {
 	if err := b.Start(cmd); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := io.WriteString(release, "go\n"); err != nil {
+		t.Fatal(err)
+	}
+	_ = release.Close()
 	buf := make([]byte, 64)
 	n, _ := out.Read(buf)
 	_ = cmd.Wait()
