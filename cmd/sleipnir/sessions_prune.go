@@ -134,7 +134,7 @@ flags:
 		return nil
 	}
 	for _, it := range plan.items {
-		fmt.Fprintf(stdout, "  %-30s %5s old  %8s\n", it.id, ageText(it.age), sizeText(it.bytes))
+		fmt.Fprintf(stdout, "  %-30s %5s old  %8s\n", oneLineSafe(it.id), ageText(it.age), sizeText(it.bytes)) // a directory name: no control characters
 	}
 	verb := "would delete"
 	if *yes {

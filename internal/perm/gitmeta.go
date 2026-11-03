@@ -238,6 +238,10 @@ func indexGitlinks(p string) ([]string, bool) {
 	return links, ok
 }
 
+// maxIndexPath bounds one path of an index: PATH_MAX, past which no checkout could hold the file. A version 4 index rebuilds each
+// path from the one before it, so without a bound a few bytes per entry could make each path, and the memory, grow.
+const maxIndexPath = 4096
+
 // parseIndexGitlinks reads a git index (versions 2 to 4) with object IDs w bytes long: the paths of its gitlink entries, the hex
 // name of the shared index a split index points to, and whether it read through.
 func parseIndexGitlinks(b []byte, w int) (links []string, shared string, ok bool) {
@@ -296,6 +300,9 @@ func parseIndexGitlinks(b []byte, w int) (links []string, shared string, ok bool
 			if o > end {
 				return nil, "", false
 			}
+		}
+		if len(name) > maxIndexPath {
+			return nil, "", false // longer than any path a file system takes: a v4 prefix grown on purpose
 		}
 		prev = name
 		if mode == 0o160000 {
