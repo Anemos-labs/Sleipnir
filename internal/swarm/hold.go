@@ -319,6 +319,14 @@ func (h *holdHooks) BeforeTool(ctx context.Context, c agent.ToolHookCall) agent.
 			}
 		}
 	}
+	if c.Tool == "spawn" {
+		// A member starts on the shared tree: a change the manager committed in its own checkout is in it only once integrated.
+		// Left for the end of the manager's turn, a reviewer it started over its own fix read a tree without the fix and found
+		// nothing to review. Spawn is not read-only, so no other call of the batch runs while the flush updates the checkout.
+		if err := h.s.flushManager(ctx, h.m); err != nil {
+			o.Context = strings.TrimSpace(o.Context + "\nYour checkout did not flush cleanly before this spawn, so the member may start without your changes: " + err.Error())
+		}
+	}
 	return o
 }
 

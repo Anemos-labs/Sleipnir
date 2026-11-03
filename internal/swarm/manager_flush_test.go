@@ -2,11 +2,13 @@ package swarm
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
@@ -116,4 +118,37 @@ func TestAManagerChangeIsHeldToHowLongItTookToBuild(t *testing.T) {
 		}
 		want(t, r, 25*time.Minute)
 	})
+}
+
+// A change the manager committed in its own checkout reaches the shared tree before it starts a member, which works on that
+// tree. Integrated only when the manager's turn ended, a reviewer the manager started over its own fix read a tree without the
+// fix and found nothing to review.
+func TestAManagersOwnChangeIsIntegratedBeforeItStartsAMember(t *testing.T) {
+	r := newIsoRig(t, isoOpts{verify: true}, script{}.fn())
+	if _, err := r.sw.StartManager(); err != nil {
+		t.Fatal(err)
+	}
+	m := r.sw.get(r.sw.ManagerID())
+	h := &holdHooks{s: r.sw, m: m}
+	call := func(tool string) agent.ToolHookOutcome {
+		return h.BeforeTool(context.Background(), agent.ToolHookCall{Agent: m.id, Role: "manager", Tool: tool, Input: json.RawMessage(`{}`)})
+	}
+	if err := writeFileString(filepath.Join(m.dir, "fix.txt"), "manager fix\n"); err != nil {
+		t.Fatal(err)
+	}
+	// wait is read-only and may run beside reads of the checkout: it does not flush.
+	for _, tool := range []string{"read", "wait"} {
+		if o := call(tool); o.Veto || len(r.log.OfType(events.TypeMergeQueued)) != 0 {
+			t.Fatalf("%s submitted the manager's checkout (veto %v)", tool, o.Veto)
+		}
+	}
+	if o := call("spawn"); o.Veto || o.Context != "" {
+		t.Fatalf("spawn: veto %v, context %q", o.Veto, o.Context)
+	}
+	if len(r.log.OfType(events.TypeMergeMerged)) == 0 {
+		t.Fatal("the manager's change was not integrated before spawn")
+	}
+	if got := r.sw.review.merges; got != 1 {
+		t.Fatalf("the review gate counts %d merges, want the manager's change", got)
+	}
 }
