@@ -75,7 +75,8 @@ test('the keys: the arrows move between the entries that can be done, Escape clo
   const tab = L.$('.stab[data-sid="a"]'); tab.focus();
   rclick(tab, { button: 0, clientX: 0, clientY: 0 });
   const first = L.doc.activeElement; assert.equal(label(first), 'Rename…', 'the first entry that can be done has the focus (Switch is off)');
-  L.press('down'); assert.equal(label(L.doc.activeElement), 'Open in a new browser tab');
+  const on = L.$('.ctxmenu').querySelectorAll('.dmi').filter(n => !n.disabled).map(label);
+  L.press('down'); assert.equal(label(L.doc.activeElement), on[1], 'down moves to the next entry that can be done');
   L.press('up'); L.press('up'); assert.equal(label(L.doc.activeElement), 'Close this session…', 'the arrows wrap');
   L.press('esc'); await L.settle();
   assert.equal(L.$('.ctxmenu'), null);
