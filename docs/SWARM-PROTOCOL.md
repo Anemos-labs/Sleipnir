@@ -185,7 +185,7 @@ stays there, and agrees and executes before its children start again). The leade
 told; the rest of the pool is not. A revise of the pool task itself stops every
 member and the harness restarts them, so the manager is not asked to resume it: a
 leader's stop reaches the manager only when the manager could not have caused it. `task resolve` records “no longer needed” with an explanation once any
-children are closed. The manager cannot finish while tasks, reconciliation or review
+children are closed, and tells the owner of each task blocked on it, with that explanation, to block on its replacement or resume. The manager cannot finish while tasks, reconciliation or review
 remain unresolved. Cancellation, budget exhaustion and unanswered permission requests
 stop or suspend progress without pretending that the objective succeeded. A tool
 that ignores cancellation keeps its worker slot quarantined until it exits; a second
