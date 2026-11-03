@@ -12,8 +12,8 @@ they do not indicate whether a change has been released.
   ends. A read of a running job with nothing new says so and points to
   `wait`. Agents waiting on a slow job used to read it every few seconds,
   spending a model turn each time and tripping the stall watch.
-  Prompt-cache change: the `bash_output` schema changes bytes, so the first
-  request of each agent after the upgrade misses the cache once.
+  Prompt-cache change: the `bash_output` schema changes bytes, so a prefix
+  cached before the upgrade no longer matches the tool layer.
 
 - `sleipnir mcp serve` runs each goal in the folder the caller names, so one
   entry in a client's configuration (Claude Desktop, Claude Code across

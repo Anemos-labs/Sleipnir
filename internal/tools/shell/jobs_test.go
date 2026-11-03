@@ -709,12 +709,34 @@ func TestJobOutputWaitsForNewOutputOrTheEnd(t *testing.T) {
 	}
 
 	// The job's end ends the wait too, and an offset past the end does not make it wait for that many bytes.
+	start = time.Now()
 	got := h.output(env, id, map[string]any{"wait": 60, "since": 999}).Text
 	if got != "(no new output)\n[job_1 exited 3; next offset 13]" {
 		t.Errorf("read woken by the end = %q", got)
 	}
+	if d := time.Since(start); d > 30*time.Second {
+		t.Errorf("read woken by the end took %v", d)
+	}
 
 	if r := h.output(env, id, map[string]any{"wait": -1}); !r.IsError {
 		t.Errorf("negative wait = %+v", r)
+	}
+}
+
+// A read from an offset past the end returns the output that ends its wait, rather than reading from that offset again and
+// skipping it.
+func TestJobOutputWaitPastTheEndReturnsTheOutputThatWokeIt(t *testing.T) {
+	h := newHarness(t)
+	env := h.env("a")
+	gate := filepath.Join(h.root, "go")
+	id := h.startJob(env, fmt.Sprintf("echo first; while [ ! -e %s ]; do sleep 0.02; done; echo second; sleep 30", gate))
+	t.Cleanup(func() { h.kill(env, id) })
+	waitFor(t, "first", 10*time.Second, func() bool {
+		return strings.HasPrefix(h.output(env, id).Text, "first\n")
+	})
+	time.AfterFunc(200*time.Millisecond, func() { os.WriteFile(gate, nil, 0o644) })
+	got := h.output(env, id, map[string]any{"wait": 60, "since": 999}).Text
+	if !strings.HasPrefix(got, "second\n") {
+		t.Errorf("read past the end woken by output = %q", got)
 	}
 }

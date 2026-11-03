@@ -387,6 +387,8 @@ func (t *outputTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, err
 		from = int64(math.Min(math.Floor(since), 9e18))
 	}
 	if wait > 0 {
+		// an offset past the end waits for the next byte, not for that many, and the read below must return that byte
+		from = min(from, j.buf.total())
 		j.awaitOutput(ctx, from, time.Duration(math.Min(wait, maxOutputWait.Seconds())*float64(time.Second)))
 	}
 	data, dropped, next := j.buf.read(from)
@@ -422,13 +424,13 @@ const maxOutputWait = 2 * time.Minute
 const outputPoll = 100 * time.Millisecond
 
 // awaitOutput blocks until the job's buffer holds bytes past offset from, the job ends, ctx is done or d has passed, whichever
-// comes first. It returns at once when there is already output past from or the job has ended.
+// comes first. It returns at once when there is already output past from or the job has ended. from must not be past the
+// buffer's end (Run clamps it), or it would wait for that many bytes.
 func (j *job) awaitOutput(ctx context.Context, from int64, d time.Duration) {
 	deadline := time.NewTimer(d)
 	defer deadline.Stop()
 	tick := time.NewTicker(outputPoll)
 	defer tick.Stop()
-	from = min(from, j.buf.total()) // an offset past the end waits for the next byte, not for that many
 	for j.buf.total() <= from {
 		select {
 		case <-j.finished:
