@@ -155,6 +155,13 @@ command line quotes every value for a POSIX shell. `↺ Resume` continues a reco
 opened read-only, to replay it, or followed while another process writes it; its first 400,000 events are read, and the banner
 says when the log has more. With no session hosted, the page opens the New session dialog.
 
+A session can be pinned from the session menu (`⋯`) or the palette: a pushpin marks its tab, and each time `sleipnir web` starts it
+opens the pinned sessions again, each in a tab of its own, beside its first one. A pinned session comes back as `↺ Resume` would
+resume it: with the server's flags, the team of its last start and the verify command it ran with when it was pinned. One that
+would need a new confirmation (another verify command, the project files of a folder other than the server's that the trust
+ledger does not cover) is left for the person: the server's terminal says why, and the Resume dialog marks it pinned. Closing a
+pinned tab unpins it; a pinned session is never pruned.
+
 The left rail switches views: the Cockpit (the team as a horse whose eight legs are the eight roles of the team, the stalls, the
 gantt, the task board, the merge queue, mail and the governor), the Workspace (Files, Changes, Checkpoints), Cache, Mail,
 Board, Replay, Sessions, Schedule, Tools and Settings. The Radio rail on the right is the conversation with the manager, which is the

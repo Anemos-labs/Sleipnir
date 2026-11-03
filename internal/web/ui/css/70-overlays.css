@@ -29,6 +29,7 @@
 .pre{margin:0;background:var(--well);border:1px solid var(--line);padding:10px 12px;font:400 12px/1.45 var(--f-num);color:var(--fg2);white-space:pre-wrap;overflow:auto;max-height:46vh}
 .stubnote{font-size:12.5px;color:var(--dim);margin:0 0 10px}
 .tbl{width:100%;border-collapse:collapse;font:500 12px var(--f-num)}
+.pinmk{color:var(--c-mgr);display:inline-flex;vertical-align:-1px}
 .tbl th{font:700 10.5px var(--f-lab);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);text-align:left;padding:5px 8px;border-bottom:1px solid var(--line2);white-space:nowrap}
 .tbl td{padding:6px 8px;border-bottom:1px solid var(--line);color:var(--fg2);vertical-align:middle}
 .tbl td.r,.tbl th.r{text-align:right}

@@ -71,6 +71,8 @@ type Recorded struct {
 	Plan    bool
 	// Mailman is the mailman mode of the last run (Summary.Mailman).
 	Mailman bool
+	// Pinned says the session is pinned (pins.json beside the sessions directory): sleipnir web tries to reopen it when it starts.
+	Pinned bool
 }
 
 // Integration is the end of an isolated run as a listing reports it: whether the verified result reached the checkout, and when it
@@ -446,7 +448,8 @@ func ListRecordedDir(root string, now time.Time) ([]Recorded, error) {
 		return nil, err
 	}
 	var out []Recorded
-	locks := readFlocks() // once for the whole listing
+	locks := readFlocks()        // once for the whole listing
+	pinned, _ := pinnedIDs(root) // a listing only marks rows: a list that cannot be read marks none
 	seen := map[string]bool{}
 	for _, e := range ents {
 		dir := filepath.Join(root, e.Name())
@@ -464,6 +467,7 @@ func ListRecordedDir(root string, now time.Time) ([]Recorded, error) {
 		r.Locked = lockedIn(dir, locks)
 		r.Live = r.Locked || now.Sub(log.ModTime()) < LiveWindow
 		r.Interrupted = c.sum.EndReason == EndInterrupted || (c.sum.Open && !r.Live)
+		r.Pinned = pinned[e.Name()]
 		if m, err := LoadMeta(dir); err == nil {
 			r.Name = m.Name
 		}

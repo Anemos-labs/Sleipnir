@@ -289,6 +289,7 @@ func (t *webTab) afterStart(s *session.Session, spec startSpec) {
 		t.name = name
 	}
 	t.mu.Unlock()
+	t.notePinned(s)
 	t.goals.Load(s)
 	if g := t.goals.State(); g != nil {
 		t.emit(goalWire(g))
