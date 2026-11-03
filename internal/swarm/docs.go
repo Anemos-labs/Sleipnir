@@ -105,16 +105,26 @@ func unneeded(t Task, landed map[string]bool) bool {
 	return t.Closure.Kind() == CloseUnneeded && !landed[t.ID]
 }
 
-// emptyMerges are the tasks whose current assignment reached the merge queue with nothing to merge (the submission was the
-// integration tip itself), by id. Such a task changed nothing the docs describe: a task that only discarded a stray file in its
-// own tree started a catch-up pass of its own.
+// emptyMerges are the done tasks that merged nothing of their own, by id: those whose current assignment reached the merge
+// queue with nothing to merge (the submission was the integration tip itself), and parents with no merge of their own whose
+// children carried the work. Such a task changed nothing the docs describe beyond what its children's passes covered: a task
+// that only discarded a stray file in its own tree started a catch-up pass of its own, and a pool's parent task, accepted after
+// its one child merged and had its pass, started a second pass over the same change.
 func (s *Swarm) emptyMerges(snap *Snapshot) map[string]bool {
+	parents := map[string]bool{}
+	for _, t := range snap.Tasks {
+		if t.Parent != "" && t.Status == StatusDone {
+			parents[t.Parent] = true
+		}
+	}
 	out := map[string]bool{}
 	for _, t := range snap.Tasks {
 		if t.Status != StatusDone {
 			continue
 		}
-		if r, ok := s.mergedFor(t); ok && r.empty {
+		r, ok := s.mergedFor(t)
+		// A plan's agreement merges nothing by nature: a reconciled one is news of its own, whatever its children agreed.
+		if ok && r.empty || !ok && parents[t.ID] && t.Kind != TaskKindPlan {
 			out[t.ID] = true
 		}
 	}
