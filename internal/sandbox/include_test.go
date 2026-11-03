@@ -101,8 +101,9 @@ func TestGitConfigValueKeepsLongBlankRuns(t *testing.T) {
 
 // The helper is handed the docker command the box started with, so it never searches a PATH the project may have a directory on.
 func TestWrapNamesTheDockerCommandTheBoxStartedWith(t *testing.T) {
-	b := &Box{Name: "sb", docker: "/usr/bin/docker"}
-	if got := strings.Join(b.Wrap("/x/sleipnir"), " "); got != "/x/sleipnir "+ExecCommand+" sb /usr/bin/docker --" {
+	docker := filepath.Join(t.TempDir(), "docker") // absolute on every platform
+	b := &Box{Name: "sb", docker: docker}
+	if got := strings.Join(b.Wrap("/x/sleipnir"), " "); got != "/x/sleipnir "+ExecCommand+" sb "+docker+" --" {
 		t.Errorf("Wrap = %q", got)
 	}
 }
