@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -778,6 +779,9 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 			Dir: q.tree.Path, Cmd: cmd, Agent: s.Agent, Task: s.Task,
 			Timeout: q.opts.VerifyTimeout, MaxOutput: q.opts.MaxVerifyOutput, Env: q.opts.VerifyEnv,
 		})
+		if vr.OK() && ctx.Err() == nil {
+			vr.Wrote = q.verifyWrote(ctx)
+		}
 		res.Verify = &vr
 		if ctx.Err() == nil {
 			q.noteVerify(s, vr, q.m.now())
@@ -839,6 +843,23 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 		"strategy": q.opts.Strategy.String(), "verified": cmd != "",
 	})
 	return res, nil
+}
+
+// verifyWrote lists the tracked files the verifier left modified in the queue's tree, which was clean at the merge: the
+// verifier wrote them. A status that cannot be read lists none.
+func (q *Queue) verifyWrote(ctx context.Context) []string {
+	st, err := q.tree.repo.StatusWith(ctx, gitx.StatusOptions{Untracked: "no"})
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, c := range append(st.Staged, st.Unstaged...) {
+		if !slices.Contains(out, c.Path) {
+			out = append(out, c.Path)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // outOfBounds returns why the integration changes files may not be changed by s

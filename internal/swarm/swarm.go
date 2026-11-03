@@ -385,9 +385,11 @@ type Swarm struct {
 	// Worktree isolation (isolate.go): the harness's record of which task assignments
 	// reached the integration branch, how often each came back from the merge queue,
 	// and the end-of-run state.
-	merged     map[string]mergeRec
-	bounces    map[string]int
-	treeAgents map[string]bool // agents that ever had a tree of their own
+	merged map[string]mergeRec
+	// verifyWrote are the sets of tracked files the verify command was found rewriting, joined by NUL, the manager was told of.
+	verifyWrote map[string]bool
+	bounces     map[string]int
+	treeAgents  map[string]bool // agents that ever had a tree of their own
 	// gateMu serializes the gates that run in gateTree, the harness's checkout of the integration tip (gateDir).
 	gateMu   sync.Mutex
 	gateTree *workspace.Tree

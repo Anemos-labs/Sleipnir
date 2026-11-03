@@ -1716,3 +1716,23 @@ func TestMoreFilesGroupsTheRestByDirectory(t *testing.T) {
 		t.Errorf("moreFiles = %q, want %q", got, want)
 	}
 }
+
+// A verifier that passes but rewrites a tracked file is reported: it rewrites that file in every tree it runs in. Untracked
+// build output is not a rewrite, and a verifier that leaves the tree as it found it reports nothing.
+func TestQueueReportsTheTrackedFilesAPassingVerifierRewrote(t *testing.T) {
+	e := newQueueEnv(t, QueueOptions{})
+	a := e.agent("a")
+	edit(t, a, "a.txt", "a\n")
+	r := mustSubmit(t, e.q, Submission{Tree: a, VerifyCmd: "touch built.o; echo regenerated >> README.md"})
+	if !r.Merged() || r.Verify == nil {
+		t.Fatalf("a: %+v", r)
+	}
+	if got := r.Verify.Wrote; len(got) != 1 || got[0] != "README.md" {
+		t.Fatalf("Wrote = %v, want [README.md]", got)
+	}
+	edit(t, a, "a.txt", "a again\n")
+	r = mustSubmit(t, e.q, Submission{Tree: a, VerifyCmd: "touch built.o"})
+	if !r.Merged() || r.Verify == nil || len(r.Verify.Wrote) != 0 {
+		t.Fatalf("a verifier that wrote no tracked file reported %+v", r.Verify)
+	}
+}

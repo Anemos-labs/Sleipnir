@@ -397,6 +397,9 @@ func (s *Swarm) integrate(ctx context.Context, m *member, t Task, message string
 		if len(carried) > 0 {
 			note += "; it carried the work of " + strings.Join(carried, ", ") + ", done in the same tree"
 		}
+		if res.Verify != nil {
+			s.noteVerifyWrote(res.Verify.Cmd, res.Verify.Wrote)
+		}
 		s.tellSiblingsOfMerge(t, m.id)
 		return integration{ok: true, evidence: note}
 	case workspace.OutcomeEmpty:
@@ -657,6 +660,38 @@ func (s *Swarm) mergedFor(t Task) (mergeRec, bool) {
 	defer s.mu.Unlock()
 	r, ok := s.merged[t.ID]
 	return r, ok && r.rev == t.Rev && slices.Equal(r.files, t.Files)
+}
+
+// noteVerifyWrote tells the manager, once for each set of files, that the verify command rewrote tracked files in the tree it
+// verified. It does so in every member's tree too: each submission then carries the rewritten files, or its worker discards
+// them, and the next run of the verify rewrites them again. A team whose verify regenerated a committed screenshot split one
+// task four times to discard the same file.
+func (s *Swarm) noteVerifyWrote(cmd string, files []string) {
+	if len(files) == 0 {
+		return
+	}
+	key := strings.Join(files, "\x00")
+	s.mu.Lock()
+	if s.verifyWrote == nil {
+		s.verifyWrote = map[string]bool{}
+	}
+	seen := s.verifyWrote[key]
+	s.verifyWrote[key] = true
+	s.mu.Unlock()
+	if seen {
+		return
+	}
+	s.notifyManager(fmt.Sprintf("The verify command (%s) rewrote tracked files when it passed: %s%s. It rewrites them in every tree it runs in, so each "+
+		"member's checkout shows them changed after a verify: make the command write them outside the tree (or stop tracking them) "+
+		"rather than having workers discard them.", cmd, strings.Join(firstN(files, 5), ", "), andMore(len(files)-5)))
+}
+
+// andMore is " and N more" for n > 0 left out of a list, "" otherwise.
+func andMore(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return fmt.Sprintf(" and %d more", n)
 }
 
 // countBounce counts the times this assignment came back from the merge queue.
