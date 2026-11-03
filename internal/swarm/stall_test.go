@@ -840,3 +840,45 @@ func TestStallReviewStarvedByTheClock(t *testing.T) {
 		t.Error("the manager was not told")
 	}
 }
+
+// A review is reading, so its read-only turns are not a stall: review_overrun bounds it. In a 13-worker run a reviewer was
+// found stalled after 12 reads of the merged code, and the stall stop would have ended the review the manager asked for.
+// A reviewer's planning task is writing an agreement, and is held to the turn count as any writer's task is.
+func TestStallClaimedNoProgressSparesAReview(t *testing.T) {
+	cfg := stallCfg()
+	cfg.Team, cfg.MaxWorkers = []string{"backend", "reviewer"}, 8
+	t.Run("a review", func(t *testing.T) {
+		r := newRVRig(t, cfg, gatedWorkers(map[string][]rvReply{"rv-1": repeat(5, readReply)}))
+		r.sw.StartManager()
+		id, err := r.sw.Spawn(SpawnReq{Role: ReviewerRole, Title: "review the tree", By: "mgr"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rvWait(t, id+" to reach its blocked request", func() bool { return r.prov.callsFor(id) >= 6 })
+		r.sw.sweepStalls()
+		if f, ok := active(r, StallClaimedNoProgress); ok {
+			t.Fatalf("a reviewer reading the work was found stalled: %+v", f)
+		}
+		r.sw.stopRun(r.sw.get(id), "test over", false)
+		rvWait(t, "the reviewer to stop", func() bool { return r.idle(id) })
+	})
+	t.Run("a planning task", func(t *testing.T) {
+		r := newRVRig(t, cfg, gatedWorkers(map[string][]rvReply{"rv-1": repeat(5, readReply)}))
+		r.sw.StartManager()
+		plan, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "agree the interfaces", Kind: TaskKindPlan})
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, err := r.sw.Spawn(SpawnReq{Role: ReviewerRole, TaskID: plan.ID, By: "mgr"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rvWait(t, id+" to reach its blocked request", func() bool { return r.prov.callsFor(id) >= 6 })
+		r.sw.sweepStalls()
+		if f, ok := active(r, StallClaimedNoProgress); !ok || f.Agent != id || f.Task != plan.ID {
+			t.Fatalf("finding = %+v, %v; stalls %+v", f, ok, r.sw.Stalls())
+		}
+		r.sw.stopRun(r.sw.get(id), "test over", false)
+		rvWait(t, "the reviewer to stop", func() bool { return r.idle(id) })
+	})
+}

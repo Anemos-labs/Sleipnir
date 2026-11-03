@@ -361,17 +361,22 @@ func (s *Swarm) stallFindings() []Stall {
 	u := s.unfinishedWork()
 	var out []Stall
 
-	// claimed_no_progress: one finding per worker, on the task its status shows.
+	// claimed_no_progress: one finding per worker, on the task its status shows (a reviewer's review is held to review_overrun instead).
 	if k > 0 {
 		for id, v := range views {
 			if !v.running || v.manager || v.service || v.quiet < k {
 				continue
 			}
 			if task := currentTask(snap, id); task != "" {
-				if t, _ := snap.Task(task); t.Status == StatusDoing {
-					out = append(out, Stall{Kind: StallClaimedNoProgress, Task: task, Agent: id, Notify: id,
-						Detail: fmt.Sprintf("%s took %d model turns on %s without editing a file, running a test or a command that changes files, or updating the task", id, v.quiet, task)})
+				t, _ := snap.Task(task)
+				if t.Status != StatusDoing || (v.role == ReviewerRole && t.Kind != TaskKindPlan) {
+					// A review is reading: its turns are the work, and review_overrun bounds how long it may take. Counted
+					// here, every review longer than StallTurns reads was found stalled, escalated and then stopped by the
+					// harness, whatever the size of the work it reviewed.
+					continue
 				}
+				out = append(out, Stall{Kind: StallClaimedNoProgress, Task: task, Agent: id, Notify: id,
+					Detail: fmt.Sprintf("%s took %d model turns on %s without editing a file, running a test or a command that changes files, or updating the task", id, v.quiet, task)})
 			}
 		}
 	}
