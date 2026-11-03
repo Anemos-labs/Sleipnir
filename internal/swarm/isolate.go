@@ -662,10 +662,10 @@ func (s *Swarm) mergedFor(t Task) (mergeRec, bool) {
 	return r, ok && r.rev == t.Rev && slices.Equal(r.files, t.Files)
 }
 
-// noteVerifyWrote tells the manager, once for each set of files, that the verify command rewrote tracked files in the tree it
-// verified. It does so in every member's tree too: each submission then carries the rewritten files, or its worker discards
-// them, and the next run of the verify rewrites them again. A team whose verify regenerated a committed screenshot split one
-// task four times to discard the same file.
+// noteVerifyWrote tells the manager, once for each set of files, that a passing run of the verify command (cmd) changed
+// tracked files in the tree it ran in: the merge queue's, or a member's own gate. Rewritten files show up in each checkout the
+// command runs in, and a worker discards them or carries them into its submission: a team whose verify regenerated a committed
+// screenshot split one task four times to discard the same file.
 func (s *Swarm) noteVerifyWrote(cmd string, files []string) {
 	if len(files) == 0 {
 		return
@@ -681,9 +681,10 @@ func (s *Swarm) noteVerifyWrote(cmd string, files []string) {
 	if seen {
 		return
 	}
-	s.notifyManager(fmt.Sprintf("The verify command (%s) rewrote tracked files when it passed: %s%s. It rewrites them in every tree it runs in, so each "+
-		"member's checkout shows them changed after a verify: make the command write them outside the tree (or stop tracking them) "+
-		"rather than having workers discard them.", cmd, strings.Join(firstN(files, 5), ", "), andMore(len(files)-5)))
+	// notifyManager keeps 400 runes: bound the command and the list so the guidance after them survives.
+	list := cleanText(strings.Join(firstN(files, 3), ", ")+andMore(len(files)-3), 140)
+	s.notifyManager(fmt.Sprintf("A passing run of the verify command `%s` rewrote tracked files: %s. Have the command write that "+
+		"output outside the tree, or commit what it produces, rather than having workers discard it.", cleanText(cmd, 80), list))
 }
 
 // andMore is " and N more" for n > 0 left out of a list, "" otherwise.
