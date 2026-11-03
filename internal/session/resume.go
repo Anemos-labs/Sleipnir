@@ -367,6 +367,10 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 		}
 	}
 	for _, task := range prev.Tasks {
+		if at, ok := began[task.ID]; ok && task.Status == swarm.StatusDoing {
+			// Work still in flight keeps the start of its assignment: the team's task bound counts from there, not from the resume.
+			reviewOps = append(reviewOps, swarm.ReviewOp{Task: task.ID, Began: at})
+		}
 		if task.Owner != "" && task.Owner != managerAgent && task.Status != swarm.StatusDone && task.Status != swarm.StatusFailed {
 			// A prepare record and an owned task recover the window before roster
 			// publication. Once published, only current roster membership counts:

@@ -166,3 +166,26 @@ func TestStallStopAndTaskTimeoutCanBeTurnedOff(t *testing.T) {
 		t.Fatal("task_overrun held with TaskTimeout off")
 	}
 }
+
+// A resume keeps the start of work still in flight: the team's task bound counts from when the assignment began, read from the
+// log, not from the run the resumed team started on it, so a worker that ran past the bound before the restart is still overrun.
+func TestAResumeKeepsTheStartOfWorkInFlight(t *testing.T) {
+	clock := newFakeClock()
+	cfg := stallCfg()
+	cfg.StallTurns = 100 // the turn-based kinds stay quiet: only the clock decides here
+	cfg.TaskTimeout = 30 * time.Minute
+	r := newRVRigWith(t, cfg, gatedWorkers(nil), func(d *Deps) { d.Now = clock.Now })
+	r.sw.StartManager()
+	id, task := spawnWorker(t, r, "build the importer", 1)
+	r.sw.sweepStalls()
+	if _, ok := active(r, StallTaskOverrun); ok {
+		t.Fatal("a task that just began was found overrun")
+	}
+	sn := r.sw.Board.Snapshot()
+	r.sw.RestoreReviewGate(sn, []ReviewOp{{Task: task.ID, Began: clock.Now().Add(-45 * time.Minute)}})
+	r.sw.sweepStalls()
+	f, ok := active(r, StallTaskOverrun)
+	if !ok || f.Task != task.ID || f.Agent != id || !strings.Contains(f.Detail, "for 45 minutes") {
+		t.Fatalf("finding = %+v, %v", f, ok)
+	}
+}

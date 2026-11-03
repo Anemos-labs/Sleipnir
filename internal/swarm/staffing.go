@@ -73,6 +73,20 @@ func (g *reviewGate) noteBegan(id string, rev uint64, at time.Time) {
 	}
 }
 
+// restoreBegan records at, an assignment's start read from the log on resume, unless an earlier start is known: a run of the
+// resumed team that adopted the assignment first noted its own start, which is not when the work began.
+func (g *reviewGate) restoreBegan(id string, rev uint64, at time.Time) {
+	key := id + "#" + strconv.FormatUint(rev, 10)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.began == nil {
+		g.began = map[string]time.Time{}
+	}
+	if old, ok := g.began[key]; !ok || at.Before(old) {
+		g.began[key] = at
+	}
+}
+
 // restoreEnded records at, a submission's time read from the log on resume, as the end of the work of t's assignment: replace
 // overwrites the time reviewSubmission recorded (the resume's own), otherwise an end already recorded (the submission before an
 // acceptance) is kept. A zero at changes nothing.
