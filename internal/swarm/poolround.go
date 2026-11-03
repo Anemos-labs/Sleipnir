@@ -7,11 +7,9 @@ import (
 	"time"
 )
 
-// A pool round (agree on a plan, confirm a combined result) ends only when every member has voted, and nothing holds a member to
-// it. In a 14-worker run four frontend members planned a one-file task: three agreed within six minutes, the fourth read the
-// shared corpus for twenty-eight more before it answered, and the whole pool waited for it. A planning pool needs every member,
-// so the site task the manager assigned to the role meanwhile sat in the queue, and the manager, which saw four busy members, did
-// not know that three of them were waiting on one vote. It could excuse that member (pool excuse) once told.
+// A pool round (agree on a plan, confirm a combined result) ends only when every member has voted. A planning pool holds every
+// one of its members until then, so one slow vote keeps the voters idle and the parents queued for the pool's role waiting for a
+// free member, while the manager sees only busy members. The manager can excuse the slow member (pool excuse) once it knows.
 //
 // poolRoundTick tells the manager, once per round, when a round has waited poolRoundWait since its first vote for the members
 // that have not voted, naming the parents queued for the pool's role. A notice the manager's inbox would fold into a digest is
