@@ -11,7 +11,8 @@ import (
 // round has waited poolRoundWait since its first vote, the manager is told once which member it waits on, what is queued
 // meanwhile, and how to excuse the member; a new revision starts a new round, and a completed round says nothing.
 func TestAPoolRoundWaitingOnOneMemberIsToldToTheManager(t *testing.T) {
-	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 3, Team: []string{"frontend", "frontend", "frontend"}},
+	// SuperviseEvery is an hour: the test drives the ticks with its own clock, and no background pass runs on the real one.
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 3, Team: []string{"frontend", "frontend", "frontend"}, SuperviseEvery: time.Hour},
 		func(ctx context.Context, _ *rvCall) rvReply { <-ctx.Done(); return rvReply{Text: "stopped"} })
 	r.sw.StartManager()
 	if _, err := r.sw.Spawn(SpawnReq{Role: "frontend", Title: "logic engine", Files: []string{"web/src/logic.ts"}, By: "mgr"}); err != nil {

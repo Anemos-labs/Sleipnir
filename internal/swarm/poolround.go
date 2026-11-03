@@ -14,7 +14,8 @@ import (
 // not know that three of them were waiting on one vote. It could excuse that member (pool excuse) once told.
 //
 // poolRoundTick tells the manager, once per round, when a round has waited poolRoundWait since its first vote for the members
-// that have not voted, naming the parents queued for the pool's role.
+// that have not voted, naming the parents queued for the pool's role. A notice the manager's inbox would fold into a digest is
+// held back and tried again on a later pass.
 
 // poolRoundWait is how long a pool round waits on its missing votes after the first one before the manager is told.
 const poolRoundWait = 10 * time.Minute
@@ -32,7 +33,8 @@ type poolRound struct {
 func (s *Swarm) poolRoundTick(now time.Time) {
 	sn := s.Board.Snapshot()
 	seen := map[string]bool{}
-	var tell []string
+	type notice struct{ id, key, line string }
+	var tell []notice
 	s.mu.Lock()
 	if s.rounds == nil {
 		s.rounds = map[string]poolRound{}
@@ -56,9 +58,7 @@ func (s *Swarm) poolRoundTick(now time.Time) {
 		if r.told || now.Sub(r.since) < poolRoundWait {
 			continue
 		}
-		r.told = true
-		s.rounds[t.ID] = r
-		tell = append(tell, poolRoundNote(t, *p, missing, now.Sub(r.since), s.queuedFor(t.Role)))
+		tell = append(tell, notice{t.ID, key, poolRoundNote(t, *p, missing, now.Sub(r.since), s.queuedFor(t.Role))})
 	}
 	for id := range s.rounds {
 		if !seen[id] {
@@ -66,8 +66,18 @@ func (s *Swarm) poolRoundTick(now time.Time) {
 		}
 	}
 	s.mu.Unlock()
-	for _, line := range tell {
-		s.notify(s.ManagerID(), "info", line)
+	for _, n := range tell {
+		// A digest keeps one harness notice of a kind, so a later one could replace this: it is sent whole or not yet, and a
+		// round counts as told only once it was.
+		if !s.notifyWhole(s.ManagerID(), "info", n.line) {
+			continue
+		}
+		s.mu.Lock()
+		if r, ok := s.rounds[n.id]; ok && r.key == n.key {
+			r.told = true
+			s.rounds[n.id] = r
+		}
+		s.mu.Unlock()
 	}
 }
 
