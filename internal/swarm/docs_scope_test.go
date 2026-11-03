@@ -334,3 +334,26 @@ func TestATaskWithNothingToMergeStartsNoDocsPass(t *testing.T) {
 		t.Fatalf("a task with nothing to merge started docs work: open %q, pending %v", r.sw.docs.open, r.sw.docs.pending)
 	}
 }
+
+// A parent whose work its children carried merges nothing of its own: once a child merged and had its catch-up pass, the
+// parent's acceptance starts none. A pool's parent task, accepted after its one child merged, started a second pass over the
+// same change. A parent that merged a change of its own still counts.
+func TestAParentWhoseChildrenCarriedTheWorkCountsAsMergingNothing(t *testing.T) {
+	r := newRVRigWith(t, Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "docs"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	files := []string{"lib/routes.rb"}
+	pooled := Task{ID: "T1", Status: StatusDone, Rev: 1, Files: files}
+	child := Task{ID: "T2", Status: StatusDone, Rev: 1, Files: files, Parent: "T1"}
+	own := Task{ID: "T3", Status: StatusDone, Rev: 1, Files: files}
+	ownChild := Task{ID: "T4", Status: StatusDone, Rev: 1, Files: files, Parent: "T3"}
+	open := Task{ID: "T5", Status: StatusDoing, Rev: 1, Files: files}
+	openChild := Task{ID: "T6", Status: StatusTodo, Rev: 1, Files: files, Parent: "T5"}
+	r.sw.mu.Lock()
+	for _, c := range []Task{child, own, ownChild} { // tasks off the board: recordMerge would refuse them
+		r.sw.merged[c.ID] = mergeRec{rev: c.Rev, files: c.Files}
+	}
+	r.sw.mu.Unlock()
+	got := r.sw.emptyMerges(&Snapshot{Tasks: []Task{pooled, child, own, ownChild, open, openChild}})
+	if !got["T1"] || len(got) != 1 {
+		t.Fatalf("emptyMerges = %v, want only T1 (a parent whose child carried its work)", got)
+	}
+}
