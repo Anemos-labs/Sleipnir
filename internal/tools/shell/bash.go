@@ -379,6 +379,9 @@ func (m *Manager) runForeground(ctx context.Context, env *tools.Env, sh shellInf
 		if st.code == 0 && noTestsRan(text) {
 			marks = append(marks, noTestsNote)
 		}
+		if n := selfKillNote(command, st.signal, reason); n != "" {
+			marks = append(marks, n)
+		}
 	} else {
 		marks = append(marks, "[exit code unknown: the process did not exit after SIGKILL]")
 	}

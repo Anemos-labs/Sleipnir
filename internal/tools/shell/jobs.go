@@ -63,6 +63,7 @@ type job struct {
 	state   jobState
 	reason  killReason
 	exit    int
+	signal  int              // the signal that ended its shell, 0 when it exited
 	cursors map[string]int64 // agent -> offset already read
 	urls    []string         // the local addresses its output named (urlSniffer), at most maxJobURLs
 }
@@ -208,6 +209,7 @@ func (m *Manager) superviseJob(j *job, timeout time.Duration) {
 
 	j.mu.Lock()
 	j.exit = st.code
+	j.signal = st.signal
 	j.reason = reason
 	if reason != killNone {
 		j.state = jobKilled
@@ -407,6 +409,14 @@ func (t *outputTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, err
 		sb.WriteString("(no new output)\n")
 	}
 	fmt.Fprintf(&sb, "[%s %s; next offset %d]", j.id, j.statusText(), next)
+	if state, reason, _ := j.snapshot(); state != jobRunning {
+		j.mu.Lock()
+		signal := j.signal
+		j.mu.Unlock()
+		if n := selfKillNote(j.command, signal, reason); n != "" {
+			sb.WriteString("\n" + n)
+		}
+	}
 
 	res := env.Finish(sb.String(), false)
 	state, _, exit := j.snapshot()
