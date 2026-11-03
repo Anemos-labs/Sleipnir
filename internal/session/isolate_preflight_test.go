@@ -63,11 +63,36 @@ func TestPreflightIsolation(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo, "list.txt"), []byte("changed\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := pf(session.IsolationPreflight{Cwd: repo, Swarm: true, Isolation: "worktree", Commit: true}); !strings.Contains(got, "clean checkout") {
-		t.Errorf("a dirty checkout: %q", got)
+	if got := pf(session.IsolationPreflight{Cwd: repo, Swarm: true, Isolation: "worktree", Commit: true}); !strings.Contains(got, "clean checkout") || !strings.Contains(got, "in list.txt (") {
+		t.Errorf("a dirty checkout, the refusal names the file: %q", got)
+	}
+	// Past five paths the rest are counted, a path with a newline stays on one line, and two paths that read the same once
+	// on one line ("e f.txt", "e\nf.txt") are both counted.
+	for _, n := range []string{"a.txt", "b.txt", "c.txt", "e f.txt", "e\nf.txt", "g.txt"} {
+		if err := os.WriteFile(filepath.Join(repo, n), []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := pf(session.IsolationPreflight{Cwd: repo, Swarm: true, Isolation: "worktree", Commit: true}); !strings.Contains(got, " and 2 more (") || strings.Contains(got, "\n") {
+		t.Errorf("seven changed paths: %q", got)
+	}
+	for _, n := range []string{"a.txt", "b.txt", "c.txt", "e f.txt", "e\nf.txt", "g.txt"} {
+		if err := os.Remove(filepath.Join(repo, n)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if got := pf(session.IsolationPreflight{Cwd: repo, Swarm: true, Isolation: "worktree"}); got != "" {
 		t.Errorf("a dirty checkout without commit: %q", got)
+	}
+	// A path with a newline among the shown ones is shown on one line.
+	if err := os.WriteFile(filepath.Join(repo, "e\nf.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := pf(session.IsolationPreflight{Cwd: repo, Swarm: true, Isolation: "worktree", Commit: true}); !strings.Contains(got, "e f.txt") || strings.Contains(got, "\n") {
+		t.Errorf("a newline path in the list: %q", got)
+	}
+	if err := os.Remove(filepath.Join(repo, "e\nf.txt")); err != nil {
+		t.Fatal(err)
 	}
 	git(t, repo, "checkout", "-q", "--", "list.txt")
 	git(t, repo, "checkout", "-q", "--detach")
