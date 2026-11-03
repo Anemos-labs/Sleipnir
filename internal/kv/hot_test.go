@@ -636,3 +636,43 @@ func TestForkPromptOnATurnScopedThreadEndsInTheInstruction(t *testing.T) {
 		t.Fatalf("fork of a one-turn thread: %+v", f2.Messages)
 	}
 }
+
+// A cold mask runs far below any limit, so it spares the newest results that fit in the policy's KeepTarget: an agent whose
+// turns outlast the cache keeps what it just read, and only the older results are masked.
+func TestMaskOnlySparesTheNewestResultsWithinTheKeepTarget(t *testing.T) {
+	e := cxEst()
+	masked := func(keep int) (int, []bool) {
+		t.Helper()
+		pol := DefaultApplyPolicy()
+		pol.KeepTarget = keep
+		s := stackFor(buildThread(12, 12000)) // twelve results of about 3,000 tokens each
+		res, err := MaskOnly(s, e, pol)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := MaskableTokens(s, e, pol); got != res.MaskedTokens {
+			t.Fatalf("keep %d: MaskableTokens %d, MaskOnly saved %d", keep, got, res.MaskedTokens)
+		}
+		var seen []bool
+		for _, tr := range res.Replacement {
+			for _, b := range tr.Blocks {
+				if b.Kind == core.BlockToolResult {
+					seen = append(seen, isMasked(b))
+				}
+			}
+		}
+		return res.MaskedResults, seen
+	}
+	if n, _ := masked(0); n != 10 {
+		t.Fatalf("with no keep target every result but the newest two units is masked: %d", n)
+	}
+	n, seen := masked(10_000)
+	if n != 9 || len(seen) != 12 {
+		t.Fatalf("a 10k keep target spares the newest three results: %d masked of %d", n, len(seen))
+	}
+	for i, m := range seen {
+		if m != (i < 9) {
+			t.Fatalf("result %d masked=%v: only the oldest nine go", i, m)
+		}
+	}
+}
