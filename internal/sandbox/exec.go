@@ -25,21 +25,29 @@ var passEnv = []string{"TERM", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "NO_COLOR", "
 // it, so the helper finds all of them to stop the command.
 const IDVar = "SLEIPNIR_SANDBOX_RUN"
 
-// ExecMain is the exec helper: args are CONTAINER -- PROGRAM ARGS... It runs PROGRAM inside the container from the helper's own
+// ExecMain is the exec helper: args are CONTAINER [DOCKER] -- PROGRAM ARGS..., DOCKER the absolute path of the docker command the
+// box was started with (looked up on PATH when it is not given). It runs PROGRAM inside the container from the helper's own
 // working directory (the shell tool starts it where the command is to run), with the variables of passEnv, its standard
 // streams joined to the helper's, and returns the program's exit status. A program given by an absolute host path is run by
 // its name, found on the container's PATH. SIGTERM, SIGINT and SIGHUP stop the program inside the container (a docker client
 // that dies leaves what it started running), then the helper.
 func ExecMain(args []string) int {
+	docker := ""
+	if len(args) >= 4 && args[1] != "--" && args[2] == "--" && filepath.IsAbs(args[1]) {
+		docker, args = args[1], append([]string{args[0]}, args[2:]...)
+	}
 	if len(args) < 3 || args[1] != "--" {
-		fmt.Fprintln(os.Stderr, "sleipnir sandbox: usage: "+ExecCommand+" CONTAINER -- PROGRAM [ARGS...]")
+		fmt.Fprintln(os.Stderr, "sleipnir sandbox: usage: "+ExecCommand+" CONTAINER [DOCKER] -- PROGRAM [ARGS...]")
 		return 2
 	}
 	name, prog := args[0], append([]string(nil), args[2:]...)
 	if filepath.IsAbs(prog[0]) {
 		prog[0] = filepath.Base(prog[0])
 	}
-	bin, err := exec.LookPath("docker")
+	bin, err := docker, error(nil)
+	if bin == "" {
+		bin, err = exec.LookPath("docker")
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "sleipnir sandbox: the docker command is not installed")
 		return 127

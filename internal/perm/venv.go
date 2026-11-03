@@ -587,10 +587,13 @@ func venvLayout(real, shown string, interpLinks bool) string {
 				return strings.TrimPrefix(site, real+"/") + " of " + shown + " has more entries than can be checked, or cannot be listed"
 			}
 			for _, n := range pkgs {
-				if fi, err := os.Lstat(filepath.Join(site, n)); err == nil && fi.Mode()&os.ModeSymlink == 0 {
-					continue // a file or a directory of its own is inside
+				p := filepath.Join(site, n)
+				if !strings.Contains(p, "..") { // a name with ".." in it is judged by where it leads
+					if fi, err := os.Lstat(p); err == nil && fi.Mode()&os.ModeSymlink == 0 {
+						continue // a file or a directory of its own is inside
+					}
 				}
-				if escapes(filepath.Join(site, n)) {
+				if escapes(p) {
 					return strings.TrimPrefix(site, real+"/") + "/" + n + " of " + shown + " leads outside the environment"
 				}
 			}

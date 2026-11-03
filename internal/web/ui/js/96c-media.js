@@ -136,6 +136,14 @@
     return out + text.slice(at);
   }
   /** Whether a line is a table's separator row (| :-- | --: |), read cell by cell in one pass. */
+  // atxText is a heading's text without its closing run of #s (one after a blank, or the whole text), in one pass: a regular
+  // expression that does this backtracks over long blank runs.
+  function atxText(t) {
+    t = t.trimEnd();
+    let j = t.length;
+    while (j > 0 && t[j - 1] === '#') j--;
+    return j < t.length && (j === 0 || /\s/.test(t[j - 1])) ? t.slice(0, j).trimEnd() : t;
+  }
   function tableSep(l) {
     let t = l.trim(); if (t.startsWith('|')) t = t.slice(1); if (t.endsWith('|')) t = t.slice(0, -1);
     return t.split('|').every(c => /^:?-+:?$/.test(c.trim()));
@@ -161,7 +169,7 @@
     exec(l) { const m = /^ {0,3}(`{3,}|~{3,})/.exec(l); if (!m) return null; const rest = l.slice(m[0].length); if (rest.includes('`')) return null; return [l, m[1], /^\s*([^\s]*)/.exec(rest)[1]]; },
     test(l) { return this.exec(l) !== null; },
   };
-  const HR = /^ {0,3}([-*_])(?:\s*\1){2,}\s*$/, ATX = /^ {0,3}(#{1,6})(?:\s+(.*?))?(?:\s+#+)?\s*$/, FENCE = fenceRe, QUOTE = /^ {0,3}> ?/,
+  const HR = /^ {0,3}([-*_])(?:\s*\1){2,}\s*$/, ATX = /^ {0,3}(#{1,6})(?:\s+(.*))?$/, FENCE = fenceRe, QUOTE = /^ {0,3}> ?/,
     LI = /^( {0,3})([-*+]|\d{1,9}[.)])(\s+|$)(.*)$/, TROW = /^\s*\|?.*\|.*$/;
   const MAX_CELLS = 20000;   // the table cells of one document (a table is at most MAX_COLS wide)
   const cellsOf = l => { let s = l.trim(); if (s.startsWith('|')) s = s.slice(1); if (s.endsWith('|') && !s.endsWith('\\|')) s = s.slice(0, -1); return s.split(/(?<!\\)\|/).map(c => c.trim()); };
@@ -180,7 +188,7 @@
         h += lang === 'mermaid' ? media.mermaidHtml(body.join('\n')) : '<pre class="pv-code"' + (lang ? ' data-lang="' + attr(lang) + '"' : '') + '><code>' + body.map(x => F ? F.hl(x) : esc(x)).join('\n') + '</code></pre>';
         continue;
       }
-      if ((m = ATX.exec(l))) { flush(); const n = m[1].length; h += '<h' + n + '>' + inline(m[2] || '', o) + '</h' + n + '>'; i++; continue; }
+      if ((m = ATX.exec(l))) { flush(); const n = m[1].length; h += '<h' + n + '>' + inline(atxText(m[2] || ''), o) + '</h' + n + '>'; i++; continue; }
       if (para.length && /^ {0,3}(=+|-+)\s*$/.test(l)) { const n = l.trim().charAt(0) === '=' ? 1 : 2, t = para.join('\n'); para = []; h += '<h' + n + '>' + inline(t, o) + '</h' + n + '>'; i++; continue; }
       if (HR.test(l)) { flush(); h += '<hr>'; i++; continue; }
       if (QUOTE.test(l)) {

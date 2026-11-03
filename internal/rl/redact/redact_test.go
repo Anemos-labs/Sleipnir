@@ -233,6 +233,7 @@ func TestPathsKeepStructure(t *testing.T) {
 		{`C:\Users\Carol\AppData\Local`, `C:\Users\user\AppData\Local`},
 		{`C:\\Users\\Carol\\AppData`, `C:\\Users\\user\\AppData`},
 		{"c:/users/Dave/x", "c:/users/user/x"},
+		{`D:\uSers\Frank\x`, `D:\uSers\user\x`}, // any capitalization of Users
 		{"see /home/alice.", "see /home/user."},
 		{"/mnt/c/Users/erin/x", "/mnt/c/Users/user/x"},
 		{`{"cwd":"/home/alice/repo"}`, `{"cwd":"/home/user/repo"}`},
@@ -578,5 +579,25 @@ func TestPrivateKeyWithTokenInside(t *testing.T) {
 	out, _ := r.Changed(key)
 	if strings.Contains(out, "MIIEowIBAAKCAQEAu1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gunVTLw7onLRnrq0") {
 		t.Errorf("the key material survives:\n%s", out)
+	}
+}
+
+// A JSON document inside a string (a tool call's arguments in a provider's wire format) is redacted as JSON: its keys count, and a
+// private key whose newlines it escapes is found as it is found in the decoded input.
+func TestJSONRedactsADocumentInsideAString(t *testing.T) {
+	r := testRedactor()
+	inner, _ := json.Marshal(map[string]string{"content": pemFull, "password": "hunter2hunter2"})
+	outer, _ := json.Marshal(map[string]any{"type": "function", "function": map[string]string{"name": "write", "arguments": string(inner)}})
+	out := r.JSON(outer)
+	if !json.Valid(out) {
+		t.Fatalf("output is not JSON: %s", out)
+	}
+	for _, gone := range []string{"QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo", "hunter2hunter2"} {
+		if strings.Contains(string(out), gone) {
+			t.Errorf("%q survived: %s", gone, out)
+		}
+	}
+	if again := r.JSON(out); string(again) != string(out) {
+		t.Fatalf("not idempotent:\n%s\n%s", out, again)
 	}
 }

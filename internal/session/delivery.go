@@ -199,7 +199,7 @@ func (s *Session) deliveryExec(dir string) delivery.Exec {
 		}
 		command := strings.Join(words, " ")
 		if s.Perm != nil {
-			req := perm.Request{Agent: s.mainAgent(), Role: "manager", Tool: "bash", Command: command, Cwd: dir, Writes: len(args) > 1 && args[0] == "pr" && args[1] == "merge"}
+			req := perm.Request{Agent: s.mainAgent(), Role: s.mainRole(), Tool: "bash", Command: command, Cwd: dir, Writes: len(args) > 1 && args[0] == "pr" && args[1] == "merge"}
 			c := s.Perm.Classify(req)
 			if c.Verdict == perm.Deny && !c.NoOneToAsk {
 				return nil, fmt.Errorf("delivery permission denied: %s", c.Why)

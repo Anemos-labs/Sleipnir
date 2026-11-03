@@ -393,8 +393,8 @@ func (s *service) handleNeedLocate(w http.ResponseWriter, r *http.Request) {
 // locateScope is the confirmation scope of locating need n at path: it covers the check that runs (the path and its version
 // arguments) and the commands whose launchers it puts on the PATH, so a manifest changed after the confirmation needs another.
 func locateScope(n plugin.Need, path string) string {
-	return "need.locate:" + d16(map[string]string{"need": n.ID, "path": path,
-		"version": strings.Join(n.VersionArgs, "\x00"), "commands": strings.Join(n.Commands, "\x00")})
+	list := func(v []string) string { b, _ := json.Marshal(v); return string(b) } // no separator a manifest string could hold
+	return "need.locate:" + d16(map[string]string{"need": n.ID, "path": path, "version": list(n.VersionArgs), "commands": list(n.Commands)})
 }
 
 // handleNeedForget is DELETE /api/needs/{id}/locate: forget a located file.

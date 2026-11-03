@@ -3,6 +3,7 @@ package sandbox
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -86,6 +87,46 @@ func TestGitConfigValue(t *testing.T) {
 	} {
 		if got := gitConfigValue(raw); got != want {
 			t.Errorf("gitConfigValue(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+// A long run of blanks inside a value is kept as written, in time linear in its length.
+func TestGitConfigValueKeepsLongBlankRuns(t *testing.T) {
+	raw := "a" + strings.Repeat(" ", 1<<20) + "b   "
+	if got := gitConfigValue(raw); got != raw[:len(raw)-3] {
+		t.Errorf("gitConfigValue kept %d bytes, want %d", len(got), len(raw)-3)
+	}
+}
+
+// The helper is handed the docker command the box started with, so it never searches a PATH the project may have a directory on.
+func TestWrapNamesTheDockerCommandTheBoxStartedWith(t *testing.T) {
+	b := &Box{Name: "sb", docker: "/usr/bin/docker"}
+	if got := strings.Join(b.Wrap("/x/sleipnir"), " "); got != "/x/sleipnir "+ExecCommand+" sb /usr/bin/docker --" {
+		t.Errorf("Wrap = %q", got)
+	}
+}
+
+// An include whose directory in the project is a link to a directory outside it is not mounted: the engine would mount the file
+// the link names, a host file, into the container.
+func TestGitMountsSkipAnIncludeBehindALinkedDirectory(t *testing.T) {
+	p := t.TempDir()
+	private := t.TempDir()
+	if err := os.WriteFile(filepath.Join(private, "id"), []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(p, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(private, filepath.Join(p, "lnk")); err != nil {
+		t.Skip(err)
+	}
+	if err := os.WriteFile(filepath.Join(p, ".git", "config"), []byte("[include]\n\tpath = ../lnk/id\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range gitMounts([]string{p}) {
+		if strings.Contains(m.path, "lnk") {
+			t.Errorf("an include behind a linked directory was mounted: %+v", m)
 		}
 	}
 }

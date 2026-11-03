@@ -400,6 +400,9 @@ func gitMounts(paths []string) []gitMount {
 		// A file the configuration includes from inside the project is configuration the host's git reads as much as
 		// .git/config itself (a core.sshCommand for the progress push): it is guarded the same way.
 		for _, inc := range projectIncludes(filepath.Join(gd, "config"), paths) {
+			if !dirInside(inc, paths) {
+				continue // through a link to a directory outside the project: not in the container, and not to be mounted into it
+			}
 			if ii, err := os.Lstat(inc); err == nil && !ii.IsDir() {
 				out = append(out, gitMount{inc, true, ii.Mode()&os.ModeSymlink != 0})
 			}
@@ -421,6 +424,25 @@ func gitMounts(paths []string) []gitMount {
 		seen[m.path] = true
 		return dup
 	})
+}
+
+// dirInside reports whether the directory of p, with every link in it followed, is inside one of paths (also followed): the
+// engine mounts a source by what its links name.
+func dirInside(p string, paths []string) bool {
+	d, err := filepath.EvalSymlinks(filepath.Dir(p))
+	if err != nil {
+		return false
+	}
+	for _, root := range paths {
+		r, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			continue
+		}
+		if rel, err := filepath.Rel(r, d); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 // projectIncludes are the files a git configuration file includes (include.path, includeIf.<cond>.path, and theirs, a few
@@ -486,14 +508,14 @@ func projectIncludes(config string, paths []string) []string {
 // them, a backslash escapes the next character, and outside quotes a # or ; starts a comment and blanks at the end are dropped.
 func gitConfigValue(raw string) string {
 	var b strings.Builder
-	quoted, pending := false, ""
+	quoted, pending := false, []byte(nil) // the blanks since the last other byte, kept only when more text follows
 	for i := 0; i < len(raw); i++ {
 		c := raw[i]
 		switch {
 		case c == '\\' && i+1 < len(raw):
 			i++
-			b.WriteString(pending)
-			pending = ""
+			b.Write(pending)
+			pending = pending[:0]
 			switch raw[i] {
 			case 'n':
 				b.WriteByte('\n')
@@ -505,15 +527,15 @@ func gitConfigValue(raw string) string {
 				b.WriteByte(raw[i])
 			}
 		case c == '"':
-			b.WriteString(pending)
-			pending, quoted = "", !quoted
+			b.Write(pending)
+			pending, quoted = pending[:0], !quoted
 		case !quoted && (c == '#' || c == ';'):
 			return b.String()
 		case !quoted && (c == ' ' || c == '\t'):
-			pending += string(c)
+			pending = append(pending, c)
 		default:
-			b.WriteString(pending)
-			pending = ""
+			b.Write(pending)
+			pending = pending[:0]
 			b.WriteByte(c)
 		}
 	}
@@ -551,6 +573,11 @@ func ensureImage(ctx context.Context, bin, image string) error {
 // Wrap is the argument prefix a shell command runs under to run in the box: exe (this program) re-entered as the exec helper
 // (ExecMain), which sends the command into the container from the directory it was started in.
 func (b *Box) Wrap(exe string) []string {
+	if filepath.IsAbs(b.docker) {
+		// the docker command found when the box started, before any command ran in it: the helper does not search a PATH whose
+		// directories the project, which the box mounts writable, may hold
+		return []string{exe, ExecCommand, b.Name, b.docker, "--"}
+	}
 	return []string{exe, ExecCommand, b.Name, "--"}
 }
 

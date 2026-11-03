@@ -113,3 +113,12 @@ test('a long line that is almost a code fence fails in linear time', () => {
   assert.match(md('````go x\nfunc f() {}\n````\n'), /data-lang="go"/);
   assert.doesNotMatch(md('```a`b\n'), /pv-code/);
 });
+
+test('an ATX heading loses its closing #s, and a long line of blanks is read in linear time', () => {
+  assert.match(md('## Title ##'), /<h2>Title<\/h2>/);
+  assert.match(md('# C#'), /<h1>C#<\/h1>/);
+  assert.match(md('# #'), /<h1><\/h1>/);
+  const t0 = Date.now();
+  md('# a' + ' \t'.repeat(40000) + 'x#');
+  assert.ok(Date.now() - t0 < 1000, 'a heading with a long run of blanks took ' + (Date.now() - t0) + 'ms');
+});

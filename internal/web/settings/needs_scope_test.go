@@ -45,3 +45,12 @@ func TestInstallScopeKeepsSetupStepBoundaries(t *testing.T) {
 		t.Error("one argument and two share the install scope")
 	}
 }
+
+// The locate scope keeps where each argument ends: "a\x00b" is not the two arguments a and b.
+func TestLocateScopeKeepsArgumentBoundaries(t *testing.T) {
+	one := plugin.Need{ID: "rg", Commands: []string{"rg\x00git"}, VersionArgs: []string{"--version\x00x"}}
+	two := plugin.Need{ID: "rg", Commands: []string{"rg", "git"}, VersionArgs: []string{"--version", "x"}}
+	if locateScope(one, "/usr/bin/rg") == locateScope(two, "/usr/bin/rg") {
+		t.Error("one argument and two share the locate scope")
+	}
+}

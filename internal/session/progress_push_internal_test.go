@@ -198,3 +198,40 @@ func TestProgressPushHoldsASnapshotThatAddsCredentials(t *testing.T) {
 		t.Errorf("told %q", told)
 	}
 }
+
+// A push runs the person's own programs: an ssh command or credential helper that the repository's configuration names, in
+// .git/config or in a file it includes (which may not exist until a sandboxed command writes it), is put back to theirs.
+func TestProgressPushKeepsThePersonsOwnPrograms(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_SSH", "")
+	dir := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	run("init", "-q")
+	run("config", "--global", "credential.helper", "store")
+	if got := personalPrograms(context.Background(), dir); got != nil {
+		t.Fatalf("a repository that names no program got %q", got)
+	}
+	run("config", "include.path", "extra.cfg")
+	if err := os.WriteFile(filepath.Join(dir, ".git", "extra.cfg"), []byte("[core]\n\tsshCommand = evil\n[credential]\n\thelper = !evil\n[remote \"o\"]\n\treceivepack = evil\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(personalPrograms(context.Background(), dir), " ")
+	for _, want := range []string{"-c core.sshcommand=ssh", "-c credential.helper= -c credential.helper=store", "-c remote.o.receivepack=git-receive-pack"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in %q", want, got)
+		}
+	}
+	if strings.Contains(got, "evil") {
+		t.Errorf("the repository's program survived: %q", got)
+	}
+}

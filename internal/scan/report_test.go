@@ -3,6 +3,7 @@ package scan
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -227,4 +228,13 @@ func TestASettledLeadTakesNoVerdict(t *testing.T) {
 		"cvss": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "reach": "external", "exploit": "trivial"})
 	mustOK(t, tl, "v1", map[string]any{"action": "verdict", "id": "L1", "confirm": true, "note": "routes.go registers /ping with no middleware; host flows into sh -c"})
 	mustFail(t, tl, "v2", map[string]any{"action": "verdict", "id": "L1", "confirm": false, "reason": "wrong", "note": "I would rather argue about this one a bit more"}, "settled")
+}
+
+// The smallest int is written with its separators, not by negating it, which gives it back and never ends.
+func TestThousandsWritesTheSmallestInt(t *testing.T) {
+	for n, want := range map[int]string{0: "0", 999: "999", 1234: "1,234", -1234567: "-1,234,567", math.MinInt64: "-9,223,372,036,854,775,808"} {
+		if got := thousands(n); got != want {
+			t.Errorf("thousands(%d) = %q, want %q", n, got, want)
+		}
+	}
 }

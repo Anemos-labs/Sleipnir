@@ -76,7 +76,12 @@ func (r *Redactor) JSON(raw json.RawMessage) json.RawMessage {
 		if len(arrays) > 0 {
 			elemKey = arrays[len(arrays)-1]
 		}
-		red, changed := r.jsonValue(raw, i, s, elemKey)
+		red, changed := "", false
+		if nested, ok := r.nestedJSON(s); ok {
+			red, changed = nested, nested != s
+		} else {
+			red, changed = r.jsonValue(raw, i, s, elemKey)
+		}
 		if changed {
 			if out == nil {
 				out = make([]byte, 0, n+64)
@@ -91,6 +96,18 @@ func (r *Redactor) JSON(raw json.RawMessage) json.RawMessage {
 		return raw
 	}
 	return append(out, raw[last:]...)
+}
+
+// nestedJSON is s redacted as JSON when s is itself a JSON object or array (the arguments of a tool call in a provider's wire
+// format are a JSON document inside a string): its keys then count, and a value it escapes (a private key's newlines) is read
+// decoded. It reports false for any other string, which is redacted as text. Each level of nesting escapes the one inside, so the depth is bounded by the
+// logarithm of the length.
+func (r *Redactor) nestedJSON(s string) (string, bool) {
+	t := strings.TrimSpace(s)
+	if len(t) < 2 || (t[0] != '{' || t[len(t)-1] != '}') && (t[0] != '[' || t[len(t)-1] != ']') || !json.Valid([]byte(t)) {
+		return s, false
+	}
+	return string(r.JSON(json.RawMessage(s))), true
 }
 
 // isJSONKey reports whether the string ending just before position end is an

@@ -106,8 +106,26 @@ func DenyKeys(cmd *exec.Cmd) {
 // withoutUserinfo drops the user and password from a proxy URL: LooksSecret leaves proxy settings to the commands that need
 // the network, but the password in one is a credential a child denied keys must not get either.
 func withoutUserinfo(v string) string {
+	if !strings.Contains(v, "://") {
+		// user:pass@host:3128, which the tools that read these variables take as an http URL
+		if u, err := url.Parse("http://" + v); err == nil && u.User != nil {
+			u.User = nil
+			return strings.TrimPrefix(u.String(), "http://")
+		}
+		if at := strings.LastIndexByte(v, '@'); at >= 0 {
+			return v[at+1:] // whatever the rest is, what precedes the @ is a user and password
+		}
+		return v
+	}
 	u, err := url.Parse(v)
-	if err != nil || u.User == nil {
+	if err != nil {
+		if at := strings.LastIndexByte(v, '@'); at >= 0 {
+			scheme, _, _ := strings.Cut(v, "://")
+			return scheme + "://" + v[at+1:]
+		}
+		return v
+	}
+	if u.User == nil {
 		return v
 	}
 	u.User = nil

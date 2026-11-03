@@ -120,10 +120,39 @@ func splitDiffLines(s string) []string {
 	return ls
 }
 
-// diffText is what a line shows: cleaned of control characters, tabs expanded.
+// diffText is what a line shows: its control characters spelled out (\x1b), tabs expanded. A diff is what a person approves
+// a write by, so nothing the write keeps is left out of it: an escape sequence and the text it encloses are shown, inert.
 func diffText(s string, tabw int) string {
-	s = strings.ReplaceAll(safeText(s), "\n", " ")
+	s = strings.ReplaceAll(safeText(visibleControls(s)), "\n", " ")
 	return expandTabStops(s, tabw)
+}
+
+// visibleControls spells each control character of s other than a tab (C0, DEL, C1) as a \x or \u escape.
+func visibleControls(s string) string {
+	has := false
+	for _, r := range s {
+		if r != '\t' && (r < 0x20 || r >= 0x7f && r < 0xa0) {
+			has = true
+			break
+		}
+	}
+	if !has {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r == '\t' || r >= 0x20 && r < 0x7f || r >= 0xa0:
+			b.WriteRune(r)
+		case r < 0x100:
+			b.WriteString(`\x`)
+			if r < 0x10 {
+				b.WriteByte('0')
+			}
+			b.WriteString(strconv.FormatInt(int64(r), 16))
+		}
+	}
+	return b.String()
 }
 
 // diffBuildHunks cuts the edit script into hunks with ctx lines of context and finds what changed inside replaced lines.

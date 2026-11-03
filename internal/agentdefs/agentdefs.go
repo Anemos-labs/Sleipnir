@@ -222,6 +222,12 @@ func (l *loader) entry(src mdfile.Source, e os.DirEntry) []Warning {
 		if err != nil || !fi.Mode().IsRegular() {
 			return nil
 		}
+		// A link is a definition only when what it names is one too: a Markdown file, and no credentials file (a link
+		// named reviewer.md to .env would make the secret a role's instructions, sent to the provider).
+		real, err := filepath.EvalSymlinks(path)
+		if err != nil || !strings.HasSuffix(strings.ToLower(real), ".md") || mdfile.SensitivePath(filepath.ToSlash(real)) != "" {
+			return []Warning{mdfile.Skipf(display, "", "the link names a file that is not an agent definition; skipped")}
+		}
 	} else if !e.Type().IsRegular() {
 		return nil
 	}
