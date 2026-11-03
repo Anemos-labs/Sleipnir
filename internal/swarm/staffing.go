@@ -51,7 +51,10 @@ type reviewGate struct {
 	// The wait in review for the manager's decision is the manager's time, not the work's.
 	began map[string]time.Time
 	ended map[string]time.Time
-	took  map[int]time.Duration
+	// resumed is, by task id, the start and owner of work a resume found still in flight (restoreInFlight): the restored board
+	// gives the task a new revision, so the start waits for the owner's first run on it (noteBegan) to carry it over.
+	resumed map[string]resumedStart
+	took    map[int]time.Duration
 	// trees is the work tree each review ("T6#rev") began on (noteReviewBegan), and reviewedTree the tree of the review that
 	// last moved reviewed: what the accepted review read. A merge after it that changed tests and docs alone leaves it standing
 	// (testsSinceReview).
@@ -59,12 +62,19 @@ type reviewGate struct {
 	reviewedTree string
 }
 
-// noteBegan records when a run first took on an assignment, for the duration of the work (took). Later runs of the same
-// assignment (a restart, a handover) keep the first time: the work ran since then.
-func (g *reviewGate) noteBegan(id string, rev uint64, at time.Time) {
+// noteBegan records when agent's run first took on an assignment, for the duration of the work (took). Later runs of the same
+// assignment (a restart, a handover) keep the first time: the work ran since then. The first run of a task's owner after a resume
+// takes the start the work had before it (restoreInFlight).
+func (g *reviewGate) noteBegan(id string, rev uint64, at time.Time, agent string) {
 	key := id + "#" + strconv.FormatUint(rev, 10)
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	if r, ok := g.resumed[id]; ok {
+		delete(g.resumed, id)
+		if r.owner == agent && r.at.Before(at) {
+			at = r.at
+		}
+	}
 	if g.began == nil {
 		g.began = map[string]time.Time{}
 	}
@@ -73,18 +83,20 @@ func (g *reviewGate) noteBegan(id string, rev uint64, at time.Time) {
 	}
 }
 
-// restoreBegan records at, an assignment's start read from the log on resume, unless an earlier start is known: a run of the
-// resumed team that adopted the assignment first noted its own start, which is not when the work began.
-func (g *reviewGate) restoreBegan(id string, rev uint64, at time.Time) {
-	key := id + "#" + strconv.FormatUint(rev, 10)
+// resumedStart is the start of work in flight at a resume, and the worker that held it.
+type resumedStart struct {
+	at    time.Time
+	owner string
+}
+
+// restoreInFlight records, on resume, that owner had held task id since at: its next run on the task counts from then.
+func (g *reviewGate) restoreInFlight(id, owner string, at time.Time) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if g.began == nil {
-		g.began = map[string]time.Time{}
+	if g.resumed == nil {
+		g.resumed = map[string]resumedStart{}
 	}
-	if old, ok := g.began[key]; !ok || at.Before(old) {
-		g.began[key] = at
-	}
+	g.resumed[id] = resumedStart{at: at, owner: owner}
 }
 
 // restoreEnded records at, a submission's time read from the log on resume, as the end of the work of t's assignment: replace

@@ -1,0 +1,31 @@
+package session
+
+import (
+	"testing"
+	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/swarm"
+)
+
+// The start of a task's current assignment survives a resume's own requeue, and is reset by a requeue that puts the work back on
+// the board: one task's, or a worker's tasks released together.
+func TestTrackBeganResetsOnARequeueButNotOnAResume(t *testing.T) {
+	at := func(m int) time.Time { return time.Date(2026, 11, 3, 17, m, 0, 0, time.UTC) }
+	began := map[string]time.Time{}
+	trackBegan(began, "assign", "T5", "doing", "", nil, at(0))
+	trackBegan(began, "update", "T5", "doing", "reading", nil, at(5))
+	trackBegan(began, "requeue", "", "", swarm.ResumedLine, []string{"T5"}, at(10))
+	trackBegan(began, "assign", "T5", "doing", "", nil, at(11))
+	if got := began["T5"]; !got.Equal(at(0)) {
+		t.Fatalf("after a resume T5 began at %v, want %v", got, at(0))
+	}
+	trackBegan(began, "requeue", "", "", "be-4 left the team", []string{"T5", "T6"}, at(20))
+	trackBegan(began, "assign", "T5", "doing", "", nil, at(21))
+	if got := began["T5"]; !got.Equal(at(21)) {
+		t.Fatalf("after a worker's tasks were released T5 began at %v, want %v", got, at(21))
+	}
+	trackBegan(began, "requeue", "T5", "todo", "stopped", nil, at(30))
+	if _, ok := began["T5"]; ok {
+		t.Fatal("a requeue of T5 kept its start")
+	}
+}

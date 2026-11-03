@@ -655,7 +655,7 @@ func (s *Swarm) adopt(m *member, rs *runState) {
 	for _, t := range snap.Tasks {
 		if t.Owner == m.id && t.Status == StatusDoing {
 			rs.tasks[t.ID] = t.Rev
-			s.review.noteBegan(t.ID, t.Rev, rs.started)
+			s.review.noteBegan(t.ID, t.Rev, rs.started, m.id)
 			if m.task == "" || m.task != t.ID {
 				m.task = t.ID
 			}
@@ -709,7 +709,7 @@ func (s *Swarm) trackClaim(agentID, taskID string) {
 	m.mu.Lock()
 	if m.run != nil {
 		m.run.tasks[taskID] = t.Rev
-		s.review.noteBegan(taskID, t.Rev, s.deps.Now())
+		s.review.noteBegan(taskID, t.Rev, s.deps.Now(), agentID)
 	}
 	m.task = taskID
 	m.gateTries = 0

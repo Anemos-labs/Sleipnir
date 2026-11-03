@@ -680,10 +680,10 @@ func TestStallReviewOverrun(t *testing.T) {
 	r.sw.StartManager()
 	now := r.sw.deps.Now()
 	work := Task{ID: "T1", Role: "backend", Rev: 1}
-	r.sw.review.noteBegan(work.ID, work.Rev, now.Add(-19*time.Minute))
+	r.sw.review.noteBegan(work.ID, work.Rev, now.Add(-19*time.Minute), "")
 	r.sw.noteAccepted(work)
 	beside := Task{ID: "T2", Role: "backend", Rev: 1} // built side by side: the bound is the longest, not the sum
-	r.sw.review.noteBegan(beside.ID, beside.Rev, now.Add(-15*time.Minute))
+	r.sw.review.noteBegan(beside.ID, beside.Rev, now.Add(-15*time.Minute), "")
 	r.sw.noteAccepted(beside)
 	if took, ids := r.sw.review.unreviewedWork(); took.Round(time.Minute) != 19*time.Minute || len(ids) != 2 || ids[0] != "T1" || ids[1] != "T2" {
 		t.Fatalf("unreviewed work = %v %v", took, ids)

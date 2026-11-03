@@ -1141,7 +1141,7 @@ func TestARestoredBoardStartsWhereTheLastOneStopped(t *testing.T) {
 			t.Errorf("%s after the restore: %+v (found %v), want %s owned by %q", c.id, task, ok, c.status, c.owner)
 		}
 	}
-	if task, _ := live.Task("T3"); task.Line != resumedLine || task.Title != "docs" {
+	if task, _ := live.Task("T3"); task.Line != ResumedLine || task.Title != "docs" {
 		t.Errorf("a task put back says why and keeps its title: %+v", task)
 	}
 	if len(live.Notes) != 1 || live.Notes[0].Text != "the API pages by cursor" {
