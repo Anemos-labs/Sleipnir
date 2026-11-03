@@ -302,3 +302,35 @@ func TestAResolvedTaskDoesNotPrimeAutoDocsAsCoded(t *testing.T) {
 		t.Fatal("a resolved implementation task primed the keeper as coded")
 	}
 }
+
+// A task whose submission had nothing to merge (it was the integration tip itself) changed nothing the docs describe and
+// starts no docs pass. A task that only discarded a stray file from its own tree started a catch-up pass of its own.
+func TestATaskWithNothingToMergeStartsNoDocsPass(t *testing.T) {
+	cfg := Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "docs"}}
+	r := newRVRigWith(t, cfg, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	b := r.sw.Board
+	task, _ := b.CreateTask("mgr", TaskSpec{Title: "discard the regenerated screenshot", Files: []string{"docs/screenshots/06-mobile.png"}})
+	if err := b.Assign("mgr", "be-1", task.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Submit("be-1", task.ID, "done", "nothing to merge"); err != nil {
+		t.Fatal(err)
+	}
+	cur, _ := b.Snapshot().Task(task.ID)
+	r.sw.recordMerge(cur, mergeRec{rev: cur.Rev, empty: true})
+	if err := b.Accept("mgr", task.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.docs.mu.Lock()
+	r.sw.docs.primed = true
+	r.sw.docs.mu.Unlock()
+	if r.sw.docsWillStart(b.Snapshot()) {
+		t.Fatal("a task with nothing to merge made the pre-tick check say a docs pass is due")
+	}
+	r.sw.docsTick(r.sw.deps.Now())
+	if r.sw.docsPending() {
+		r.sw.docs.mu.Lock()
+		defer r.sw.docs.mu.Unlock()
+		t.Fatalf("a task with nothing to merge started docs work: open %q, pending %v", r.sw.docs.open, r.sw.docs.pending)
+	}
+}

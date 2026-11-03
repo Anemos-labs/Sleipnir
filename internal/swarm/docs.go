@@ -105,6 +105,22 @@ func unneeded(t Task, landed map[string]bool) bool {
 	return t.Closure.Kind() == CloseUnneeded && !landed[t.ID]
 }
 
+// emptyMerges are the tasks whose current assignment reached the merge queue with nothing to merge (the submission was the
+// integration tip itself), by id. Such a task changed nothing the docs describe: a task that only discarded a stray file in its
+// own tree started a catch-up pass of its own.
+func (s *Swarm) emptyMerges(snap *Snapshot) map[string]bool {
+	out := map[string]bool{}
+	for _, t := range snap.Tasks {
+		if t.Status != StatusDone {
+			continue
+		}
+		if r, ok := s.mergedFor(t); ok && r.empty {
+			out[t.ID] = true
+		}
+	}
+	return out
+}
+
 // docsRetry is how long the keeper waits before it tries again to start a catch-up
 // task that could not be started (no free slot, a scope overlap, the budget).
 const docsRetry = 30 * time.Second
@@ -232,7 +248,7 @@ func (s *Swarm) docsTick(now time.Time) {
 		return
 	}
 	snap := s.Board.Snapshot()
-	landed := s.review.landedIDs()
+	landed, empty := s.review.landedIDs(), s.emptyMerges(snap)
 	k.mu.Lock()
 	if !k.primed {
 		// What was done before the keeper first looked (a resumed session) is not news.
@@ -249,7 +265,7 @@ func (s *Swarm) docsTick(now time.Time) {
 			continue
 		}
 		k.seen[t.ID] = t.Rev
-		if t.Status != StatusDone || s.isDocsTask(t) || t.Kind != TaskKindPlan && !s.implementationTask(t) || testsOnly(t.Files) || unneeded(t, landed) {
+		if t.Status != StatusDone || s.isDocsTask(t) || t.Kind != TaskKindPlan && !s.implementationTask(t) || testsOnly(t.Files) || unneeded(t, landed) || empty[t.ID] {
 			continue
 		}
 		kind := "change"
@@ -451,14 +467,14 @@ func (s *Swarm) docsWillStart(snap *Snapshot) bool {
 	if s.docsPending() {
 		return true
 	}
-	landed := s.review.landedIDs()
+	landed, empty := s.review.landedIDs(), s.emptyMerges(snap)
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	if !k.primed {
 		return false // what was done before the keeper first looks is not news to it (docsTick)
 	}
 	for _, t := range snap.Tasks {
-		if rev, seen := k.seen[t.ID]; t.Status != StatusDone || (seen && rev == t.Rev) || s.isDocsTask(t) || testsOnly(t.Files) || unneeded(t, landed) {
+		if rev, seen := k.seen[t.ID]; t.Status != StatusDone || (seen && rev == t.Rev) || s.isDocsTask(t) || testsOnly(t.Files) || unneeded(t, landed) || empty[t.ID] {
 			continue
 		}
 		if s.implementationTask(t) || t.Kind == TaskKindPlan && k.coded {
