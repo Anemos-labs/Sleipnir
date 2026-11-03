@@ -132,6 +132,8 @@ type TabSummary struct {
 	Headless  bool   `json:"headless,omitempty"`
 	CreatedAt int64  `json:"createdAt"`
 	Order     int    `json:"order"`
+	// Pinned says the tab's session is pinned: the server opens it again, in a tab of its own, each time it starts.
+	Pinned bool `json:"pinned,omitempty"`
 }
 
 // RosterEntry is one agent of a tab. ID is the agent's id (mgr for the manager and for a single agent; a role's short code, "-" and a
@@ -737,6 +739,8 @@ type RecordedSession struct {
 	Plan bool    `json:"plan,omitempty"`
 	// Mailman says the last run had the mailman mode on (--mailman): a replay of it shows the mailman as on.
 	Mailman bool `json:"mailman,omitempty"`
+	// Pinned says the session is pinned: the server reopens it when it starts.
+	Pinned bool `json:"pinned,omitempty"`
 }
 
 // PruneRequest asks what `sessions prune` would delete, or deletes it (Apply: the route needs an X-Confirm id).

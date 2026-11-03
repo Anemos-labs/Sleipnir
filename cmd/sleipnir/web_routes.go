@@ -70,6 +70,7 @@ func (h *webHostImpl) routes(srv *web.Server) {
 	srv.HandleFunc("POST /api/sessions", h.newSession, web.RouteOpts{MaxBody: goalBodyMax})
 	srv.HandleFunc("POST /api/sessions/resume", h.resume, web.RouteOpts{})
 	h.teamsRoutes(srv) // the saved teams (web_teams.go)
+	h.pinRoutes(srv)   // pinning a tab's session (web_pins.go)
 	h.tabRoute(srv, "GET /api/sessions/{id}/snapshot", web.RouteOpts{WriteTimeout: snapshotWrite}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
 		snap, err := t.snapshot(r.Context())
 		if err != nil {
@@ -119,6 +120,7 @@ func (h *webHostImpl) routes(srv *web.Server) {
 			writeErr(w, werr(http.StatusConflict, "last", "the last session cannot be closed: start another first"))
 			return
 		}
+		t.unpinClosed() // a pinned tab the person closes does not come back
 		rep := h.removeTab(t, "closed")
 		body := map[string]any{"ok": true}
 		if rep != nil {

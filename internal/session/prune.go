@@ -134,8 +134,9 @@ type PrunePlan struct {
 	// Total counts the sessions found; KeptNewest the newest ones kept whatever their age (live ones among them).
 	Total, KeptNewest int
 	// InUse are sessions old enough but written to within PruneInUse; Locked old enough but held by a process (PlanPrune only);
-	// Skipped are directories that are not sessions (no event log): never touched.
-	InUse, Locked, Skipped []string
+	// Skipped are directories that are not sessions (no event log): never touched. Pinned are sessions old enough that are pinned
+	// (pins.json beside the sessions directory): a pinned session is never pruned.
+	InUse, Locked, Skipped, Pinned []string
 }
 
 // PlanPrune applies the prune rule to the state directory's sessions: older than olderThan, not among the newest keep, not written
@@ -179,15 +180,16 @@ const maxPlanDetail = 200
 
 // PlanPruneDir is the prune rule over the sessions directory root, as `sleipnir sessions prune` applies it: every session whose
 // newest file (the directory or its log) is older than olderThan, except the newest keep sessions and any written to within
-// PruneInUse of now. The sessions named in live count as the newest and are never deleted. A directory without an events.jsonl is not
-// a session and is left alone (the state directory is the person's, and may hold other things), and so is anything that is not a
-// plain directory. Locks are not probed. The error of reading root is returned as it is (fs.ErrNotExist when there is none).
+// PruneInUse of now. The sessions named in live count as the newest and are never deleted; a pinned session (Pinned) is never
+// deleted either. A directory without an events.jsonl is not a session and is left alone (the state directory is the person's, and
+// may hold other things), and so is anything that is not a plain directory. Locks are not probed. The error of reading root is returned as it is (fs.ErrNotExist when there is none).
 func PlanPruneDir(root string, now time.Time, olderThan time.Duration, keep int, live []string) (*PrunePlan, error) {
 	ents, err := os.ReadDir(root)
 	if err != nil {
 		return nil, err
 	}
 	isLive := map[string]bool{}
+	pinned := pinnedIDs(root)
 	for _, id := range live {
 		isLive[id] = true
 	}
@@ -229,6 +231,8 @@ func PlanPruneDir(root string, now time.Time, olderThan time.Duration, keep int,
 		case s.age < olderThan:
 		case s.age < PruneInUse:
 			p.InUse = append(p.InUse, s.r.ID)
+		case pinned[s.r.ID]:
+			p.Pinned = append(p.Pinned, s.r.ID)
 		default:
 			s.r.Bytes = DirSize(s.r.Dir)
 			p.Delete = append(p.Delete, s.r)

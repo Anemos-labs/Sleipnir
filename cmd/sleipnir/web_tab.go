@@ -112,6 +112,8 @@ type webTab struct {
 	prevSID    string           // the session the tab had before its restart (sessionIDs)
 	trusted    *trust.Footprint // the project files the person confirmed for trustedDir, which the session uses (nil: none)
 	trustedDir string
+	pinned     bool   // the tab's session is pinned (web_pins.go)
+	pinnedSID  string // the session pinned was last read or set for
 	lastMeta   wire.MetaPatch
 	lastRoster []wire.RosterEntry
 	metaV      uint64 // the version of the last meta frame sent (seqMu)
@@ -169,7 +171,8 @@ func (t *webTab) Summary() wire.TabSummary {
 
 // summaryLocked is Summary under the lock.
 func (t *webTab) summaryLocked() wire.TabSummary {
-	sum := wire.TabSummary{ID: t.id, Name: t.name, Gen: t.gen, CreatedAt: t.createdAt, Order: t.order, Cwd: t.cwdLocked(), Headless: t.base.AskTimeout > 0}
+	sum := wire.TabSummary{ID: t.id, Name: t.name, Gen: t.gen, CreatedAt: t.createdAt, Order: t.order, Cwd: t.cwdLocked(), Headless: t.base.AskTimeout > 0,
+		Pinned: t.pinned}
 	if t.s != nil && !t.starting {
 		sum.SID = t.s.ID // a tab is ready, and takes requests, once its start is over
 	}
@@ -1390,6 +1393,7 @@ func (t *webTab) Rename(ctx context.Context, name string) error {
 	if s != nil {
 		_ = session.UpdateMeta(s.Dir, func(m *session.Meta) { m.Name = name })
 		webAction(s, "rename", name)
+		t.renamePin(s)
 	}
 	t.h.Publish(wire.Frame{Type: "tab", Data: wire.TabFrame{Op: "update", Tab: sum}, Critical: true})
 	return nil

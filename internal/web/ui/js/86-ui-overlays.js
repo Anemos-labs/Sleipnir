@@ -94,7 +94,7 @@
     sc.listen(body, 'scroll', hide, true);
   };
 
-  /* ---------- the session menu (rename / stop / close) ---------- */
+  /* ---------- the session menu (rename / pin / stop / close) ---------- */
   /** The one open session menu, or null: every way it closes (an item, Escape, a press elsewhere, its button again) goes through
    *  close(), which removes the two document listeners it added. */
   const MENU = { cur: null };
@@ -104,7 +104,7 @@
   ui.sessionMenu = function (btn) {
     if (MENU.cur) { closeMenu(false); return; }
     const S = SL.sessions.active, app = $('#app');
-    const p = mk('div', { class: 'popover sessmenu', role: 'menu' }, '<button role="menuitem" type="button" data-a="rename">Rename…</button><button role="menuitem" type="button" data-a="restart">Start the team again…</button><button role="menuitem" type="button" data-a="stop">Stop the run…</button><button role="menuitem" type="button" data-a="close" class="bad">Close this session…</button>');
+    const p = mk('div', { class: 'popover sessmenu', role: 'menu' }, '<button role="menuitem" type="button" data-a="rename">Rename…</button>' + (S && !S.readOnly ? '<button role="menuitem" type="button" data-a="pin" title="a pinned session opens again, in a tab of its own, each time sleipnir web starts">' + (S.pinned ? 'Unpin: do not reopen at start' : 'Pin: reopen when sleipnir web starts') + '</button>' : '') + '<button role="menuitem" type="button" data-a="restart">Start the team again…</button><button role="menuitem" type="button" data-a="stop">Stop the run…</button><button role="menuitem" type="button" data-a="close" class="bad">Close this session…</button>');
     app.appendChild(p); const r = btn.getBoundingClientRect(), ar = app.getBoundingClientRect(); p.style.top = (r.bottom - ar.top + 4) + 'px'; p.style.left = Math.max(8, r.left - ar.left) + 'px'; $('button', p).focus();
     /* a press on the menu's own button is left to its click, which toggles: it does not close here and reopen there */
     const away = e => { if (!p.contains(e.target) && !(btn.contains && btn.contains(e.target))) closeMenu(false); }, esck = e => { if (e.key === 'Escape') { e.stopPropagation(); closeMenu(true); } };
@@ -112,6 +112,7 @@
     document.addEventListener('pointerdown', away, true); document.addEventListener('keydown', esck, true);
     p.addEventListener('click', e => { const a = e.target.closest('[data-a]'); if (!a) return; closeMenu(false); const k = a.dataset.a;
       if (k === 'rename') ui.dialogs.rename(S);
+      else if (k === 'pin') { const r2 = SL.act.pinSession(S.id); if (r2 && r2.ok === false) ui.toast(r2.why, 'warm'); }
       else if (k === 'restart') ui.settingsPage('run');
       else if (k === 'stop') ui.confirm({ title: 'Stop the run', text: 'Stop <b>' + esc(S.name) + '</b>? ' + SL.stopAsk(S) + ' The session stays open and its log is kept.', ok: 'Stop the run', danger: true, run: () => { const r2 = SL.act.stopAll(); if (r2 && r2.ok === false) ui.toast(r2.why || 'nothing was running', 'warm'); } });
       else ui.closeSessionAsk(S);
