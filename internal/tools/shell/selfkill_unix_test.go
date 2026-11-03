@@ -26,6 +26,19 @@ func TestACommandThatPkillsItselfIsToldWhy(t *testing.T) {
 	}
 }
 
+// A shell that exits with status 143 on its own, after a pkill -f that cannot match itself, was not signalled: no note.
+func TestAShellThatExitsWith143IsNotToldItEndedItself(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	res := h.bash(h.env("a"), `pkill -f '[s]elfkill-marker-n5'; exit 143`)
+	if !strings.Contains(res.Text, "[exit code 143]") {
+		t.Fatalf("want exit code 143:\n%s", res.Text)
+	}
+	if strings.Contains(res.Text, "ended itself") {
+		t.Errorf("a normal exit with 143 is said to have ended itself:\n%s", res.Text)
+	}
+}
+
 // The same holds for a background job: bash_output says why it ended once it has.
 func TestABackgroundJobThatPkillsItselfIsToldWhy(t *testing.T) {
 	t.Parallel()
@@ -52,22 +65,22 @@ func TestSelfKillNote(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
 		command string
-		code    int
+		signal  int
 		reason  killReason
 		want    bool
 	}{
-		{`pkill -f "bin/slotwise serve"`, 143, killNone, true},
-		{`cd app && pkill -9 -f server.rb; ruby server.rb`, 137, killNone, true},
-		{`pgrep --full puma | xargs kill`, 143, killNone, true},
-		{`pkill -fx node`, 143, killNone, true},
-		{`pkill slotwise`, 143, killNone, false},                 // matches process names, not the shell's command line
-		{`pkill -f slotwise`, 1, killNone, false},                // ended normally
-		{`pkill -f slotwise; sleep 99`, 143, killTimeout, false}, // the harness ended it
-		{`kill -f 12`, 143, killNone, false},
-		{`echo pkill; ls -f`, 143, killNone, false},
+		{`pkill -f "bin/slotwise serve"`, 15, killNone, true},
+		{`cd app && pkill -9 -f server.rb; ruby server.rb`, 9, killNone, true},
+		{`pgrep --full puma | xargs kill`, 15, killNone, true},
+		{`pkill -fx node`, 15, killNone, true},
+		{`pkill slotwise`, 15, killNone, false},                 // matches process names, not the shell's command line
+		{`pkill -f slotwise`, 0, killNone, false},               // ended normally, even with status 143 from a child
+		{`pkill -f slotwise; sleep 99`, 15, killTimeout, false}, // the harness ended it
+		{`kill -f 12`, 15, killNone, false},
+		{`echo pkill; ls -f`, 15, killNone, false},
 	} {
-		if got := selfKillNote(c.command, c.code, c.reason) != ""; got != c.want {
-			t.Errorf("selfKillNote(%q, %d, %d) noted %v, want %v", c.command, c.code, c.reason, got, c.want)
+		if got := selfKillNote(c.command, c.signal, c.reason) != ""; got != c.want {
+			t.Errorf("selfKillNote(%q, signal %d, %d) noted %v, want %v", c.command, c.signal, c.reason, got, c.want)
 		}
 	}
 }
