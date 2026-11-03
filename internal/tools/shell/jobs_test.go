@@ -59,14 +59,14 @@ func TestBackgroundJobLifecycle(t *testing.T) {
 		return strings.HasPrefix(h.output(env, "job_1").Text, "hi\n")
 	})
 	// The read above consumed "hi"; nothing new since.
-	if got := h.output(env, "job_1").Text; got != "(no new output)\n[job_1 running; next offset 3]" {
+	if got := h.output(env, "job_1").Text; got != "(no new output; set wait to block until it prints or ends)\n[job_1 running; next offset 3]" {
 		t.Errorf("second read = %q", got)
 	}
 	for since, want := range map[int]string{
 		0:   "hi\n[job_1 running; next offset 3]",
 		1:   "i\n[job_1 running; next offset 3]",
-		3:   "(no new output)\n[job_1 running; next offset 3]",
-		999: "(no new output)\n[job_1 running; next offset 3]",
+		3:   "(no new output; set wait to block until it prints or ends)\n[job_1 running; next offset 3]",
+		999: "(no new output; set wait to block until it prints or ends)\n[job_1 running; next offset 3]",
 	} {
 		if got := h.output(env, "job_1", map[string]any{"since": since}).Text; got != want {
 			t.Errorf("since=%d: %q, want %q", since, got, want)
@@ -74,7 +74,7 @@ func TestBackgroundJobLifecycle(t *testing.T) {
 	}
 	// An explicit since also moves the cursor for later reads.
 	h.output(env, "job_1", map[string]any{"since": 1})
-	if got := h.output(env, "job_1").Text; got != "(no new output)\n[job_1 running; next offset 3]" {
+	if got := h.output(env, "job_1").Text; got != "(no new output; set wait to block until it prints or ends)\n[job_1 running; next offset 3]" {
 		t.Errorf("read after explicit since = %q", got)
 	}
 
@@ -173,7 +173,7 @@ func TestPerAgentCursors(t *testing.T) {
 	if got := h.output(b, id).Text; got != "first\n[job_1 running; next offset 6]" {
 		t.Errorf("b's first read = %q", got)
 	}
-	if got := h.output(a, id).Text; got != "(no new output)\n[job_1 running; next offset 6]" && !strings.HasPrefix(got, "first\n") {
+	if got := h.output(a, id).Text; got != "(no new output; set wait to block until it prints or ends)\n[job_1 running; next offset 6]" && !strings.HasPrefix(got, "first\n") {
 		t.Errorf("a's cursor read = %q", got)
 	}
 	os.WriteFile(gate, nil, 0o644)
@@ -675,5 +675,68 @@ func TestStopJobEndsWhatAnEndedJobLeftBehind(t *testing.T) {
 		if time.Now().After(end) {
 			t.Fatal("Stop left the child the ended job started running")
 		}
+	}
+}
+
+// A read with wait blocks until the job prints something new or ends, so an agent waiting on a slow job spends one call, not
+// one call every few seconds.
+func TestJobOutputWaitsForNewOutputOrTheEnd(t *testing.T) {
+	h := newHarness(t)
+	env := h.env("a")
+	gate := filepath.Join(h.root, "go")
+	id := h.startJob(env, fmt.Sprintf("echo first; while [ ! -e %s ]; do sleep 0.02; done; echo second; sleep 0.3; exit 3", gate))
+	waitFor(t, "first", 10*time.Second, func() bool {
+		return strings.HasPrefix(h.output(env, id).Text, "first\n")
+	})
+
+	// Nothing new arrives: the read returns when its wait runs out, without the hint to wait.
+	start := time.Now()
+	if got := h.output(env, id, map[string]any{"wait": 0.3}).Text; got != "(no new output)\n[job_1 running; next offset 6]" {
+		t.Errorf("read that timed out = %q", got)
+	}
+	if d := time.Since(start); d < 250*time.Millisecond {
+		t.Errorf("read with wait 0.3 returned after %v", d)
+	}
+
+	// New output ends the wait early.
+	time.AfterFunc(200*time.Millisecond, func() { os.WriteFile(gate, nil, 0o644) })
+	start = time.Now()
+	if got := h.output(env, id, map[string]any{"wait": 60}).Text; !strings.HasPrefix(got, "second\n") {
+		t.Errorf("read woken by output = %q", got)
+	}
+	if d := time.Since(start); d > 30*time.Second {
+		t.Errorf("read woken by output took %v", d)
+	}
+
+	// The job's end ends the wait too, and an offset past the end does not make it wait for that many bytes.
+	start = time.Now()
+	got := h.output(env, id, map[string]any{"wait": 60, "since": 999}).Text
+	if got != "(no new output)\n[job_1 exited 3; next offset 13]" {
+		t.Errorf("read woken by the end = %q", got)
+	}
+	if d := time.Since(start); d > 30*time.Second {
+		t.Errorf("read woken by the end took %v", d)
+	}
+
+	if r := h.output(env, id, map[string]any{"wait": -1}); !r.IsError {
+		t.Errorf("negative wait = %+v", r)
+	}
+}
+
+// A read from an offset past the end returns the output that ends its wait, rather than reading from that offset again and
+// skipping it.
+func TestJobOutputWaitPastTheEndReturnsTheOutputThatWokeIt(t *testing.T) {
+	h := newHarness(t)
+	env := h.env("a")
+	gate := filepath.Join(h.root, "go")
+	id := h.startJob(env, fmt.Sprintf("echo first; while [ ! -e %s ]; do sleep 0.02; done; echo second; sleep 30", gate))
+	t.Cleanup(func() { h.kill(env, id) })
+	waitFor(t, "first", 10*time.Second, func() bool {
+		return strings.HasPrefix(h.output(env, id).Text, "first\n")
+	})
+	time.AfterFunc(200*time.Millisecond, func() { os.WriteFile(gate, nil, 0o644) })
+	got := h.output(env, id, map[string]any{"wait": 60, "since": 999}).Text
+	if !strings.HasPrefix(got, "second\n") {
+		t.Errorf("read past the end woken by output = %q", got)
 	}
 }

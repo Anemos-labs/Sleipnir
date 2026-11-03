@@ -333,10 +333,12 @@ func (*outputTool) Spec() core.ToolSpec {
 	return core.ToolSpec{
 		Name: "bash_output",
 		Description: "Read output from a background bash job. Returns what the job has printed since the byte offset `since` " +
-			"(or since your last read when omitted), its status (running, exited N, killed) and the next offset.",
+			"(or since your last read when omitted), its status (running, exited N, killed) and the next offset. " +
+			"Set wait to block up to that many seconds (at most 120) until the job prints something new or ends, instead of reading again and again.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{` +
 			`"id":{"type":"string","description":"Job id returned by bash, e.g. job_1"},` +
-			`"since":{"type":"integer","description":"Byte offset to read from; omit to continue from your last read"}},` +
+			`"since":{"type":"integer","description":"Byte offset to read from; omit to continue from your last read"},` +
+			`"wait":{"type":"integer","description":"Seconds to wait, at most 120"}},` +
 			`"required":["id"]}`),
 		ReadOnly: true,
 	}
@@ -365,6 +367,13 @@ func (t *outputTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, err
 	if hasSince && since < 0 {
 		return fail(env, "bash_output: field \"since\" must not be negative"), nil
 	}
+	wait, _, err := a.num("wait")
+	if err != nil {
+		return fail(env, "bash_output: %v", err), nil
+	}
+	if wait < 0 {
+		return fail(env, "bash_output: field \"wait\" must not be negative"), nil
+	}
 
 	j := t.m.job(strings.TrimSpace(id))
 	if j == nil {
@@ -377,6 +386,11 @@ func (t *outputTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, err
 	if hasSince {
 		from = int64(math.Min(math.Floor(since), 9e18))
 	}
+	if wait > 0 {
+		// an offset past the end waits for the next byte, not for that many, and the read below must return that byte
+		from = min(from, j.buf.total())
+		j.awaitOutput(ctx, from, time.Duration(math.Min(wait, maxOutputWait.Seconds())*float64(time.Second)))
+	}
 	data, dropped, next := j.buf.read(from)
 	j.setCursor(env.Agent, next)
 
@@ -387,6 +401,8 @@ func (t *outputTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, err
 	if text := strings.TrimRight(tidyOutput(string(data)), "\n"); text != "" {
 		sb.WriteString(text)
 		sb.WriteByte('\n')
+	} else if state, _, _ := j.snapshot(); state == jobRunning && wait <= 0 {
+		sb.WriteString("(no new output; set wait to block until it prints or ends)\n")
 	} else {
 		sb.WriteString("(no new output)\n")
 	}
@@ -399,6 +415,33 @@ func (t *outputTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, err
 		res.Meta["exit_code"] = exit
 	}
 	return res, nil
+}
+
+// maxOutputWait bounds bash_output's wait, so one call cannot hold an agent for longer than a couple of minutes.
+const maxOutputWait = 2 * time.Minute
+
+// outputPoll is how often awaitOutput looks for new bytes in the job's buffer.
+const outputPoll = 100 * time.Millisecond
+
+// awaitOutput blocks until the job's buffer holds bytes past offset from, the job ends, ctx is done or d has passed, whichever
+// comes first. It returns at once when there is already output past from or the job has ended. from must not be past the
+// buffer's end (Run clamps it), or it would wait for that many bytes.
+func (j *job) awaitOutput(ctx context.Context, from int64, d time.Duration) {
+	deadline := time.NewTimer(d)
+	defer deadline.Stop()
+	tick := time.NewTicker(outputPoll)
+	defer tick.Stop()
+	for j.buf.total() <= from {
+		select {
+		case <-j.finished:
+			return
+		case <-ctx.Done():
+			return
+		case <-deadline.C:
+			return
+		case <-tick.C:
+		}
+	}
 }
 
 // ------------------------------------------------------------------ bash_kill
