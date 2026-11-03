@@ -90,3 +90,13 @@ test('a section added by another module comes after the built-in ones and goes a
   L.SL.ui.ctx.close(); off();
   rclick(L.$('.stab')); assert.ok(!menuRows(L).includes('# Extra'));
 });
+
+test('a session tab offers Pin or Unpin when the page can pin, and calls it with the tab\'s id', async () => {
+  const L = await boot({ two: true }), seen = [];
+  rclick(L.$('.stab[data-sid="b"]')); const has = menuRows(L).some(r => /^Pin|^Unpin/.test(r)); L.SL.ui.ctx.close();
+  assert.equal(has, typeof L.SL.act.pinSession === 'function', 'the entry shows exactly when the action exists');
+  const keep = L.SL.act.pinSession; L.SL.act.pinSession = id => { seen.push(id); return { ok: true }; };
+  rclick(L.$('.stab[data-sid="b"]')); pick(L, 'Pin');
+  assert.deepEqual(seen, ['b']);
+  L.SL.act.pinSession = keep;
+});

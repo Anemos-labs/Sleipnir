@@ -372,7 +372,7 @@ place of the browser's. It has a section for each thing under the pointer, the c
 
 | Under the pointer | Entries |
 |---|---|
-| a session tab | switch to it, rename, open it in a new browser tab, copy its id, stop the run, start the team again, close |
+| a session tab | switch to it, rename, pin or unpin it (it opens again when Sleipnir starts), open it in a new browser tab, copy its id, stop the run, start the team again, close |
 | an agent (a stall, a timeline row, a row of the team feed, a file it owns) | answer its open question, its details, ask the manager about it, copy its name, stop the worker (the manager: interrupt its turn) |
 | a task | its verify output, the task board, ask the manager about it, copy its id |
 | a file or a folder of the Workspace, or a tool row that names a file | open its changes, the whole file or its preview, mention it in a message (`@path`), copy the path |

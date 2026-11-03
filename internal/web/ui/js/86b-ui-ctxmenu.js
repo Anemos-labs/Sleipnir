@@ -74,13 +74,15 @@
     return { title: 'Session · ' + S.name, items: [
       { label: 'Switch to it', off: act, act: () => SL.act.switchSession(S.id) },
       { label: 'Rename…', hint: 'F2', off: !live, act: () => ui.dialogs.rename(S) },
+      /* pinning is offered by servers that have it (SL.act.pinSession): a pinned session opens again when the server starts */
+      typeof SL.act.pinSession === 'function' ? { label: S.pinned ? 'Unpin' : 'Pin', sub: S.pinned ? '' : 'opens again when Sleipnir starts', off: !live, act: () => did(SL.act.pinSession(S.id)) } : null,
       { label: 'Open in a new browser tab', act: () => newTab(pageUrl(S.ui && S.ui.view, S.id)) },
       { label: 'Copy the session id', act: () => copy(S.id, 'session id') },
       { sep: '' },
       { label: 'Stop the run…', off: !live, act: () => ui.confirm({ title: 'Stop the run', text: 'Stop <b>' + esc(S.name) + '</b>? ' + SL.stopAsk(S) + ' The session stays open and its log is kept.', ok: 'Stop the run', danger: true, run: () => did(SL.act.stopAll(S.id)) }) },
       { label: 'Start the team again…', off: !live, act: viaActive(() => ui.settingsPage('run')) },
       { label: 'Close this session…', hint: 'Del', danger: true, off: S.placeholder, act: () => ui.closeSessionAsk(S) },
-    ] };
+    ].filter(Boolean) };
   }
   function agentSection(el, S) {
     const id = agOf(el); if (!id || id === 'you' || !S || !S.m || !S.m.ag || !S.m.ag[id]) return null;
