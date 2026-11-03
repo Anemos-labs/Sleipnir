@@ -32,9 +32,9 @@ func (s *Swarm) flushManager(ctx context.Context, m *member) error {
 	// last flush that found the checkout with nothing pending, before the step that began it, so the review that covers it is
 	// held to how long it took, not to the floor.
 	began := m.markEditSince(s.deps.Now())
-	files := make([]string, 0, len(diff.Files))
-	for _, f := range diff.Files {
-		files = append(files, f.Path)
+	files, err := s.managerChanges(ctx, m, diff)
+	if err != nil {
+		return err
 	}
 	if vr := s.verify(ctx, m.dir, files); !vr.ok {
 		return fmt.Errorf("manager changes need repair: %s", vr.out)
@@ -87,6 +87,36 @@ func (s *Swarm) managerAhead(ctx context.Context, m *member) (bool, error) {
 		return false, err
 	}
 	return !in, nil
+}
+
+// managerChanges lists the files the manager's checkout changes on top of the integration: a diff from the merge base of its
+// head and the merge queue's tip, which is what the queue itself judges a submission by. The checkout's own diff (all) is
+// against the commit it started from, so once the checkout has synced accepted work it also lists every file of the manager's
+// earlier changes, already integrated: a one-file change was committed as "Update .dockerignore, .github/ISSUE_TEMPLATE/…",
+// and verified and recorded for review as touching all of them.
+func (s *Swarm) managerChanges(ctx context.Context, m *member, all *gitx.Diff) ([]string, error) {
+	d := all
+	if iso := s.deps.Isolation; iso != nil && iso.Queue != nil {
+		if tip := iso.Queue.Tip(); tip != "" {
+			head, err := m.tree.Head(ctx)
+			if err != nil {
+				return nil, err
+			}
+			repo := m.tree.Repo()
+			base, err := repo.MergeBase(ctx, head, tip)
+			if err != nil {
+				return nil, err
+			}
+			if d, err = repo.Diff(ctx, base, gitx.DiffOptions{NoPatch: true}); err != nil {
+				return nil, err
+			}
+		}
+	}
+	files := make([]string, 0, len(d.Files))
+	for _, f := range d.Files {
+		files = append(files, f.Path)
+	}
+	return files, nil
 }
 
 // ManagerWorkdir is the manager's writable checkout, or the session directory before startup.
