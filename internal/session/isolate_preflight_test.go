@@ -84,6 +84,16 @@ func TestPreflightIsolation(t *testing.T) {
 	if got := pf(session.IsolationPreflight{Cwd: repo, Swarm: true, Isolation: "worktree"}); got != "" {
 		t.Errorf("a dirty checkout without commit: %q", got)
 	}
+	// A path with a newline among the shown ones is shown on one line.
+	if err := os.WriteFile(filepath.Join(repo, "e\nf.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := pf(session.IsolationPreflight{Cwd: repo, Swarm: true, Isolation: "worktree", Commit: true}); !strings.Contains(got, "e f.txt") || strings.Contains(got, "\n") {
+		t.Errorf("a newline path in the list: %q", got)
+	}
+	if err := os.Remove(filepath.Join(repo, "e\nf.txt")); err != nil {
+		t.Fatal(err)
+	}
 	git(t, repo, "checkout", "-q", "--", "list.txt")
 	git(t, repo, "checkout", "-q", "--detach")
 	if got := pf(session.IsolationPreflight{Cwd: repo, Swarm: true, Isolation: "worktree", Commit: true}); !strings.Contains(got, "detached") {
