@@ -3,6 +3,7 @@ package sandbox
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -112,6 +113,9 @@ func TestWrapNamesTheDockerCommandTheBoxStartedWith(t *testing.T) {
 // would mount the file the link names, a host file, into the container, and without it the container could put its own
 // directory in the link's place for the host's git to read.
 func TestARepositoryWithAnIncludeBehindALinkedDirectoryIsNotMounted(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a sandbox needs a Unix host: mountPaths refuses every Windows path (its drive colon)")
+	}
 	p := t.TempDir()
 	private := t.TempDir()
 	if err := os.WriteFile(filepath.Join(private, "id"), []byte("secret"), 0o600); err != nil {
