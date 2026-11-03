@@ -254,7 +254,7 @@ func checkIsolation(ctx context.Context, c isolationCheck, dirty func(context.Co
 			return nil, "", fmt.Errorf("commit: %w", err)
 		}
 		if d {
-			return nil, "", errors.New("commit needs a clean checkout: your working tree has uncommitted changes (commit or stash them, or leave --commit out: the result is then applied as uncommitted edits)")
+			return nil, "", fmt.Errorf("commit needs a clean checkout: your working tree has uncommitted changes%s (commit or stash them, or leave --commit out: the result is then applied as uncommitted edits)", changedNames(ctx, repo))
 		}
 	}
 
@@ -267,6 +267,45 @@ func checkIsolation(ctx context.Context, c isolationCheck, dirty func(context.Co
 		return nil, "", fmt.Errorf("worktree isolation keeps its trees under %s, which is inside a protected configuration directory (every write there asks for approval): set XDG_CACHE_HOME to a directory outside it", top)
 	}
 	return repo, realRoot, nil
+}
+
+// changedNames is ", in a, b and 3 more" for the paths git status shows in repo (staged, modified, untracked, conflicted), so a refusal
+// names what to commit or stash; "" when status cannot be read or shows nothing.
+func changedNames(ctx context.Context, repo *gitx.Repo) string {
+	st, err := repo.Status(ctx)
+	if err != nil {
+		return ""
+	}
+	seen := map[string]bool{}
+	var paths []string
+	add := func(p string) {
+		p = clipRunes(strings.Join(strings.Fields(p), " "), 120) // a path may hold a newline: keep the refusal on one line
+		if p != "" && !seen[p] {
+			seen[p] = true
+			paths = append(paths, p)
+		}
+	}
+	for _, c := range st.Conflicted {
+		add(c.Path)
+	}
+	for _, c := range st.Staged {
+		add(c.Path)
+	}
+	for _, c := range st.Unstaged {
+		add(c.Path)
+	}
+	for _, p := range st.Untracked {
+		add(p)
+	}
+	if len(paths) == 0 {
+		return ""
+	}
+	const shown = 5
+	txt := strings.Join(paths[:min(len(paths), shown)], ", ")
+	if len(paths) > shown {
+		txt += fmt.Sprintf(" and %d more", len(paths)-shown)
+	}
+	return ", in " + txt
 }
 
 // sourceDirty reports whether the working tree differs from HEAD (tracked edits and

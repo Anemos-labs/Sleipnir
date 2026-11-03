@@ -177,7 +177,7 @@ func TestIsolationRefusesWhatItCannotDo(t *testing.T) {
 	}{
 		{"not a repository", noGit, func(*session.Options) {}, "git repository"},
 		{"no commit yet", noCommits, func(*session.Options) {}, "commit the project first"},
-		{"commit with uncommitted changes", dirty, func(o *session.Options) { o.Commit = true }, "clean checkout"},
+		{"commit with uncommitted changes", dirty, func(o *session.Options) { o.Commit = true }, "uncommitted changes, in README.md ("},
 		{"commit without isolation", repo, func(o *session.Options) { o.Commit, o.Isolation = true, "none" }, "commit needs worktree isolation"},
 		{"an unknown mode", repo, func(o *session.Options) { o.Isolation = "bogus" }, `isolation "bogus"`},
 		{"a single agent that asks for it", repo, func(o *session.Options) { o.Swarm = false }, "swarm sessions"},
