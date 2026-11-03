@@ -58,14 +58,14 @@ func TestAResumeKeepsAFinishedReviewAndAConfirmedPoolInReview(t *testing.T) {
 	sn := r.sw.Board.Snapshot()
 	for _, id := range []string{review.ID, parent.ID} {
 		got, _ := sn.Task(id)
-		if got.Status != StatusReview || got.Line == resumedLine {
+		if got.Status != StatusReview || got.Line == ResumedLine {
 			t.Errorf("%s (%s) came back %s %q, want it kept in review", id, got.Title, got.Status, got.Line)
 		}
 	}
 	if got, _ := sn.Task(parent.ID); got.Pool == nil || got.Pool.Phase != "reconciling" || len(got.Pool.Votes) != 2 {
 		t.Errorf("the kept pool lost its confirmations: %+v", got.Pool)
 	}
-	if got, _ := sn.Task(solo.ID); got.Status != StatusTodo || got.Owner != "be-3" || got.Line != resumedLine {
+	if got, _ := sn.Task(solo.ID); got.Status != StatusTodo || got.Owner != "be-3" || got.Line != ResumedLine {
 		t.Errorf("a writer's unmerged task in review = %s %s %q, want todo for be-3 waiting to restart", got.Status, got.Owner, got.Line)
 	}
 	for _, id := range []string{"rv-1", "be-1"} {

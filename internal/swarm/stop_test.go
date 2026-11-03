@@ -166,3 +166,64 @@ func TestStallStopAndTaskTimeoutCanBeTurnedOff(t *testing.T) {
 		t.Fatal("task_overrun held with TaskTimeout off")
 	}
 }
+
+// A resume keeps the start of work still in flight: the team's task bound counts from when the assignment began, read from the
+// log, not from the run the resumed team starts on it, so a worker that ran past the bound before the restart is still overrun.
+// The resumed board gives the task a new revision, so the start is carried by task and owner to the owner's first run on it.
+func TestAResumeKeepsTheStartOfWorkInFlight(t *testing.T) {
+	clock := newFakeClock()
+	cfg := stallCfg()
+	cfg.StallTurns = 100 // the turn-based kinds stay quiet: only the clock decides here
+	cfg.TaskTimeout = 30 * time.Minute
+	r := newRVRigWith(t, cfg, gatedWorkers(nil), func(d *Deps) { d.Now = clock.Now })
+	r.sw.StartManager()
+	// The log says be-1 had held T1 for 45 minutes when the team stopped, and another worker had held T9.
+	r.sw.RestoreReviewGate(r.sw.Board.Snapshot(), []ReviewOp{
+		{Task: "T1", Owner: "be-1", Began: clock.Now().Add(-45 * time.Minute)},
+		{Task: "T2", Owner: "be-7", Began: clock.Now().Add(-45 * time.Minute)},
+	})
+	id, task := spawnWorker(t, r, "build the importer", 1)
+	if id != "be-1" || task.ID != "T1" {
+		t.Fatalf("the rig started %s on %s", id, task.ID)
+	}
+	r.sw.sweepStalls()
+	f, ok := active(r, StallTaskOverrun)
+	if !ok || f.Task != task.ID || f.Agent != id || !strings.Contains(f.Detail, "for 45 minutes") {
+		t.Fatalf("finding = %+v, %v", f, ok)
+	}
+	// Another worker's start does not carry over: T2 goes to be-2 here, whose work begins now.
+	other, task2 := spawnWorker(t, r, "build the exporter", 1)
+	if task2.ID != "T2" || other == "be-7" {
+		t.Fatalf("the rig started %s on %s", other, task2.ID)
+	}
+	if at, ok := r.sw.review.beganAt(task2.ID, task2.Rev); !ok || !at.Equal(clock.Now()) {
+		t.Fatalf("%s began at %v, %v: another worker's start carried over", task2.ID, at, ok)
+	}
+}
+
+// A worker the person stops is not started again on the task it held: with persistent pools the repair retries a requeued task on
+// its last owner, and it gave the task straight back to the worker that had just been stopped. The task waits for the manager.
+func TestAStoppedWorkerIsNotRepairedOntoItsTask(t *testing.T) {
+	cfg := stallCfg()
+	cfg.StallTurns = 100
+	cfg.PersistentPools = true
+	r := newRVRigWith(t, cfg, gatedWorkers(nil), nil)
+	r.sw.StartManager()
+	id, task := spawnWorker(t, r, "build the importer", 1)
+	if _, err := r.sw.StopAgent(id); err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, id+" to stop", func() bool { return r.idle(id) })
+	rvWait(t, task.ID+" to go back to todo", func() bool {
+		got, _ := r.sw.Board.Snapshot().Task(task.ID)
+		return got.Status == StatusTodo
+	})
+	r.sw.repairTick(time.Now().Add(time.Hour))
+	if got, _ := r.sw.Board.Snapshot().Task(task.ID); got.Status != StatusTodo || got.Owner != "" {
+		t.Fatalf("after the repair pass %s is %s, owned by %q: the stopped worker was started on it again", task.ID, got.Status, got.Owner)
+	}
+	told := strings.Join(harnessMailTo(r, "mgr"), "\n")
+	if !strings.Contains(told, task.ID+" returned to todo") {
+		t.Fatalf("the manager was not handed the task: %q", told)
+	}
+}

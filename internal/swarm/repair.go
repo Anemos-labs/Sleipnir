@@ -13,7 +13,8 @@ import (
 
 // repairTick retries failed assignments on their original worker. The supervisor
 // owns retryAt; cancellation, permission waits and budget exhaustion never restart work,
-// and neither does a stop after the worker's automatic restarts on the task ran out.
+// and neither does a stop after the worker's automatic restarts on the task ran out, nor a run that was stopped (StopAgent, a
+// stall's stop): its tasks are the manager's to assign.
 func (s *Swarm) repairTick(now time.Time) {
 	if !s.cfg.PersistentPools || s.wk.heldNow() || s.alive() != nil || s.startErr() != nil {
 		return

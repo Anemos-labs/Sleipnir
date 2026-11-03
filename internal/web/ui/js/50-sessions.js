@@ -28,9 +28,9 @@
   const DEFAULT_META = { mode: 'default', effort: 'default', budget: 0, swarm: 0, isolation: 'none', verify: '', commit: false, mailman: false, autoDocs: true, managerApproves: true, team: [], trustProject: true, noMcp: false, noMemory: false, roleModels: {}, rules: [], goalText: '', cwd: '', model: '', launch: '', headless: false, running: false, t0: 0, started: '' };
 
   class Session {
-    /** spec: {id, name, sid, gen, cwd, headless, meta, roster, recorded (a read-only recorded session), placeholder (no tab)}. */
+    /** spec: {id, name, sid, gen, cwd, headless, pinned (the server reopens it when it starts), meta, roster, recorded (a read-only recorded session), placeholder (no tab)}. */
     constructor(spec) {
-      this.id = spec.id; this.name = spec.name || spec.id; this.sid = spec.sid || ''; this.gen = spec.gen || 0; this.order = spec.order || 0; this.kind = spec.recorded ? 'recorded' : 'live';
+      this.id = spec.id; this.name = spec.name || spec.id; this.sid = spec.sid || ''; this.gen = spec.gen || 0; this.order = spec.order || 0; this.kind = spec.recorded ? 'recorded' : 'live'; this.pinned = !!spec.pinned;
       this.recorded = !!spec.recorded; this.follow = !!spec.follow; this.placeholder = !!spec.placeholder; this.readOnly = this.recorded || this.placeholder;
       this.meta = Object.assign({}, DEFAULT_META, { cwd: spec.cwd || '' }, spec.meta || {}); this.meta.rules = (this.meta.rules || []).slice(); this.meta.roleModels = Object.assign({}, this.meta.roleModels || {});
       if (spec.headless) this.meta.headless = true;

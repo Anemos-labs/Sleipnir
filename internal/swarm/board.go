@@ -1359,7 +1359,7 @@ func (b *Board) Unblock(by, id string) error {
 			return fmt.Errorf("no task %s", id)
 		}
 		t := d.Tasks[i]
-		if t.Status == StatusTodo && t.Owner != "" && t.Line == resumedLine {
+		if t.Status == StatusTodo && t.Owner != "" && t.Line == ResumedLine {
 			// a manager in a resumed team run took "waiting to restart" for a block and tried this
 			return fmt.Errorf("%s is todo, not blocked: the resume reserved it for %s, and a spawn starts it again (spawn task=%s agent=%s)", id, t.Owner, id, t.Owner)
 		}
@@ -1482,8 +1482,9 @@ func (b *Board) requeueChildren(by, parent, agent, reason string) []Task {
 	return out
 }
 
-// resumedLine explains why an interrupted task is waiting after recovery.
-const resumedLine = "the session was resumed: waiting to restart"
+// ResumedLine explains why an interrupted task is waiting after recovery. It is also the line of the resume's own requeue in the
+// log, which a later resume tells apart from a release of work (session.restoreWorkers).
+const ResumedLine = "the session was resumed: waiting to restart"
 
 // Restore gives an empty board the tasks and the pending notes of an earlier session's (ReplayBoard of its log): a resumed team starts
 // where the last one stopped. Nothing is running, so a task that was somebody's (doing, review, blocked) is todo again with no owner,
@@ -1521,7 +1522,7 @@ func (b *Board) RestoreKeeping(prev *Snapshot, owners map[string]string, keep ma
 				if t.Status == StatusTodo && t.Owner == "" && owners[t.ID] == "" || keep[t.ID] {
 					break
 				}
-				t.Status, t.Owner, t.Line, t.Rev = StatusTodo, owners[t.ID], resumedLine, d.Version
+				t.Status, t.Owner, t.Line, t.Rev = StatusTodo, owners[t.ID], ResumedLine, d.Version
 				t.BlockedOn, t.Report, t.Assumptions = "", "", nil
 				back = append(back, t.ID)
 			}
@@ -1536,7 +1537,7 @@ func (b *Board) RestoreKeeping(prev *Snapshot, owners map[string]string, keep ma
 			b.note = max(b.note, n.ID)
 		}
 		d.set("tasks", back)
-		d.set("line", resumedLine)
+		d.set("line", ResumedLine)
 		if len(owners) > 0 {
 			d.set("owners", owners)
 		}

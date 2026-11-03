@@ -670,7 +670,7 @@ func TestWorkDurationEndsAtSubmission(t *testing.T) {
 	g := &r.sw.review
 	now := r.sw.deps.Now()
 	task := Task{ID: "T1", Rev: 2, Role: "backend"}
-	g.noteBegan(task.ID, task.Rev, now.Add(-20*time.Minute))
+	g.noteBegan(task.ID, task.Rev, now.Add(-20*time.Minute), "")
 	g.mu.Lock()
 	open := g.tookLocked(task, now)
 	g.mu.Unlock()

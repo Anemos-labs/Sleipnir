@@ -1151,7 +1151,7 @@ func poolAssignment(sn *Snapshot, t Task) error {
 	case p.Status == StatusBlocked:
 		return fmt.Errorf("parent pool %s is blocked%s: its children are claimed and assigned while it executes; its leader %s resumes it (task resume id=%s)", p.ID, onTask(p.BlockedOn), ownerOrUnassigned(p.Owner), p.ID)
 	case p.Status == StatusTodo:
-		// The parent is not running: after a resume it is reserved for its leader (resumedLine) and waits to be started again. Its
+		// The parent is not running: after a resume it is reserved for its leader (ResumedLine) and waits to be started again. Its
 		// children wait for it, and the manager is told how to start it: in a resumed team run the manager tried the child five times.
 		// Only the manager starts it, which the refusal says: a resumed leader told to "start" it tried spawn and was refused again.
 		start := "spawn task=" + p.ID

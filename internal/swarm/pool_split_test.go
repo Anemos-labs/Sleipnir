@@ -261,7 +261,7 @@ func TestAPoolLeftTodoByAResumeSparesAllButItsLeader(t *testing.T) {
 	if err := r.sw.Board.mutate("harness", "test", func(d *draft) error {
 		i := taskIdx(d.Snapshot, first.ID)
 		f := d.Tasks[i]
-		f.Status, f.Line = StatusTodo, resumedLine
+		f.Status, f.Line = StatusTodo, ResumedLine
 		return d.put(i, f)
 	}); err != nil {
 		t.Fatal(err)
