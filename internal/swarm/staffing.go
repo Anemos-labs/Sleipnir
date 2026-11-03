@@ -306,8 +306,8 @@ func (s *Swarm) testsOnlySince(base string) bool {
 	if now == "" {
 		return false
 	}
-	repo, err := gitx.Open(s.deps.Root)
-	if err != nil {
+	repo := s.sharedRepo()
+	if repo == nil {
 		return false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -324,22 +324,47 @@ func (s *Swarm) testsOnlySince(base string) bool {
 	return true
 }
 
-// workTree is the id of a git tree holding the shared work tree as a commit would record it, or "" when it cannot be read.
+// workTree is the id of a git tree holding the shared work tree as a commit would record it, or "" when it cannot be read. In
+// an isolated team that is the integration branch's tip: the person's checkout does not change until delivery, so read there
+// every merge looked like no change at all, and one accepted review stood for each product change merged after it.
 func (s *Swarm) workTree() string {
-	if s.deps.Root == "" {
-		return ""
-	}
-	repo, err := gitx.Open(s.deps.Root)
-	if err != nil {
+	repo := s.sharedRepo()
+	if repo == nil {
 		return ""
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	tree, err := repo.SnapshotTree(ctx)
+	var tree string
+	var err error
+	if s.isolated() {
+		tip := s.deps.Isolation.Queue.Tip()
+		if tip == "" {
+			return ""
+		}
+		tree, err = repo.ResolveTree(ctx, tip)
+	} else {
+		tree, err = repo.SnapshotTree(ctx)
+	}
 	if err != nil {
 		return ""
 	}
 	return tree
+}
+
+// sharedRepo is the repository that holds the team's shared tree: the isolation manager's in an isolated team, the session
+// root's otherwise; nil when there is none.
+func (s *Swarm) sharedRepo() *gitx.Repo {
+	if s.isolated() {
+		return s.deps.Isolation.Manager.Repository()
+	}
+	if s.deps.Root == "" {
+		return nil
+	}
+	repo, err := gitx.Open(s.deps.Root)
+	if err != nil {
+		return nil
+	}
+	return repo
 }
 
 // docsFile reports whether a path is documentation the docs worker keeps (docsScope): a Markdown file, or a file under docs/.
