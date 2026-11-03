@@ -407,6 +407,11 @@ func (t *outputTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, err
 		sb.WriteString("(no new output)\n")
 	}
 	fmt.Fprintf(&sb, "[%s %s; next offset %d]", j.id, j.statusText(), next)
+	if state, reason, exit := j.snapshot(); state != jobRunning {
+		if n := selfKillNote(j.command, exit, reason); n != "" {
+			sb.WriteString("\n" + n)
+		}
+	}
 
 	res := env.Finish(sb.String(), false)
 	state, _, exit := j.snapshot()
