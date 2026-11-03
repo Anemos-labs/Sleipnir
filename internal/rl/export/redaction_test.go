@@ -41,7 +41,7 @@ func TestRedactionCoversEveryTextSurface(t *testing.T) {
 					t.Errorf("%s (inline=%v): %q survived redaction", f, inline, s)
 				}
 			}
-			if f != export.FormatDPO && (st.Redactions["secret"] == 0 || st.Redactions["github"] == 0 || st.Redactions["aws"] == 0 || st.Redactions["path"] == 0) {
+			if f != export.FormatDPO && (st.Redactions["secret"] == 0 || st.Redactions["aws"] == 0 || st.Redactions["path"] == 0) {
 				t.Errorf("%s: redaction stats %v", f, st.Redactions)
 			}
 			if all != "" && !json.Valid([]byte(strings.SplitN(all, "\n", 2)[0])) {
@@ -93,7 +93,9 @@ func TestRedactionIsConsistentAcrossStepsAndSurfaces(t *testing.T) {
 	}
 	_ = json.Unmarshal(list[0], &msg)
 	args := msg.ToolCalls[0].Function.Arguments
-	if !strings.HasPrefix(args["token"].(string), "⟦redacted:github:") || args["path"] != "/home/user/api/a.go" {
+	// the arguments are a JSON document in the wire copy too, so the token is redacted as the value of its "token" key there, as in
+	// the recorded input
+	if !strings.HasPrefix(args["token"].(string), "⟦redacted:secret:") || args["path"] != "/home/user/api/a.go" {
 		t.Fatalf("arguments: %v", args)
 	}
 }
@@ -129,10 +131,10 @@ func TestRedactionStatsAreThisExportsOwn(t *testing.T) {
 	o := export.Options{Format: export.FormatSteps, KeepFlat: true, DropFlagged: true, Redactor: red}
 	_, first := run(t, []export.Source{src}, o)
 	_, second := run(t, []export.Source{src}, o)
-	if first.Redactions["github"] == 0 || first.Redactions["github"] != second.Redactions["github"] {
+	if first.Redactions["secret"] == 0 || first.Redactions["secret"] != second.Redactions["secret"] {
 		t.Fatalf("stats must be per export, not cumulative: %v vs %v", first.Redactions, second.Redactions)
 	}
-	if red.Stats()["github"] != first.Redactions["github"]+second.Redactions["github"] {
+	if red.Stats()["secret"] != first.Redactions["secret"]+second.Redactions["secret"] {
 		t.Fatal("the redactor's own counters keep accumulating")
 	}
 	// No redactor: text goes out as recorded.

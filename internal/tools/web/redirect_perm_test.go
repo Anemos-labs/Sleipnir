@@ -216,6 +216,8 @@ func TestSameSite(t *testing.T) {
 		{"https://a.test/x", "https://a.test:8443/y", false},
 		{"http://a.test:8080/x", "http://a.test:9090/y", false},
 		{"https://a.test/x", "https://b.test/y", false},
+		{"http://[fe80::1%25eth0]/x", "http://[fe80::1%25eth1]/y", false}, // a zone names another link
+		{"http://[fe80::1%25eth0]/x", "http://[fe80::1%25eth0]/y", true},
 		{"https://a.test/x", "https://api.a.test/y", false},
 	} {
 		a, _ := url.Parse(c.a)

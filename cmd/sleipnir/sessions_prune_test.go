@@ -195,3 +195,36 @@ func TestSessionsPruneRefusesWhatItDoesNotUnderstand(t *testing.T) {
 		t.Errorf("no state directory yet: status %d, stderr %q", res.code, res.stderr)
 	}
 }
+
+// A directory name is printed without its control characters wherever prune names it, the list of what it left alone included.
+func TestSessionsPruneNamesSkippedDirectoriesSafely(t *testing.T) {
+	w := newWorld(t, "")
+	dir := filepath.Join(w.state, "sessions", "odd\x1b]0;title\x07")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Skip(err) // a file system that refuses the name
+	}
+	// a name that ends in ESC must not swallow the separator and the next name
+	for _, n := range []string{"a\x1b", "benign"} {
+		if err := os.MkdirAll(filepath.Join(w.state, "sessions", n), 0o755); err != nil {
+			t.Skip(err)
+		}
+	}
+	old := filepath.Join(w.state, "sessions", "20260101-000000-aaaaaa")
+	if err := os.MkdirAll(old, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	log := filepath.Join(old, "events.jsonl")
+	if err := os.WriteFile(log, []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	then := time.Now().Add(-90 * 24 * time.Hour)
+	for _, p := range []string{log, old} {
+		if err := os.Chtimes(p, then, then); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res := w.run("", "sessions", "prune", "--keep", "0")
+	if !strings.Contains(res.stderr, "left alone") || strings.ContainsAny(res.stderr, "\x1b\x07") || !strings.Contains(res.stderr, "benign") {
+		t.Errorf("status %d, stderr %q", res.code, res.stderr)
+	}
+}

@@ -85,11 +85,11 @@ func (b *batch) snapshotTree(ctx context.Context) (string, error) {
 // racy, and a rewrite of that kind, made after the index was written, is missed by
 // the snapshot.
 //
-// Only a regular file is copied, and only as many bytes as it had when opened: a
+// Only a regular file is copied, never through a link, and only as many bytes as it had when opened: a
 // repository whose index is a device or a FIFO cannot make the copy endless or
 // make it wait.
 func copyIndex(dst *os.File, src string) (time.Time, error) {
-	f, err := openRegular(src, false)
+	f, err := openRegular(src, true) // an index that is a link would copy what it names, a host file, into the shared git directory
 	if err != nil {
 		if os.IsNotExist(err) {
 			return time.Time{}, os.Remove(dst.Name()) // let git create it: an empty file is an invalid index

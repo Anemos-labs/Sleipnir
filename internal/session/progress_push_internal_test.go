@@ -198,3 +198,64 @@ func TestProgressPushHoldsASnapshotThatAddsCredentials(t *testing.T) {
 		t.Errorf("told %q", told)
 	}
 }
+
+// A push runs the person's own programs: an ssh command or credential helper that the repository's configuration names, in
+// .git/config or in a file it includes (which may not exist until a sandboxed command writes it), is put back to theirs.
+func TestProgressPushKeepsThePersonsOwnPrograms(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_SSH", "")
+	dir := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	run("init", "-q")
+	run("config", "--global", "credential.helper", "store")
+	if got, err := personalPrograms(context.Background(), dir); got != nil || err != nil {
+		t.Fatalf("a repository that names no program got %q", got)
+	}
+	run("config", "include.path", "extra.cfg")
+	if err := os.WriteFile(filepath.Join(dir, ".git", "extra.cfg"), []byte("[core]\n\tsshCommand = evil\n[credential]\n\thelper = !evil\n[remote \"o\"]\n\treceivepack = evil\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	own, err := personalPrograms(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(own, " ")
+	for _, want := range []string{"-c core.sshcommand=ssh", "-c credential.helper= -c credential.helper=store", "-c remote.o.receivepack=git-receive-pack"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in %q", want, got)
+		}
+	}
+	if strings.Contains(got, "evil") {
+		t.Errorf("the repository's program survived: %q", got)
+	}
+	// the clear the repository's helper needs clears every helper: the person's per-URL one (gh auth setup-git) is put back too
+	run("config", "--global", "credential.https://github.com.helper", "!gh auth git-credential")
+	own, err = personalPrograms(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = strings.Join(own, " ")
+	if !strings.Contains(got, "-c credential.helper= -c credential.helper=store -c credential.https://github.com.helper=!gh auth git-credential") ||
+		strings.Count(got, "credential.helper=") != 2 {
+		t.Errorf("the person's helpers after the clear: %q", got)
+	}
+	// a remote whose name holds a blank is read whole, and one whose name holds "=" (which -c cannot name) stops the push
+	run("config", "remote.a b.receivepack", "evil")
+	if own, err := personalPrograms(context.Background(), dir); err != nil || !strings.Contains(strings.Join(own, " "), "remote.a b.receivepack=git-receive-pack") {
+		t.Errorf("a remote with a blank in its name: %q %v", own, err)
+	}
+	run("config", "remote.a=b.receivepack", "evil")
+	if _, err := personalPrograms(context.Background(), dir); err == nil {
+		t.Error("a remote named a=b was pushed with its own program")
+	}
+}

@@ -122,7 +122,7 @@ export function start(o = {}) {
         if (p.startsWith('/api/plugins/')) {
           let b = {}; try { b = JSON.parse(body || '{}'); } catch { /* empty */ }
           if (req.method === 'POST' && p === '/api/plugins/profile') return answer(res, plg.setProfile(b.profile, b.scope));
-          const id = decodeURIComponent(p.slice('/api/plugins/'.length));
+          let id; try { id = decodeURIComponent(p.slice('/api/plugins/'.length)); } catch { return json(res, 400, { error: 'bad plugin name', code: 'bad_request' }); }
           if (req.method === 'POST') return answer(res, plg.setPlugin(id, b));
           if (req.method === 'DELETE') return answer(res, plg.resetPlugin(id, u.searchParams.get('scope') || 'user'));
         }
@@ -130,7 +130,8 @@ export function start(o = {}) {
       });
       return;
     }
-    let rel = decodeURIComponent(p); if (rel.endsWith('/')) rel += 'index.html';
+    let rel; try { rel = decodeURIComponent(p); } catch { res.writeHead(400, { 'Content-Security-Policy': CSP }); return res.end('bad path\n'); }
+    if (rel.endsWith('/')) rel += 'index.html';
     const file = path.resolve(ui, '.' + rel);
     if (!file.startsWith(ui + path.sep) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404, { 'Content-Security-Policy': CSP }); return res.end('not found\n'); }
     res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Content-Security-Policy': CSP, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' }); res.end(fs.readFileSync(file));

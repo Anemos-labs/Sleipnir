@@ -295,6 +295,15 @@ func (s *Session) mainAgent() string {
 	return "main"
 }
 
+// mainRole is the role the main agent runs as, whose profile its requests are judged by: the manager of a team, or the solo
+// worker.
+func (s *Session) mainRole() string {
+	if s.opts.Swarm {
+		return "manager"
+	}
+	return soloRole().Name
+}
+
 // notice reports something to the user and the log.
 func (s *Session) notice(agentID, msg string) {
 	s.Log.Emit(agentID, "notice", map[string]any{"level": "warn", "msg": msg})

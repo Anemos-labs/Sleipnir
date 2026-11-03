@@ -364,24 +364,30 @@ func gitDirs(dir string) (own, common string, ok bool) {
 		return "", "", false
 	}
 	if fi.IsDir() {
-		return g, g, true
+		// a .git directory may still name a common directory of its own (commondir), and git then reads that one's configuration
+		own = g
+	} else {
+		b, err := readGitMeta(g)
+		if err != nil || !strings.HasPrefix(string(b), "gitdir:") {
+			return "", "", false
+		}
+		own = strings.TrimSpace(strings.TrimPrefix(string(b), "gitdir:"))
+		if !filepath.IsAbs(own) {
+			own = filepath.Join(dir, own)
+		}
+		own = filepath.Clean(own)
 	}
-	b, err := readGitMeta(g)
-	if err != nil || !strings.HasPrefix(string(b), "gitdir:") {
-		return "", "", false
-	}
-	own = strings.TrimSpace(strings.TrimPrefix(string(b), "gitdir:"))
-	if !filepath.IsAbs(own) {
-		own = filepath.Join(dir, own)
-	}
-	own = filepath.Clean(own)
 	c, err := readGitMeta(filepath.Join(own, "commondir"))
 	if err != nil {
 		return own, own, true
 	}
-	common = strings.TrimSpace(string(c))
+	common = strings.TrimRight(string(c), "\r\n") // git strips line endings only: a blank ends a directory name
 	if !filepath.IsAbs(common) {
-		common = filepath.Join(own, common)
+		base := own
+		if r, err := filepath.EvalSymlinks(own); err == nil {
+			base = r // git reads commondir relative to the real directory: ../common past a linked .git is beside its target
+		}
+		common = filepath.Join(base, common)
 	}
 	return own, filepath.Clean(common), true
 }

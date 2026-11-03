@@ -134,7 +134,7 @@ flags:
 		return nil
 	}
 	for _, it := range plan.items {
-		fmt.Fprintf(stdout, "  %-30s %5s old  %8s\n", it.id, ageText(it.age), sizeText(it.bytes))
+		fmt.Fprintf(stdout, "  %-30s %5s old  %8s\n", oneLineSafe(it.id), ageText(it.age), sizeText(it.bytes)) // a directory name: no control characters
 	}
 	verb := "would delete"
 	if *yes {
@@ -145,7 +145,7 @@ flags:
 		fmt.Fprintf(stdout, "%d old enough but written to in the last ten minutes: left alone\n", len(plan.inUse))
 	}
 	if len(plan.skipped) > 0 {
-		fmt.Fprintf(stderr, "left alone, not sessions (no events.jsonl): %s\n", strings.Join(plan.skipped, ", "))
+		fmt.Fprintf(stderr, "left alone, not sessions (no events.jsonl): %s\n", strings.Join(safeNames(plan.skipped), ", "))
 	}
 	if !*yes {
 		fmt.Fprintln(stdout, "nothing deleted: run again with --yes")
@@ -162,7 +162,7 @@ flags:
 		report, err := session.RemoveStoredSession(ctx, it.path)
 		cancel()
 		if err != nil {
-			fmt.Fprintf(stderr, "sessions prune: %s: %v\n", it.id, err)
+			fmt.Fprintf(stderr, "sessions prune: %s: %s\n", oneLineSafe(it.id), oneLineSafe(err.Error()))
 			failed++
 			continue
 		}
@@ -178,4 +178,13 @@ flags:
 		return fmt.Errorf("sessions prune: %d sessions could not be deleted", failed)
 	}
 	return nil
+}
+
+// safeNames is each name made safe on its own: a name ending in ESC must not take the separator or the next name with it.
+func safeNames(names []string) []string {
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = oneLineSafe(n)
+	}
+	return out
 }

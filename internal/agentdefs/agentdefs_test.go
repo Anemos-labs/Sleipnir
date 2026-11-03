@@ -566,3 +566,26 @@ func TestStarMeansEveryTool(t *testing.T) {
 		}
 	}
 }
+
+// A definition named by a link is read only when the link names a Markdown file: reviewer.md linked to the project's .env is
+// skipped, and the secret never becomes a role's instructions.
+func TestALinkToAFileThatIsNoDefinitionIsSkipped(t *testing.T) {
+	w := newWorld(t)
+	put(t, filepath.Join(w.root, ".env"), "---\nname: env\n---\nSECRET-CANARY")
+	link(t, filepath.Join(w.root, ".env"), filepath.Join(w.root, ".claude", "agents", "reviewer.md"))
+	defs, warns := w.load()
+	if len(defs) != 0 || strings.Contains(warnText(warns), "SECRET-CANARY") || !strings.Contains(warnText(warns), "not an agent definition") {
+		t.Errorf("defs = %s, warnings: %s", names(defs), warnText(warns))
+	}
+}
+
+// A definition file whose name is a credentials file's is skipped even when its front matter does not parse: the parse error
+// could quote the file, and the warning would carry it.
+func TestACredentialsFileWithBrokenFrontMatterIsSkippedUnquoted(t *testing.T) {
+	w := newWorld(t)
+	put(t, filepath.Join(w.root, ".claude", "agents", "id_rsa.md"), "---\nname: \"\\q SECRET-CANARY\"\n---\nbody")
+	defs, warns := w.load()
+	if len(defs) != 0 || strings.Contains(warnText(warns), "SECRET-CANARY") || !strings.Contains(warnText(warns), "not an agent definition") {
+		t.Errorf("defs = %s, warnings: %s", names(defs), warnText(warns))
+	}
+}

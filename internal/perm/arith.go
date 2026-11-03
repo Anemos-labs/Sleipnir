@@ -131,6 +131,37 @@ func numericFormat(f string) bool {
 	return true
 }
 
+// arithNames are the names that the text of arithmetic expansions exprs holds, each once: what they may assign (an operand of
+// =, +=, ++ or --) is among them. A number's letters (0x1f, 16#ff) are not names.
+func arithNames(exprs []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, e := range exprs {
+		for i := 0; i < len(e); {
+			c := e[i]
+			switch {
+			case c >= '0' && c <= '9':
+				for i < len(e) && (isNameByte(e[i]) || e[i] == '#') {
+					i++
+				}
+			case isNameByte(c):
+				j := i
+				for j < len(e) && isNameByte(e[j]) {
+					j++
+				}
+				if n := e[i:j]; !seen[n] {
+					seen[n] = true
+					out = append(out, n)
+				}
+				i = j
+			default:
+				i++
+			}
+		}
+	}
+	return out
+}
+
 // arithAssigns are the names the arithmetic expansions exprs of the command at index at of the line may assign, given the line's
 // integer variables (intVars): every name their text reads or writes. all is true when that is not known: an expansion reads a name
 // that may hold anything (its value is evaluated as an expression too: x='D=0'; $((x)) assigns D), a positional or listed parameter,

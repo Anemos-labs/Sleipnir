@@ -44,6 +44,11 @@ func commandGit(dir string) gitRunner {
 		// The person's credentials, but none of the programs a repository's own configuration can add to a push: no hooks (a
 		// pre-push hook), no fsmonitor, no ext:: transport. A push of the harness's branch needs none of them.
 		safe := []string{"-c", "core.hooksPath=" + os.DevNull, "-c", "core.fsmonitor=false", "-c", "protocol.ext.allow=never"}
+		own, err := personalPrograms(ctx, dir)
+		if err != nil {
+			return nil, fmt.Errorf("git %s: %w", args[0], err)
+		}
+		safe = append(safe, own...)
 		cmd := exec.CommandContext(ctx, "git", append(safe, args...)...)
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=never")
@@ -53,6 +58,103 @@ func commandGit(dir string) gitRunner {
 		}
 		return out, nil
 	}
+}
+
+// programKeys are the settings that name a program git runs for a push or a fetch: the ssh command, the password prompt, the
+// credential helpers (of every URL), a git:// proxy, and the programs a local remote is reached through.
+const programKeys = `^(core\.(sshcommand|askpass|gitproxy)|credential\..*helper|remote\..*\.(receivepack|uploadpack))$`
+
+// personalPrograms is the -c configuration that keeps the programs a push runs to the person's own: a setting of programKeys
+// that the repository's configuration makes (.git/config, its worktree file, or a file they include, which commands in the
+// sandbox can write) is put back to what the person's global and system configuration say, or to git's default. It is read
+// right before each push, so an include created after the session started counts too.
+func personalPrograms(ctx context.Context, dir string) ([]string, error) {
+	read := func(scope string) [][2]string {
+		// -z: a key and its value end with a newline and a NUL, so a remote name with a blank in it is read whole
+		cmd := exec.CommandContext(ctx, "git", "config", scope, "--includes", "--null", "--get-regexp", programKeys)
+		cmd.Dir = dir
+		out, _ := cmd.Output() // exit 1: no such setting; anything else leaves the defaults below
+		var kv [][2]string
+		for _, rec := range strings.Split(string(out), "\x00") {
+			if k, v, _ := strings.Cut(rec, "\n"); k != "" {
+				kv = append(kv, [2]string{k, v})
+			}
+		}
+		return kv
+	}
+	local := append(read("--local"), read("--worktree")...)
+	if len(local) == 0 {
+		return nil, nil
+	}
+	for _, l := range local {
+		if strings.Contains(l[0], "=") {
+			// -c takes the key up to the first "=": remote."a=b".receivepack could not be put back, and keeps its program
+			return nil, fmt.Errorf("the repository's configuration sets %s, a name the push cannot override; rename the remote", l[0])
+		}
+	}
+	var own [][2]string
+	if os.Getenv("GIT_CONFIG_NOSYSTEM") == "" {
+		own = read("--system")
+	}
+	own = append(own, read("--global")...)
+	var out []string
+	done := map[string]bool{}
+	helpers := false
+	for _, l := range local {
+		k := l[0]
+		if done[k] {
+			continue
+		}
+		done[k] = true
+		var vals []string
+		for _, o := range own {
+			if o[0] == k {
+				vals = append(vals, o[1])
+			}
+		}
+		switch {
+		case credentialHelper(k):
+			// an empty helper clears the whole list, whatever URL each entry was set for: one clear, then every helper of the
+			// person's own, generic and per-URL, in their order
+			if !helpers {
+				helpers = true
+				out = append(out, "-c", "credential.helper=")
+				for _, o := range own {
+					if credentialHelper(o[0]) {
+						out = append(out, "-c", o[0]+"="+o[1])
+					}
+				}
+			}
+			continue
+		case strings.HasPrefix(k, "credential."):
+			v := ""
+			if len(vals) > 0 {
+				v = vals[len(vals)-1]
+			}
+			out = append(out, "-c", k+"="+v)
+			continue
+		case len(vals) > 0:
+			out = append(out, "-c", k+"="+vals[len(vals)-1])
+			continue
+		}
+		switch {
+		case k == "core.sshcommand":
+			ssh := "ssh"
+			if p := os.Getenv("GIT_SSH"); p != "" {
+				ssh = "'" + strings.ReplaceAll(p, "'", `'\''`) + "'"
+			}
+			out = append(out, "-c", k+"="+ssh)
+		case k == "core.askpass":
+			out = append(out, "-c", k+"=")
+		case k == "core.gitproxy":
+			out = append(out, "-c", k+"=none")
+		case strings.HasSuffix(k, ".receivepack"):
+			out = append(out, "-c", k+"=git-receive-pack")
+		case strings.HasSuffix(k, ".uploadpack"):
+			out = append(out, "-c", k+"=git-upload-pack")
+		}
+	}
+	return out, nil
 }
 
 // clipText bounds s to n bytes.
@@ -304,4 +406,10 @@ func shortSHA(sha string) string {
 		return sha[:12]
 	}
 	return sha
+}
+
+// credentialHelper reports whether a configuration key names a credential helper: credential.helper, or
+// credential.<url>.helper.
+func credentialHelper(k string) bool {
+	return k == "credential.helper" || strings.HasPrefix(k, "credential.") && strings.HasSuffix(k, ".helper")
 }

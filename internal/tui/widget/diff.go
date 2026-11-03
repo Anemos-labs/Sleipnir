@@ -115,15 +115,59 @@ func splitDiffLines(s string) []string {
 	}
 	ls := strings.Split(strings.TrimSuffix(s, "\n"), "\n")
 	for i, l := range ls {
-		ls[i] = strings.TrimSuffix(l, "\r")
+		if i < len(ls)-1 || strings.HasSuffix(s, "\n") { // a CRLF ending; a bare \r that ends the text is content, and is shown
+			ls[i] = strings.TrimSuffix(l, "\r")
+		}
 	}
 	return ls
 }
 
-// diffText is what a line shows: cleaned of control characters, tabs expanded.
+// diffText is what a line shows: its control characters drawn as control pictures (an ESC is ␛), the invisible characters
+// (a zero-width space, a bidi control) and the line separators drawn as ⟨hex⟩, tabs expanded. A diff is what a person approves
+// a write by, so no character the write keeps is left out of it or drawn like another: an escape sequence and the text it
+// encloses are shown, inert, and a drawn character never looks like text the line holds as written (\x1b in a source file
+// stays \x1b, and a ␛ or ⟨ written in the file is drawn as ⟨241b⟩ or ⟨27e8⟩).
 func diffText(s string, tabw int) string {
-	s = strings.ReplaceAll(safeText(s), "\n", " ")
+	s = strings.ReplaceAll(safeText(visibleControls(s)), "\n", " ")
 	return expandTabStops(s, tabw)
+}
+
+// visibleControls draws each control character of s other than a tab: C0 as its control picture (U+2400 on), DEL as ␡, C1 as
+// ⟨9b⟩. What the drawing could be taken for, a control picture or a ⟨ written as such, and what safeText would drop (an
+// invisible character, a line separator) are drawn as ⟨hex⟩ too.
+func visibleControls(s string) string {
+	has := false
+	for _, r := range s {
+		if r != '\t' && (r < 0x20 || r >= 0x7f && r < 0xa0 || drawnAsHex(r)) {
+			has = true
+			break
+		}
+	}
+	if !has {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case drawnAsHex(r):
+			b.WriteString("⟨" + strconv.FormatInt(int64(r), 16) + "⟩")
+		case r == '\t' || r >= 0x20 && r < 0x7f || r >= 0xa0:
+			b.WriteRune(r)
+		case r < 0x20:
+			b.WriteRune(0x2400 + r)
+		case r == 0x7f:
+			b.WriteRune(0x2421)
+		default:
+			b.WriteString("⟨" + strconv.FormatInt(int64(r), 16) + "⟩")
+		}
+	}
+	return b.String()
+}
+
+// drawnAsHex reports whether visibleControls draws a printable or invisible rune as ⟨hex⟩: a control picture (U+2400 to U+2421)
+// and ⟨ would read as a drawn control, and an invisible character or a line separator would be dropped or break the line.
+func drawnAsHex(r rune) bool {
+	return r >= 0x2400 && r <= 0x2421 || r == '⟨' || r == 0x2028 || r == 0x2029 || r >= 0xa0 && invisibleRune(r)
 }
 
 // diffBuildHunks cuts the edit script into hunks with ctx lines of context and finds what changed inside replaced lines.

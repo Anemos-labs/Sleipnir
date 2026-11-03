@@ -349,7 +349,7 @@ func LoadNotes(path string) ([]byte, []string, error) {
 		if err != nil || !fi.Mode().IsRegular() {
 			return nil, fi, err
 		}
-		f, err := os.Open(path)
+		f, err := os.OpenFile(path, os.O_RDONLY|noWait, 0)
 		return f, fi, err
 	})
 }
@@ -366,7 +366,7 @@ func LoadNotesIn(root, rel string) ([]byte, []string, error) {
 		if err != nil || !fi.Mode().IsRegular() {
 			return nil, fi, err
 		}
-		f, err := r.Open(rel)
+		f, err := r.OpenFile(rel, os.O_RDONLY|noWait, 0)
 		return f, fi, err
 	})
 }
@@ -443,7 +443,7 @@ func CheckEdit(prev, notes []string) ([]string, error) {
 // where they are: the notes take the place of the first note line, or follow the text when it has none. A new file starts with the
 // header.
 func WriteNotes(path string, notes []string) error {
-	old, err := os.ReadFile(path)
+	old, err := readRegular(path)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("memory: %w", err)
 	}
@@ -556,6 +556,20 @@ func ignoreLineMatches(line, name string) (match, neg, sure bool) {
 	return ok, neg, true
 }
 
+// readRegular reads the file at path, which must be a regular file: a FIFO planted there is refused at once instead of holding
+// the caller (and the notes lock) until something writes to it.
+func readRegular(path string) ([]byte, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|noWait, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	return io.ReadAll(f)
+}
+
 // ignoreBeside makes git ignore the notes file at p with a .gitignore in its directory: created when missing, and given the
 // file's name when it does not ignore it yet (the last line whose pattern matches the name decides, as in git). A .gitignore the tool
 // creates lists itself too, so the directory leaves no untracked file behind: a run with --commit needs a clean checkout, and
@@ -566,7 +580,7 @@ func ignoreBeside(p string) error {
 		return err
 	}
 	gi := filepath.Join(dir, ".gitignore")
-	b, err := os.ReadFile(gi)
+	b, err := readRegular(gi)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -591,7 +605,7 @@ func ignoreBeside(p string) error {
 	if ignored {
 		return nil
 	}
-	f, err := os.OpenFile(gi, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(gi, os.O_APPEND|os.O_CREATE|os.O_WRONLY|noWait, 0o644)
 	if err != nil {
 		return err
 	}

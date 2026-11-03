@@ -43,3 +43,21 @@ func TestDenyKeysDropsProxyCredentials(t *testing.T) {
 		t.Fatalf("env: %q", got)
 	}
 }
+
+// A proxy written without a scheme, as curl and git take one, loses its user and password too.
+func TestWithoutUserinfoTakesASchemelessProxy(t *testing.T) {
+	for in, want := range map[string]string{
+		"user:pa55@proxy:3128":                     "proxy:3128",
+		"http://user:pa55@proxy:3128/":             "http://proxy:3128/",
+		"proxy:3128":                               "proxy:3128",
+		"localhost,.internal":                      "localhost,.internal",
+		"http://u:p%zz@proxy:1":                    "http://proxy:1",
+		"user:pa55@proxy:3128?next=http://example": "proxy:3128?next=http://example",
+		"http:///user:pa55@proxy:3128":             "http://proxy:3128", // no authority for url.Parse, credentials for curl
+		"http://proxy:3128/?to=a@b":                "http://proxy:3128/?to=a@b",
+	} {
+		if got := withoutUserinfo(in); got != want {
+			t.Errorf("withoutUserinfo(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
