@@ -115,6 +115,7 @@
         else if (ev.who === 'scouts') push(m, 'mgr', { k: 'scouts', lines: ev.lines, t: ev.t }, ev);
         else if (ev.who === 'mgr') push(m, 'mgr', { k: 'say', ag: 'mgr', text: ev.text, stream: ev.stream !== false, rate: ev.rate || 70, t: ev.t, done: !ev.mid }, ev);
         else if (ev.who === 'local') push(m, 'mgr', { k: 'local', title: ev.title, html: ev.html, t: ev.t }, ev);
+        else if (ev.who === 'peer') push(m, 'mgr', { k: 'peer', peer: String(ev.peer || ''), name: String(ev.peerName || ev.peer || ''), reply: !!ev.reply, text: String(ev.text || ''), t: ev.t }, ev);
         break;
       }
       case 'sys': push(m, ev.ch || 'mgr', { k: 'sys', glyph: ev.glyph || '◇', text: ev.text, ag: ev.ag, task: ev.task, open: ev.open, t: ev.t }, ev); break;

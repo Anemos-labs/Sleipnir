@@ -102,7 +102,15 @@ type webTab struct {
 	queue      []queued
 	nq         int
 	active     bool
-	goalTurn   bool // the running turn is the goal's (its start, a resume or a continuation), not a message the person typed: Send steers it
+	goalTurn   bool                   // the running turn is the goal's (its start, a resume or a continuation), not a message the person typed: Send steers it
+	turning    bool                   // a turn of the agent runs (the person's, the goal's or one on another session's message): a peer's message joins it
+	parent     string                 // the tab whose agent started this one (sessions op spawn; "" when the person did)
+	peerSent   map[string]int         // messages sent to each other tab since the person last wrote (peerSendLimit)
+	peerInTurn bool                   // another session's message was handed to the running turn (readStranded)
+	answering  string                 // the tab whose message the running turn answers (mailTurn; "" for none)
+	awaiting   map[string]bool        // the tabs this one wrote to and has had no answer from (PeerWait)
+	unread     map[string][]string    // answers that reached the running turn as mail while no wait was there (PeerWait)
+	waiters    map[string]chan string // the waits of this tab's agent for the answer of each tab (PeerWait)
 	excl       int
 	cancel     context.CancelFunc // cancels the running item
 	cancelOp   context.CancelFunc // cancels a running compaction
@@ -460,7 +468,10 @@ func (t *webTab) turn(ctx context.Context, s *session.Session, prompt, display s
 		t.addHist(display)
 	}
 	t.mu.Lock()
-	t.goalTurn = !echo
+	t.goalTurn, t.turning = !echo, true
+	if echo {
+		t.peerSent = nil // the person wrote: the sessions this one writes to may hear from it again (peerSendLimit)
+	}
 	t.mu.Unlock()
 	t.emit(&wire.Turn{S: "start"})
 	t.publishMeta()
@@ -479,12 +490,13 @@ func (t *webTab) turn(ctx context.Context, s *session.Session, prompt, display s
 	})
 	_ = err
 	t.mu.Lock()
-	t.goalTurn = false
+	t.goalTurn, t.turning = false, false
 	t.ends = append(t.ends, func() {
 		t.emit(&wire.Final{}, &wire.Turn{S: "end"})
 		t.publishRoster()
 	})
 	t.mu.Unlock()
+	t.readStranded(s) // another session's message that reached the agent as the turn ended (web_peers.go)
 }
 
 // addHist records a sent line for the history (ctrl+r, up arrow).

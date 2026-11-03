@@ -76,6 +76,9 @@ mark.nca{unicode-bidi:isolate-override;direction:ltr;background:var(--warm-a);co
 .msg .who{font:700 10.5px var(--f-lab);letter-spacing:.14em;text-transform:uppercase;display:flex;gap:6px;align-items:baseline;margin-bottom:2px;color:var(--c,var(--dim))}
 .msg .who time{font:400 10px var(--f-num);color:var(--dim);letter-spacing:0}
 .msg.you{border-left:2px solid var(--fg);padding-left:8px;color:var(--bright)}
+.msg.peer{border-left:2px dashed var(--bright);padding-left:8px}
+.msg.peer .pt{white-space:pre-wrap;overflow-wrap:anywhere}
+.msg.peer .peerlink{background:none;border:0;padding:0;font:inherit;color:var(--bright);text-decoration:underline;cursor:pointer}
 .msg.you .code{display:block}
 /* the person's message keeps the lines it was typed in (a brief with paragraphs and lists), and a long word wraps */
 .msg.you>span{white-space:pre-wrap;overflow-wrap:anywhere}

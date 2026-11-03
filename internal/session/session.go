@@ -1571,6 +1571,13 @@ const InterruptNote = "[The person interrupted your previous turn. Answer the me
 
 // runTurn gives the session one model turn without starting a GitHub controller.
 func (s *Session) runTurn(ctx context.Context, goal string) (*Result, error) {
+	return s.runTurnWith(ctx, goal, "", false)
+}
+
+// runTurnWith is runTurn, or with onMail a turn on mail instead of the person's goal: a message from outside the session (RunMail)
+// that the agent reads as mail, or ("" mail) what already waits in its inbox. The prompt hooks see the person's words only, so a turn
+// on mail runs none.
+func (s *Session) runTurnWith(ctx context.Context, goal, mail string, onMail bool) (*Result, error) {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -1593,9 +1600,18 @@ func (s *Session) runTurn(ctx context.Context, goal string) (*Result, error) {
 		}
 	}()
 
-	goal, err := s.promptHook(ctx, first, goal)
-	if err != nil {
-		return nil, err
+	if !onMail {
+		var err error
+		goal, err = s.promptHook(ctx, first, goal)
+		if err != nil {
+			return nil, err
+		}
+	} else if first {
+		// a session whose first turn is on mail (one another session started with a message) still starts: SessionStart runs,
+		// and what it adds goes with the mail
+		if c := s.sessionStartHook(ctx); c != "" && mail != "" {
+			mail += "\n\n[context from your hooks]\n" + c
+		}
 	}
 	if after {
 		goal = InterruptNote + goal
@@ -1641,15 +1657,55 @@ func (s *Session) runTurn(ctx context.Context, goal string) (*Result, error) {
 		}
 		s.Log.Emit("", events.TypeSessionStart, start)
 	}
-	s.Ckpt.Begin(fmt.Sprintf("turn %d: %s", turn, oneLine(goal, 60)))
+	s.Ckpt.Begin(fmt.Sprintf("turn %d: %s", turn, oneLine(firstNonEmpty(goal, mail), 60)))
 
 	if s.Swarm != nil {
 		s.Swarm.Start(s.swarmContext(ctx))
+		if onMail {
+			res, err := s.Swarm.RunManagerMail(ctx, mail)
+			return s.result(res, err)
+		}
 		res, err := s.Swarm.RunManager(ctx, goal)
 		return s.result(res, err)
 	}
+	if mail != "" {
+		s.Agent.Send(mail)
+	}
 	res, err := s.Agent.Run(ctx, goal)
 	return s.result(res, err)
+}
+
+// MailPrefix starts every message a host delivers from another session (RunMail, Send while a turn runs): the agent reads text
+// that starts with it as mail, data from a peer and not the person's words (agent.Send), and a team's stop words in it stop nothing.
+const MailPrefix = "[mail from session "
+
+// RunMail runs a turn of the agent the person talks to (a team's manager) on a message from another session of the same program:
+// the host frames it (it starts with MailPrefix) and the agent reads it as mail, never as the person's instructions. A turn on mail
+// runs no prompt hook, lifts no stop of the person's and does not count as the person writing to the team. A team's manager that
+// is already running takes the message into that run, and the result is then empty.
+func (s *Session) RunMail(ctx context.Context, mail string) (*Result, error) {
+	if !strings.HasPrefix(mail, MailPrefix) {
+		return nil, errors.New("a message from another session starts with " + MailPrefix)
+	}
+	return s.runTurnWith(ctx, "", mail, true)
+}
+
+// PendingMail reports how many messages wait in the inbox of the agent the person talks to: mail that reached it as its run was
+// ending, which no run reads until the next one (RunInbox).
+func (s *Session) PendingMail() int {
+	if a := s.Main(); a != nil {
+		return a.PendingInbox()
+	}
+	return 0
+}
+
+// RunInbox runs a turn of the agent the person talks to on what waits in its inbox (PendingMail), as RunMail runs one on a message.
+// With nothing waiting it runs nothing.
+func (s *Session) RunInbox(ctx context.Context) (*Result, error) {
+	if s.PendingMail() == 0 {
+		return &Result{SessionID: s.ID, Dir: s.Dir}, nil
+	}
+	return s.runTurnWith(ctx, "", "", true)
 }
 
 // swarmContext is the context the swarm runs on. A batch run's swarm lives on the

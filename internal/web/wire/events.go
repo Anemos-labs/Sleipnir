@@ -110,8 +110,11 @@ func KindOf(e Event) string {
 	return ""
 }
 
-// Say is a transcript message: the person's (Who "you"), the manager's ("mgr") or a harness status line ("sys"). Text is at most
-// 16 KiB; a longer message continues in More events that name its Mid. Stream is true while the message is still being written: the
+// Say is a transcript message: the person's (Who "you"), the manager's ("mgr"), a harness status line ("sys") or a message of another
+// session of the server to this one's agent ("peer": Peer is that session's id, PeerName its name, and Reply marks its answer to a
+// message of this one's). Text is at most
+// 16 KiB; a longer message of a producer that sets Mid continues in More events that name it, and a peer message is clipped at
+// 16 KiB with none. Stream is true while the message is still being written: the
 // page types it out at Rate characters per second. Glyph is the one character that heads a status line, Plan marks a status line that
 // announces a goal plan, Task the task a status line is about, and Mid the id of the message ("m" and the Seq of the event that
 // opened it).
@@ -126,7 +129,10 @@ type Say struct {
 	Rate   int    `json:"rate,omitempty"`
 	Mid    string `json:"mid,omitempty"`
 	// Open names the settings page the line offers to open ("providers" or "models"), for a notice about a missing key or model.
-	Open string `json:"open,omitempty"`
+	Open     string `json:"open,omitempty"`
+	Peer     string `json:"peer,omitempty"`
+	PeerName string `json:"peerName,omitempty"`
+	Reply    bool   `json:"reply,omitempty"`
 }
 
 // Sys is a system line in a channel: a notice, a lease conflict, an acknowledgment of a person's action. Ch is the channel (mgr or an
