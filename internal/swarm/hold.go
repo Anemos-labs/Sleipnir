@@ -319,7 +319,20 @@ func (h *holdHooks) BeforeTool(ctx context.Context, c agent.ToolHookCall) agent.
 			}
 		}
 	}
+	if handsWorkToTheTeam(c.Tool) {
+		// What the team starts on, or the manager waits for, is the shared tree: a change the manager committed in its own
+		// checkout is in it only once integrated. Left for the end of the manager's turn, a reviewer it started read a tree
+		// without the fix it was asked to review, and found nothing to review.
+		if err := h.s.flushManager(ctx, h.m); err != nil {
+			o.Context = strings.TrimSpace(o.Context + "\nThe changes in your checkout are not in the shared tree, so the team works without them: " + err.Error())
+		}
+	}
 	return o
+}
+
+// handsWorkToTheTeam reports whether a manager's tool call starts a member on the shared tree or waits for the team's work on it.
+func handsWorkToTheTeam(tool string) bool {
+	return tool == "spawn" || tool == "wait"
 }
 
 // editsFiles reports whether a tool call changes files: the manager doing work of its own.
