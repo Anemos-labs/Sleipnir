@@ -581,6 +581,8 @@ flags:
         continue this project's newest session (same as --resume latest)
   -cwd string
         working directory (default: current)
+  -delegated
+        another program chose this run's goal, --verify and --resume (sleipnir mcp serve sets it): --verify is judged as a shell command of the run, and a resume brings back no recorded allow rules and no wider mode
   -effort string
         reasoning effort of the requests: default | none | minimal | low | medium | high | xhigh | max; each model uses its closest supported level, as /effort does (unset: the provider's own default, or what a resumed session had)
   -isolation string
