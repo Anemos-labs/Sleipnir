@@ -60,6 +60,8 @@ func (t *webTab) SetPinned(ctx context.Context, on bool) error {
 	if s == nil {
 		return werr(http.StatusConflict, "not_ready", "the session has not started")
 	}
+	t.pinMu.Lock()
+	defer t.pinMu.Unlock()
 	home := pinHome()
 	t.mu.Lock()
 	p := t.pinOfLocked(s)
@@ -87,6 +89,8 @@ func (t *webTab) SetPinned(ctx context.Context, on bool) error {
 // notePinned reads whether the session that has just started in the tab is pinned. A tab that was pinned and continues in another
 // session (a restart that starts a new one) moves its pin to it, so that the pin follows the tab.
 func (t *webTab) notePinned(s *session.Session) {
+	t.pinMu.Lock()
+	defer t.pinMu.Unlock()
 	home := pinHome()
 	t.mu.Lock()
 	was, prev := t.pinned, t.pinnedSID
@@ -107,6 +111,8 @@ func (t *webTab) notePinned(s *session.Session) {
 
 // renamePin keeps a pinned session's name current in the pin list.
 func (t *webTab) renamePin(s *session.Session) {
+	t.pinMu.Lock()
+	defer t.pinMu.Unlock()
 	t.mu.Lock()
 	pinned := t.pinned
 	p := t.pinOfLocked(s)
@@ -116,14 +122,23 @@ func (t *webTab) renamePin(s *session.Session) {
 	}
 }
 
-// unpinClosed removes the pin of a tab the person closed: closing a pinned tab is how a person says it should not come back.
-func (t *webTab) unpinClosed() {
+// unpinClosed removes the pin of a tab the person closes: closing a pinned tab is how a person says it should not come back. An error
+// (the list could not be written) is returned so that the close stops before the tab goes, rather than leave a pin that reopens it.
+func (t *webTab) unpinClosed() error {
+	t.pinMu.Lock()
+	defer t.pinMu.Unlock()
 	t.mu.Lock()
 	pinned, sid := t.pinned, t.pinnedSID
 	t.mu.Unlock()
 	if pinned && sid != "" {
-		_, _ = session.Unpin(pinHome(), sid)
+		if _, err := session.Unpin(pinHome(), sid); err != nil {
+			return werr(http.StatusInternalServerError, "pin", "the session could not be unpinned, so it was not closed: "+clip(err.Error(), 300))
+		}
+		t.mu.Lock()
+		t.pinned = false
+		t.mu.Unlock()
 	}
+	return nil
 }
 
 // reopenPinned opens the pinned sessions, in pin order, each in a tab of its own; it runs once, when the server starts. A pinned

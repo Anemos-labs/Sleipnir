@@ -120,7 +120,10 @@ func (h *webHostImpl) routes(srv *web.Server) {
 			writeErr(w, werr(http.StatusConflict, "last", "the last session cannot be closed: start another first"))
 			return
 		}
-		t.unpinClosed() // a pinned tab the person closes does not come back
+		if err := t.unpinClosed(); err != nil { // a pinned tab the person closes does not come back
+			writeErr(w, err)
+			return
+		}
 		rep := h.removeTab(t, "closed")
 		body := map[string]any{"ok": true}
 		if rep != nil {

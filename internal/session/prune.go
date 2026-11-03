@@ -189,7 +189,10 @@ func PlanPruneDir(root string, now time.Time, olderThan time.Duration, keep int,
 		return nil, err
 	}
 	isLive := map[string]bool{}
-	pinned := pinnedIDs(root)
+	pinned, err := pinnedIDs(root)
+	if err != nil {
+		return nil, fmt.Errorf("the pin list could not be read, so no session is planned for deletion: %w", err)
+	}
 	for _, id := range live {
 		isLive[id] = true
 	}

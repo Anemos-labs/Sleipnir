@@ -71,7 +71,7 @@ type Recorded struct {
 	Plan    bool
 	// Mailman is the mailman mode of the last run (Summary.Mailman).
 	Mailman bool
-	// Pinned says the session is pinned: sleipnir web reopens it when it starts (pins.json beside the sessions directory).
+	// Pinned says the session is pinned (pins.json beside the sessions directory): sleipnir web tries to reopen it when it starts.
 	Pinned bool
 }
 
@@ -448,8 +448,8 @@ func ListRecordedDir(root string, now time.Time) ([]Recorded, error) {
 		return nil, err
 	}
 	var out []Recorded
-	locks := readFlocks() // once for the whole listing
-	pinned := pinnedIDs(root)
+	locks := readFlocks()        // once for the whole listing
+	pinned, _ := pinnedIDs(root) // a listing only marks rows: a list that cannot be read marks none
 	seen := map[string]bool{}
 	for _, e := range ents {
 		dir := filepath.Join(root, e.Name())

@@ -128,3 +128,10 @@ func TestAPinnedSessionThatNeedsAConfirmationIsNotReopened(t *testing.T) {
 		t.Fatal("a pinned session that was not reopened lost its pin")
 	}
 }
+
+// The server's first tab and every pin fit the tabs a server hosts, so that no pin is refused at start for want of a tab.
+func TestEveryPinFitsBesideTheFirstTab(t *testing.T) {
+	if session.MaxPins+1 > maxTabs {
+		t.Fatalf("MaxPins %d and the first tab exceed the %d tabs a server hosts", session.MaxPins, maxTabs)
+	}
+}

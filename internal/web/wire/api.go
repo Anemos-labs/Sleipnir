@@ -132,7 +132,8 @@ type TabSummary struct {
 	Headless  bool   `json:"headless,omitempty"`
 	CreatedAt int64  `json:"createdAt"`
 	Order     int    `json:"order"`
-	// Pinned says the tab's session is pinned: the server opens it again, in a tab of its own, each time it starts.
+	// Pinned says the tab's session is pinned: the server tries to open it again, in a tab of its own, each time it starts (one that
+	// needs a confirmation is left to the person).
 	Pinned bool `json:"pinned,omitempty"`
 }
 
@@ -739,7 +740,7 @@ type RecordedSession struct {
 	Plan bool    `json:"plan,omitempty"`
 	// Mailman says the last run had the mailman mode on (--mailman): a replay of it shows the mailman as on.
 	Mailman bool `json:"mailman,omitempty"`
-	// Pinned says the session is pinned: the server reopens it when it starts.
+	// Pinned says the session is pinned: the server tries to reopen it when it starts (one that needs a confirmation is left to the person).
 	Pinned bool `json:"pinned,omitempty"`
 }
 

@@ -140,3 +140,30 @@ func TestPrunePlanKeepsPinned(t *testing.T) {
 		}
 	}
 }
+
+// A pin list that cannot be read protects every session: prune plans no deletion rather than take it for an empty list.
+func TestPrunePlanRefusesAnUnreadablePinList(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("SLEIPNIR_HOME", "")
+	root := SessionsDir(home)
+	dir := filepath.Join(root, "20250101-000000-000001")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-90 * 24 * time.Hour)
+	log := filepath.Join(dir, "events.jsonl")
+	if err := os.WriteFile(log, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Chtimes(log, old, old)
+	_ = os.Chtimes(dir, old, old)
+	if err := os.WriteFile(PinsPath(home), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if p, err := PlanPruneDir(root, time.Now(), 30*24*time.Hour, 0, nil); err == nil {
+		t.Fatalf("a prune was planned over an unreadable pin list: %+v", p.Delete)
+	}
+	if list, err := ListRecordedDir(root, time.Now()); err != nil || len(list) != 1 {
+		t.Fatalf("the listing does not go on without the pin list: %v, %v", list, err)
+	}
+}

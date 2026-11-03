@@ -112,7 +112,7 @@ type webTab struct {
 	prevSID    string           // the session the tab had before its restart (sessionIDs)
 	trusted    *trust.Footprint // the project files the person confirmed for trustedDir, which the session uses (nil: none)
 	trustedDir string
-	pinned     bool   // the tab's session is pinned (web_pins.go)
+	pinned     bool   // the tab's session is pinned (web_pins.go); pinMu covers a change of it with the pin list's
 	pinnedSID  string // the session pinned was last read or set for
 	lastMeta   wire.MetaPatch
 	lastRoster []wire.RosterEntry
@@ -127,6 +127,9 @@ type webTab struct {
 	// against it): a model switch replaces the agent, the provider and the model without a lock of the session's own. Nothing that only
 	// reads takes it: meta and a restart read the tab's view instead.
 	sessMu sync.Mutex
+	// pinMu serialises the changes of the tab's pin (web_pins.go): the pin list's edit and pinned change together. It is taken before
+	// mu, never under it.
+	pinMu sync.Mutex
 	// pubMu makes the computing, the diffing and the sending of the tab's meta or roster frame one step: two of them cannot reach the
 	// pages in the opposite order of what they describe. A snapshot computes its meta under it too.
 	pubMu sync.Mutex

@@ -96,8 +96,8 @@ func cmdSessionsPrune(stdout, stderr io.Writer, args []string, now time.Time) er
 		printHelp(stderr, `usage: sleipnir sessions prune [flags]
 
 Deletes recorded sessions that are old: the event log, the blobs it points at and the checkpoints of each. The newest ones are
-kept whatever their age, and so is any session that was written to in the last ten minutes or is pinned (sleipnir web reopens a
-pinned session when it starts). Nothing is deleted without --yes; without it the sessions that would go are listed, with their size.
+kept whatever their age, and so is any session that was written to in the last ten minutes or is pinned (sleipnir web tries to
+reopen a pinned session when it starts). Nothing is deleted without --yes; without it the sessions that would go are listed, with their size.
 
 flags:
 `)

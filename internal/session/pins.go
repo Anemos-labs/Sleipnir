@@ -23,8 +23,9 @@ import (
 // PinsFile is the name of the pin list in the state directory.
 const PinsFile = "pins.json"
 
-// MaxPins bounds the pin list: a server opens at most this many sessions by itself.
-const MaxPins = 16
+// MaxPins bounds the pin list: a server opens at most this many sessions by itself, beside its first tab, so that the first tab and
+// every pin fit the sixteen tabs a server hosts.
+const MaxPins = 15
 
 // maxPinsBytes bounds the file that is read, maxPinField a pin's name, folder and verify command.
 const (
@@ -59,14 +60,15 @@ func pinsPathOf(root string) string {
 // JSON is an error. Entries with an id that is not a session id's shape, and repeats of an id, are dropped.
 func LoadPins(home string) ([]Pin, error) { return readPins(PinsPath(home)) }
 
-// pinnedIDs is the set of the pinned session ids under the sessions directory root; a list that cannot be read pins nothing.
-func pinnedIDs(root string) map[string]bool {
-	pins, _ := readPins(pinsPathOf(root))
+// pinnedIDs is the set of the pinned session ids under the sessions directory root, and the error of reading the list: a caller that
+// deletes must not take a list it could not read for an empty one.
+func pinnedIDs(root string) (map[string]bool, error) {
+	pins, err := readPins(pinsPathOf(root))
 	out := make(map[string]bool, len(pins))
 	for _, p := range pins {
 		out[p.ID] = true
 	}
-	return out
+	return out, err
 }
 
 // readPins reads the pin list at path (see LoadPins).

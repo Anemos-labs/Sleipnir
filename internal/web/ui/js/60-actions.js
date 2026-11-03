@@ -281,7 +281,10 @@
   act('renameSession', (id, name) => { const S = SL.sessions.get(id); name = String(name || '').trim(); if (!S || !name) return { ok: false }; if (why(S)) return refuse(S); return send(api().patch(tab(S), { name })); });
   /** Pin a live session (on true), unpin it (false), or toggle it (on left out): a pinned session is opened again, in a tab of its own,
    *  each time the server starts. The tab frame the server sends back carries the new state. */
-  act('pinSession', (id, on) => { const S = id ? SL.sessions.get(id) : SL.sessions.active; if (!S) return { ok: false, why: 'no session' }; if (why(S)) return refuse(S); const pinned = on === undefined ? !S.pinned : !!on; return send(api().put(tab(S) + '/pin', { pinned }), () => toast(pinned ? 'pinned: ' + S.name + ' opens again when sleipnir web starts' : 'unpinned ' + S.name, 'ok')); });
+  act('pinSession', (id, on) => { const S = id ? SL.sessions.get(id) : SL.sessions.active; if (!S) return { ok: false, why: 'no session' }; if (why(S)) return refuse(S); /* a toggle goes from the state last asked for, so that two quick toggles before the server's answer cancel out instead of asking twice for the same */
+    const cur = S.pinWant !== undefined ? S.pinWant : S.pinned, pinned = on === undefined ? !cur : !!on; S.pinWant = pinned;
+    const r = send(api().put(tab(S) + '/pin', { pinned }), () => toast(pinned ? 'pinned: sleipnir web reopens ' + S.name + ' when it starts' : 'unpinned ' + S.name, 'ok'));
+    r.done.then(() => { if (S.pinWant === pinned) delete S.pinWant; }); return r; });
   act('resumeSession', (recId, opt) => {
     const rec = recId === 'latest' ? SL.sessions.recorded.find(r => r.resumable) : SL.sessions.recorded.find(r => r.id === recId);
     if (!rec) return { ok: false, why: 'no recorded session to resume' }; if (!rec.resumable) return { ok: false, why: rec.id + ' cannot be resumed (older than the checkpoint window)' };
