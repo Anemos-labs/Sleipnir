@@ -1049,7 +1049,7 @@ func (s *Swarm) stalledWaitReason(agentID string) string {
 		"Review submissions with task get and accept or reject them; resolve blocked tasks or fail abandoned work."
 }
 
-// restartWaitReason refuses the manager's wait while a task that a resume reserved for its recovered worker (resumedLine) has not
+// restartWaitReason refuses the manager's wait while a task that a resume reserved for its recovered worker (ResumedLine) has not
 // been started again and that worker is idle: nothing starts it but a spawn, so the wait would only sleep beside it. In a resumed
 // team run the manager read "waiting for T1, T5 to restart" as the harness's job and waited while the two tasks sat still. A child
 // of a reserved parent is left out: the parent starts first.
@@ -1060,7 +1060,7 @@ func (s *Swarm) restartWaitReason(role string) string {
 	snap := s.Board.Snapshot()
 	reserved := map[string]bool{}
 	for _, t := range snap.Tasks {
-		if t.Status == StatusTodo && t.Owner != "" && t.Line == resumedLine {
+		if t.Status == StatusTodo && t.Owner != "" && t.Line == ResumedLine {
 			reserved[t.ID] = true
 		}
 	}

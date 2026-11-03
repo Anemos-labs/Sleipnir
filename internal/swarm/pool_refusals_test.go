@@ -539,7 +539,7 @@ func TestAChildOfAResumedPoolSaysHowToStartTheParent(t *testing.T) {
 	if err := r.sw.Board.mutate("harness", "requeue", func(d *draft) error { // what Board.RestoreOwners leaves after a resume
 		i := taskIdx(d.Snapshot, r.parent.ID)
 		p := d.Tasks[i]
-		p.Status, p.Line = StatusTodo, resumedLine
+		p.Status, p.Line = StatusTodo, ResumedLine
 		return d.put(i, p)
 	}); err != nil {
 		t.Fatal(err)
@@ -600,7 +600,7 @@ func TestTheManagersWaitAfterAResumeSaysWhatToStartAgain(t *testing.T) {
 		for _, id := range []string{r.parent.ID, child.ID} {
 			i := taskIdx(d.Snapshot, id)
 			p := d.Tasks[i]
-			p.Status, p.Owner, p.Line = StatusTodo, r.lead, resumedLine
+			p.Status, p.Owner, p.Line = StatusTodo, r.lead, ResumedLine
 			if err := d.put(i, p); err != nil {
 				return err
 			}

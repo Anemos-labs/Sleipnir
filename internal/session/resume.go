@@ -302,21 +302,14 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 		switch e.Type {
 		case events.TypeBoardOp:
 			var op struct {
-				Op, Agent, Task, Status, Title string
-				Files                          []string
-				Closure                        swarm.Closure
+				Op, Agent, Task, Status, Title, Line string
+				Files, Tasks                         []string
+				Closure                              swarm.Closure
 			}
 			if err := json.Unmarshal(e.Data, &op); err != nil {
 				return err
 			}
-			if op.Op == "requeue" && op.Task != "" {
-				delete(began, op.Task) // back on the board: the next assignment's work starts afresh
-			}
-			if op.Task != "" && op.Status == string(swarm.StatusDoing) {
-				if _, ok := began[op.Task]; !ok {
-					began[op.Task] = e.TS
-				}
-			}
+			trackBegan(began, op.Op, op.Task, op.Status, op.Line, op.Tasks, e.TS)
 			if op.Op == "requeue" && op.Task != "" && op.Title != "" {
 				// A revision (a requeue that restates the task) lands what the task covered and what it covers now.
 				reviewOps = append(reviewOps, swarm.ReviewOp{Task: op.Task, Land: true, Files: append(slices.Clone(scopes[op.Task]), op.Files...)})
@@ -367,6 +360,10 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 		}
 	}
 	for _, task := range prev.Tasks {
+		if at, ok := began[task.ID]; ok && task.Status == swarm.StatusDoing {
+			// Work still in flight keeps the start of its assignment: the team's task bound counts from there, not from the resume.
+			reviewOps = append(reviewOps, swarm.ReviewOp{Task: task.ID, Began: at, Owner: task.Owner})
+		}
 		if task.Owner != "" && task.Owner != managerAgent && task.Status != swarm.StatusDone && task.Status != swarm.StatusFailed {
 			// A prepare record and an owned task recover the window before roster
 			// publication. Once published, only current roster membership counts:
@@ -472,4 +469,26 @@ func (s *Session) EarlierSessions(n int) []string {
 func (s *Session) CheckResume(spec string) error {
 	_, err := ResolveResume(s.opts.Home, s.opts.Root, spec)
 	return err
+}
+
+// trackBegan keeps, from one board op of the log (logged at ts), when each task's current assignment was first started. A requeue
+// puts work back on the board, so the next assignment starts afresh: one task's, or a worker's tasks released together
+// (RequeueOwned). A resume's own requeue (swarm.ResumedLine) is not one: the work it puts back is the work in flight, which keeps
+// its start.
+func trackBegan(began map[string]time.Time, op, task, status, line string, tasks []string, ts time.Time) {
+	if op == "requeue" {
+		if task != "" {
+			delete(began, task)
+		}
+		if line != swarm.ResumedLine {
+			for _, id := range tasks {
+				delete(began, id)
+			}
+		}
+	}
+	if task != "" && status == string(swarm.StatusDoing) {
+		if _, ok := began[task]; !ok {
+			began[task] = ts
+		}
+	}
 }

@@ -76,8 +76,11 @@ type ReviewOp struct {
 	Land    bool
 	Files   []string
 	// Began is when the task's current assignment was first started and At when the op was logged, zero when not known: the
-	// duration of the work a review is measured against (reviewOverrun) and the wait of a submission come back with them.
+	// duration of the work a review is measured against (reviewOverrun) and the wait of a submission come back with them. An op
+	// with Began and Owner alone is work still in flight: its assignment's start, from which the team's task bound (task_overrun)
+	// counts when Owner runs on it again.
 	Began, At time.Time
+	Owner     string
 }
 
 // RestoreReviewGate replays, in log order, the changes that fed the review gate
@@ -91,6 +94,10 @@ func (s *Swarm) RestoreReviewGate(prev *Snapshot, ops []ReviewOp) {
 		return
 	}
 	for _, op := range ops {
+		if op.Status == "" && !op.Land && op.Owner != "" && !op.Began.IsZero() {
+			s.review.restoreInFlight(op.Task, op.Owner, op.Began)
+			continue
+		}
 		if op.Land {
 			s.review.mu.Lock()
 			s.review.landLocked(op.Task, op.Files, 0)
@@ -102,7 +109,7 @@ func (s *Swarm) RestoreReviewGate(prev *Snapshot, ops []ReviewOp) {
 			continue
 		}
 		if !op.Began.IsZero() {
-			s.review.noteBegan(t.ID, t.Rev, op.Began)
+			s.review.noteBegan(t.ID, t.Rev, op.Began, "")
 		}
 		switch op.Status {
 		case StatusReview:
