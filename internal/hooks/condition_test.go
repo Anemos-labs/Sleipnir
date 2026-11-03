@@ -78,6 +78,56 @@ func TestIfConditionResolvesRelativePathsAgainstTheWorkingDirectory(t *testing.T
 	}
 }
 
+// A condition relative to the project holds inside an agent's own tree of it, by a relative or an absolute name.
+func TestIfConditionHoldsInsideAnAgentsTree(t *testing.T) {
+	r := newRunner(t, settings(t, PreToolUse, group{hooks: []hookSpec{cmdHook(marker("ran.txt")).when("Edit(src/**)")}}))
+	r.TreeParents = []string{t.TempDir()}
+	tree := filepath.Join(r.TreeParents[0], "worker-1")
+	if err := os.MkdirAll(filepath.Join(tree, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, path := range map[string]string{"relative": "src/a.go", "absolute": filepath.Join(tree, "src", "a.go")} {
+		_ = os.Remove(filepath.Join(r.Dir, "ran.txt"))
+		in, _ := json.Marshal(map[string]string{"path": path})
+		run(t, r, Event{Name: PreToolUse, Tool: "write", Input: in, Cwd: r.Dir, ToolDir: tree})
+		if !ran(r.Dir, "ran.txt") {
+			t.Errorf("%s name of a guarded file in the tree: the hook did not run", name)
+		}
+	}
+	_ = os.Remove(filepath.Join(r.Dir, "ran.txt"))
+	run(t, r, Event{Name: PreToolUse, Tool: "write", Input: json.RawMessage(`{"path": "docs/a.md"}`), Cwd: r.Dir, ToolDir: tree})
+	if ran(r.Dir, "ran.txt") {
+		t.Error("the condition held for a file outside src/")
+	}
+}
+
+// A shell command's relative paths mean what they mean where the shell is, and the hook itself runs in the project.
+func TestIfConditionReadsAShellCommandWhereTheShellIs(t *testing.T) {
+	r := newRunner(t, settings(t, PreToolUse, group{hooks: []hookSpec{cmdHook(marker("ran.txt")).when("Read(secret/**)")}}))
+	sub := filepath.Join(r.Dir, "secret")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	run(t, r, Event{Name: PreToolUse, Tool: "bash", Input: json.RawMessage(`{"command": "cat key.pem"}`), Cwd: r.Dir})
+	if ran(r.Dir, "ran.txt") {
+		t.Fatal("key.pem at the project root is not under secret/")
+	}
+	run(t, r, Event{Name: PreToolUse, Tool: "bash", Input: json.RawMessage(`{"command": "cat key.pem"}`), Cwd: r.Dir, ToolDir: sub})
+	if !ran(r.Dir, "ran.txt") {
+		t.Error("the shell is in secret/, and the condition was judged elsewhere")
+	}
+	payload, err := r.payload(PreToolUse, Event{Tool: "bash", Cwd: r.Dir, ToolDir: sub})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m struct {
+		Cwd string `json:"cwd"`
+	}
+	if err := json.Unmarshal(payload, &m); err != nil || m.Cwd != sub {
+		t.Errorf("payload cwd %q (%v), want %q", m.Cwd, err, sub)
+	}
+}
+
 // A hook meant for one command must never answer for the others.
 func TestIfConditionGuardsPermissionAnswers(t *testing.T) {
 	allow := heredoc(`{"hookSpecificOutput":{"permissionDecision":"allow","permissionDecisionReason":"read-only git"}}`)

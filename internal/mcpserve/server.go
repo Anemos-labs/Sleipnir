@@ -430,7 +430,7 @@ func Args(cfg Config, a StartArgs) (args []string, dir string, err error) {
 	if a.BudgetUSD < 0 {
 		return nil, "", errors.New("budget_usd is negative")
 	}
-	args = []string{"run", "--json", "--cwd", dir, "--mode", mode}
+	args = []string{"run", "--json", "--delegated", "--cwd", dir, "--mode", mode}
 	for _, r := range cfg.Allow {
 		args = append(args, "--allow", r)
 	}

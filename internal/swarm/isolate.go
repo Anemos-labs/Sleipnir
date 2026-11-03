@@ -811,6 +811,16 @@ func (s *Swarm) integrateLockedTip(ctx context.Context, commit bool, expectedTip
 		}
 	}
 	sort.Strings(rep.Files)
+	// A deny rule that names the checkout's file does not match the worker tree's copy of it, so what the worker could edit stops here.
+	if g, ok := s.deps.Perm.(interface{ DeniedWrite(paths []string) string }); ok {
+		abs := make([]string, 0, len(changed))
+		for _, p := range changed {
+			abs = append(abs, filepath.Join(repo.Root(), filepath.FromSlash(p)))
+		}
+		if rule := g.DeniedWrite(abs); rule != "" {
+			return s.notApplied(rep, iso, "it changes a file the deny rule "+rule+" protects")
+		}
+	}
 	applied := func() {}
 	if iso.Applying != nil {
 		if fn := iso.Applying(); fn != nil {

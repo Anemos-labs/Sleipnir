@@ -216,6 +216,10 @@ type Event struct {
 	SessionID   string
 	// Cwd is the agent's working directory; hooks run there.
 	Cwd string
+	// ToolDir is the directory a tool event's call acts from, when that is not Cwd: an agent's own tree, or where its shell
+	// went. Its relative paths mean what they mean there, so the condition and the payload's cwd are read there; the hook
+	// still runs in Cwd, where the project's own hook scripts are.
+	ToolDir string
 	// Extra adds event-specific fields to the payload: "prompt" (UserPromptSubmit),
 	// "source" (SessionStart: startup, resume, clear or compact), "reason"
 	// (SessionEnd), "message" and "notification_type" (Notification), "trigger"

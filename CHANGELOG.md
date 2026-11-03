@@ -7,6 +7,19 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `sleipnir mcp serve` starts each run with the new `sleipnir run --delegated`.
+  A call's `verify` is judged as the run's own shell tool would judge it, so a
+  job whose command the run may not execute ends at once with the reason; in
+  the `default` mode that takes an `--allow` rule on the server. A call's
+  `resume` brings back the session's plan mode and deny and ask rules, not a
+  wider mode or its allow rules.
+
+- Integration into the checkout refuses a result that changes a file a deny
+  rule protects, and keeps it on its branch. `skill` is judged by the permission
+  policy, so a deny or ask rule about it holds. A hook's `if` condition reads
+  relative paths where the tool acts from and applies inside an agent's tree,
+  and the `cwd` of a tool event's payload is that directory.
+
 - `bash_output` takes an optional `wait`: the call blocks up to that many
   seconds (at most 120) until the background job prints something new or
   ends. A read of a running job with nothing new says so and points to
