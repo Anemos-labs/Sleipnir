@@ -317,36 +317,36 @@ func joinsIntoExpansion(body string) bool {
 		return false
 	}
 	joined := strings.ReplaceAll(body, "\\\n", "")
-	for _, m := range []string{"$(", "${", "`", "$[", "$'", `$"`} {
+	// ($' and $" are no quotes in a here-document: joined, they are text as they were)
+	for _, m := range []string{"$(", "${", "`", "$["} {
 		if strings.Count(joined, m) != strings.Count(body, m) {
 			return true
 		}
 	}
 	// a continuation inside an expansion that is open where it falls joins the expansion's own text ($((PA\\\nTH=0)) sets PATH):
 	// the scan read the halves as other names. Opens and closes are counted along each logical line.
-	open := 0
+	// A bracket inside an open expansion nests in it ($(( (1), PA\\\nTH=0 )) is still open after the "(1)"); a backtick toggles.
+	open, tick := 0, false
 	for i := 0; i < len(body); i++ {
 		switch c := body[i]; {
 		case c == '$' && i+1 < len(body) && (body[i+1] == '(' || body[i+1] == '{' || body[i+1] == '['):
 			open++
 			i++
 		case c == '`':
-			if open > 0 {
-				open--
-			} else {
-				open++
-			}
+			tick = !tick
+		case (c == '(' || c == '{' || c == '[') && open > 0:
+			open++
 		case c == ')' || c == '}' || c == ']':
 			if open > 0 {
 				open--
 			}
 		case c == '\\' && i+1 < len(body) && body[i+1] == '\n':
-			if open > 0 {
+			if open > 0 || tick {
 				return true
 			}
 			i++
 		case c == '\n':
-			open = 0
+			open, tick = 0, false
 		}
 	}
 	return false

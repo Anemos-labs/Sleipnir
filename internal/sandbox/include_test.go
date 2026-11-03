@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -133,6 +134,30 @@ func TestARepositoryWithAnIncludeBehindALinkedDirectoryIsNotMounted(t *testing.T
 	if _, err := mountPaths([]string{p}); err == nil || !strings.Contains(err.Error(), "symbolic link") {
 		t.Errorf("a repository with an include behind a linked directory was mounted: %v", err)
 	}
+	// a link to a directory inside the project is refused as well: the container can replace the link itself
+	inside := filepath.Join(p, "real")
+	if err := os.MkdirAll(inside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(inside, "id"), []byte("[core]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(p, "lnk")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(inside, filepath.Join(p, "lnk")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mountPaths([]string{p}); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+		t.Errorf("a repository with an include behind a link inside the project was mounted: %v", err)
+	}
+	// through the real directory, the same include is guarded and the repository mounted
+	if err := os.WriteFile(filepath.Join(p, ".git", "config"), []byte("[include]\n\tpath = ../real/id\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mountPaths([]string{p}); err != nil {
+		t.Errorf("a repository with an include in a plain directory: %v", err)
+	}
 }
 
 // The docker command the helper runs on the host is never one inside a directory the sandbox mounts writable.
@@ -154,5 +179,26 @@ func TestTheDockerCommandMustBeOutsideTheMounts(t *testing.T) {
 	}
 	if err := dockerOutside(filepath.Join(other, "dlink"), []string{proj}); err == nil {
 		t.Error("a link to a docker inside the project was taken")
+	}
+}
+
+// Start refuses a docker command inside a mounted directory before it runs it at all: the check comes ahead of the version
+// probe and the image pull, which would otherwise run a command the project put on PATH.
+func TestStartRefusesADockerInTheMountsBeforeRunningIt(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a sandbox needs a Unix host")
+	}
+	proj := t.TempDir()
+	ran := filepath.Join(t.TempDir(), "ran")
+	if err := os.WriteFile(filepath.Join(proj, "docker"), []byte("#!/bin/sh\ntouch '"+ran+"'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", proj)
+	_, err := Start(context.Background(), Spec{Engine: "docker", Image: "alpine:3"}, []string{proj}, proj, Limits{})
+	if err == nil || !strings.Contains(err.Error(), "will not use the docker command") {
+		t.Errorf("Start = %v, want the docker command refused", err)
+	}
+	if _, err := os.Stat(ran); err == nil {
+		t.Error("the docker command inside the mounts was run")
 	}
 }

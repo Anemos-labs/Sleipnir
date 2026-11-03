@@ -121,7 +121,15 @@ func (r *Redactor) nestedJSON(s string) (string, bool) {
 	if len(t) < 2 || (t[0] != '{' || t[len(t)-1] != '}') && (t[0] != '[' || t[len(t)-1] != ']') || !json.Valid([]byte(s)) {
 		return s, false
 	}
-	return string(r.jsonDoc(json.RawMessage(s), true)), true
+	red := string(r.jsonDoc(json.RawMessage(s), true))
+	if strings.Contains(red, "-----BEGIN") && pemFullRE.MatchString(red) {
+		// a private key split across values (["-----BEGIN ... KEY-----", "MII...", "-----END ... KEY-----"]) is in none of them:
+		// the document is redacted as text, as a scan of the whole string reads the key from BEGIN to END
+		if out, changed := r.Changed(s); changed {
+			return out, true
+		}
+	}
+	return red, true
 }
 
 // isJSONKey reports whether the string ending just before position end is an

@@ -238,6 +238,17 @@ func TestProgressPushKeepsThePersonsOwnPrograms(t *testing.T) {
 	if strings.Contains(got, "evil") {
 		t.Errorf("the repository's program survived: %q", got)
 	}
+	// the clear the repository's helper needs clears every helper: the person's per-URL one (gh auth setup-git) is put back too
+	run("config", "--global", "credential.https://github.com.helper", "!gh auth git-credential")
+	own, err = personalPrograms(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = strings.Join(own, " ")
+	if !strings.Contains(got, "-c credential.helper= -c credential.helper=store -c credential.https://github.com.helper=!gh auth git-credential") ||
+		strings.Count(got, "credential.helper=") != 2 {
+		t.Errorf("the person's helpers after the clear: %q", got)
+	}
 	// a remote whose name holds a blank is read whole, and one whose name holds "=" (which -c cannot name) stops the push
 	run("config", "remote.a b.receivepack", "evil")
 	if own, err := personalPrograms(context.Background(), dir); err != nil || !strings.Contains(strings.Join(own, " "), "remote.a b.receivepack=git-receive-pack") {

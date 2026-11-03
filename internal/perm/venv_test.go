@@ -21,11 +21,12 @@ func installedPython(t *testing.T) string {
 		if err != nil {
 			continue
 		}
-		if real, err := filepath.EvalSymlinks(p); err == nil && isNative(real) {
+		// one below a directory others can write is not trusted (the environment asks), so the tests that expect a yes skip
+		if real, err := filepath.EvalSymlinks(p); err == nil && isNative(real) && trustedInterpreter(real) {
 			return real
 		}
 	}
-	t.Skip("no installed Python interpreter that is a native executable")
+	t.Skip("no installed Python interpreter that is a native executable in directories only root or this user can write")
 	return ""
 }
 
@@ -602,5 +603,15 @@ func TestAnInterpreterBelowADirectoryOthersCanWriteIsRefused(t *testing.T) {
 	}
 	if d := r.check("be-1", r.wtA, ".venv/bin/python -m pytest -q"); outcome(d) == "allow" || !strings.Contains(d.Reason, "can change") {
 		t.Errorf("an interpreter below a directory everyone may write was run: %s (%q)", outcome(d), d.Reason)
+	}
+}
+
+// A group write counts only for a group whose members could act as root anyway: root's own, and on macOS admin.
+func TestRootGroupIsRootsOrMacOSAdmin(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("ownership is not checked on Windows")
+	}
+	if !rootGroup(0) || rootGroup(1000) || rootGroup(80) != (runtime.GOOS == "darwin") {
+		t.Errorf("rootGroup: 0=%v 1000=%v 80=%v on %s", rootGroup(0), rootGroup(1000), rootGroup(80), runtime.GOOS)
 	}
 }

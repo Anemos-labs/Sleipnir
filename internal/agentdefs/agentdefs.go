@@ -236,7 +236,11 @@ func (l *loader) entry(src mdfile.Source, e os.DirEntry) []Warning {
 	// the extension and the credentials check hold for the file the read opened, as well as for the link checked above: a link
 	// swapped between the two is caught here
 	parsed, err := mdfile.ReadDoc(path, mdfile.ReadOpts{MaxBytes: MaxFileBytes, Contain: src.Contain, Ext: ".md"})
-	if err == nil && parsed.Real != "" && mdfile.SensitivePath(filepath.ToSlash(parsed.Real)) != "" {
+	resolved := parsed.Real
+	if err != nil {
+		resolved, _ = mdfile.Canonical(path) // a read that failed has no Real, and its error can quote the file
+	}
+	if resolved != "" && mdfile.SensitivePath(filepath.ToSlash(resolved)) != "" {
 		return []Warning{mdfile.Skipf(display, "", "the link names a file that is not an agent definition; skipped")}
 	}
 	var extErr *mdfile.ExtError

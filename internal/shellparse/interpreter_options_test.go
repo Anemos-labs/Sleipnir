@@ -40,6 +40,10 @@ func TestAHeredocContinuationThatJoinsASubstitutionIsNotParsed(t *testing.T) {
 		"cat <<EOF\n`\\\ntouch x`\nEOF":              false, // inside an open substitution: not judged
 		"cat > Dockerfile <<EOF\nRUN a \\\n  b\nEOF": true,
 		"cat <<'EOF'\n$\\\n(touch /tmp/x)\nEOF":      true, // quoted: nothing is expanded
+		"cat <<EOF\n$((PA\\\nTH=0))\nEOF":            false,
+		"cat <<EOF\n$(( (1), PA\\\nTH=0 ))\nEOF":     false, // the inner (1) does not close the expansion
+		"cat <<EOF\n$\\\n'hello'\nEOF":               true,  // $' is no quote in a here-document
+		"cat <<EOF\n$\\\n\"hello\"\nEOF":             true,
 	} {
 		if an := Parse(src); an.Parsed != parsed {
 			t.Errorf("%q: Parsed %v, want %v (%s)", src, an.Parsed, parsed, an.Problem)

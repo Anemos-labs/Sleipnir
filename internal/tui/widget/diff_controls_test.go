@@ -11,10 +11,17 @@ func TestDiffTextShowsControlCharacters(t *testing.T) {
 		"bell\x07":                          "bell␇",
 		"c1\u009b31m":                       "c1⟨9b⟩31m",
 		`literal \x1b[31m`:                  `literal \x1b[31m`,
+		"pic\u241b[31m":                     "pic⟨241b⟩[31m", // a ␛ written in the file is not an ESC
+		"c1 ⟨9b⟩":                           "c1 ⟨27e8⟩9b⟩",  // nor is ⟨9b⟩ written as such a C1 control
+		"a\u200bb":                          "a⟨200b⟩b",      // an invisible character is shown, not dropped
+		"x\u202ey":                          "x⟨202e⟩y",
 	} {
 		if got := diffText(in, 4); got != want {
 			t.Errorf("diffText(%q) = %q, want %q", in, got, want)
 		}
+	}
+	if diffText("\x1b", 4) == diffText("\u241b", 4) || diffText("\u009b", 4) == diffText("⟨9b⟩", 4) {
+		t.Error("a drawn control looks like text written in the file")
 	}
 	if diffText("\x1b[31m", 4) == diffText(`\x1b[31m`, 4) {
 		t.Error("an ESC and the text \\x1b look the same")

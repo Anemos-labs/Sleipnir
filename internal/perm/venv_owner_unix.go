@@ -5,6 +5,7 @@ package perm
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 )
@@ -28,11 +29,21 @@ func trustedInterpreter(target string) bool {
 		if !ok || st.Uid != 0 && st.Uid != uid {
 			return false
 		}
-		if fi.Mode().Perm()&0o022 != 0 && (first || fi.Mode()&os.ModeSticky == 0) {
+		w := fi.Mode().Perm() & 0o022
+		if w&0o020 != 0 && rootGroup(st.Gid) {
+			w &^= 0o020 // a group whose members can act as root anyway (Homebrew's admin-writable /opt/homebrew)
+		}
+		if w != 0 && (first || fi.Mode()&os.ModeSticky == 0) {
 			return false
 		}
 		if d := filepath.Dir(p); d == p {
 			return true
 		}
 	}
+}
+
+// rootGroup reports whether a group's members can already act as root, so that its write to a path gives no one a right they do
+// not have: root's own group, and on macOS admin (gid 80), whose members sudo by default and own Homebrew's tree.
+func rootGroup(gid uint32) bool {
+	return gid == 0 || runtime.GOOS == "darwin" && gid == 80
 }

@@ -119,10 +119,24 @@ type Box struct {
 
 // Available reports whether a container engine answers: the docker command is on PATH and its daemon replies.
 func Available(ctx context.Context) error {
+	bin, err := lookDocker()
+	if err != nil {
+		return err
+	}
+	return availableAt(ctx, bin)
+}
+
+// lookDocker is the docker command on PATH.
+func lookDocker() (string, error) {
 	bin, err := exec.LookPath("docker")
 	if err != nil {
-		return errors.New("the docker command is not installed (a sandbox needs Docker or a compatible engine with the docker command)")
+		return "", errors.New("the docker command is not installed (a sandbox needs Docker or a compatible engine with the docker command)")
 	}
+	return bin, nil
+}
+
+// availableAt is Available for the docker command at bin.
+func availableAt(ctx context.Context, bin string) error {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	out, err := exec.CommandContext(ctx, bin, "version", "--format", "{{.Server.Version}}").CombinedOutput()
@@ -151,22 +165,6 @@ func Start(ctx context.Context, spec Spec, mounts []string, workdir string, lim 
 	if runtime.GOOS == "windows" {
 		return nil, errors.New("a sandbox mounts the project at the same path inside the container, which needs a Unix host")
 	}
-	if err := Available(ctx); err != nil {
-		return nil, err
-	}
-	bin, _ := exec.LookPath("docker")
-	image := spec.Image
-	var tc Toolchain
-	if image == "" {
-		tc = Detect(workdir)
-		image = tc.Image
-	}
-	if err := checkImage(image); err != nil {
-		return nil, err
-	}
-	if err := ensureImage(ctx, bin, image); err != nil {
-		return nil, err
-	}
 	if lim.PIDs <= 0 {
 		lim.PIDs = DefaultLimits.PIDs
 	}
@@ -180,8 +178,28 @@ func Start(ctx context.Context, spec Spec, mounts []string, workdir string, lim 
 	if err != nil {
 		return nil, err
 	}
-	// the helper runs this docker on the host for every command: one inside a mounted directory could be replaced from the container
+	bin, err := lookDocker()
+	if err != nil {
+		return nil, err
+	}
+	// the helper runs this docker on the host for every command, and Start runs it before any: one inside a mounted directory
+	// could be replaced from the container, so it is refused before it is ever run
 	if err := dockerOutside(bin, paths); err != nil {
+		return nil, err
+	}
+	if err := availableAt(ctx, bin); err != nil {
+		return nil, err
+	}
+	image := spec.Image
+	var tc Toolchain
+	if image == "" {
+		tc = Detect(workdir)
+		image = tc.Image
+	}
+	if err := checkImage(image); err != nil {
+		return nil, err
+	}
+	if err := ensureImage(ctx, bin, image); err != nil {
 		return nil, err
 	}
 	name := "sleipnir-sbx-" + randomHex(6)
@@ -404,9 +422,9 @@ func gitMounts(paths []string) []gitMount {
 		// A file the configuration includes from inside the project is configuration the host's git reads as much as
 		// .git/config itself (a core.sshCommand for the progress push): it is guarded the same way.
 		for _, inc := range projectIncludes(filepath.Join(gd, "config"), paths) {
-			if !dirInside(inc, paths) {
-				// through a link to a directory outside the project: the container could put a directory of its own in the link's
-				// place and write the file the host's git reads. Marked as a link, which keeps the repository from being mounted.
+			if linkAbove(inc, paths) || !dirInside(inc, paths) {
+				// through a link to a directory, outside the project or in it: the container could put a directory of its own in the
+				// link's place and write the file the host's git reads. Marked as a link, which keeps the repository from being mounted.
 				out = append(out, gitMount{inc, true, true})
 				continue
 			}
@@ -439,6 +457,32 @@ func dockerOutside(bin string, paths []string) error {
 		return fmt.Errorf("the sandbox will not use the docker command at %s: it is inside a directory the sandbox mounts", bin)
 	}
 	return nil
+}
+
+// linkAbove reports whether a directory between the mounted path p is under and p itself is a link (or cannot be read): a link
+// there could be replaced from the container. A p under none of paths is reported too.
+func linkAbove(p string, paths []string) bool {
+	dir := filepath.Clean(filepath.Dir(p))
+	for _, root := range paths {
+		root = filepath.Clean(root)
+		rel, err := filepath.Rel(root, dir)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		cur := root
+		for _, seg := range strings.Split(rel, string(filepath.Separator)) {
+			if seg == "." || seg == "" {
+				continue
+			}
+			cur = filepath.Join(cur, seg)
+			fi, err := os.Lstat(cur)
+			if err != nil || fi.Mode()&os.ModeSymlink != 0 {
+				return true
+			}
+		}
+		return false
+	}
+	return true
 }
 
 // dirInside reports whether the directory of p, with every link in it followed, is inside one of paths (also followed): the

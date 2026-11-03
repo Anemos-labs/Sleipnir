@@ -53,6 +53,8 @@ func TestWithoutUserinfoTakesASchemelessProxy(t *testing.T) {
 		"localhost,.internal":                      "localhost,.internal",
 		"http://u:p%zz@proxy:1":                    "http://proxy:1",
 		"user:pa55@proxy:3128?next=http://example": "proxy:3128?next=http://example",
+		"http:///user:pa55@proxy:3128":             "http://proxy:3128", // no authority for url.Parse, credentials for curl
+		"http://proxy:3128/?to=a@b":                "http://proxy:3128/?to=a@b",
 	} {
 		if got := withoutUserinfo(in); got != want {
 			t.Errorf("withoutUserinfo(%q) = %q, want %q", in, got, want)

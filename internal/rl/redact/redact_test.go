@@ -614,3 +614,15 @@ func TestJSONInsideAStringRedactsKeysAndChecksTheSameBytes(t *testing.T) {
 		}
 	}
 }
+
+// A private key split across the values of a document inside a string is in none of them alone: it is redacted as the scan of
+// the whole string finds it, from BEGIN to END.
+func TestJSONInsideAStringRedactsAKeySplitAcrossValues(t *testing.T) {
+	r := testRedactor()
+	body := "MIIEowIBAAKCAQEAu1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gun"
+	inner, _ := json.Marshal([]string{"-----BEGIN RSA PRIVATE KEY-----", body, "-----END RSA PRIVATE KEY-----"})
+	outer, _ := json.Marshal(map[string]string{"arguments": string(inner)})
+	if out := r.JSON(outer); strings.Contains(string(out), body) || !json.Valid(out) {
+		t.Errorf("%s", out)
+	}
+}

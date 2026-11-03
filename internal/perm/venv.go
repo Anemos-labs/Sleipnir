@@ -609,7 +609,7 @@ func linkOut(dir string, limit int, escapes func(string) bool) (at, why string) 
 		if n++; n > limit {
 			return errTooMany
 		}
-		if d.Type()&fs.ModeSymlink != 0 && escapes(p) {
+		if d.Type()&(fs.ModeSymlink|fs.ModeIrregular) != 0 && escapes(p) { // a Windows junction reads as irregular
 			at, why = p, "leads outside the environment"
 			return fs.SkipAll
 		}

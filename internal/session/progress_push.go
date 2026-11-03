@@ -99,6 +99,7 @@ func personalPrograms(ctx context.Context, dir string) ([]string, error) {
 	own = append(own, read("--global")...)
 	var out []string
 	done := map[string]bool{}
+	helpers := false
 	for _, l := range local {
 		k := l[0]
 		if done[k] {
@@ -112,11 +113,25 @@ func personalPrograms(ctx context.Context, dir string) ([]string, error) {
 			}
 		}
 		switch {
-		case strings.HasPrefix(k, "credential."):
-			out = append(out, "-c", k+"=") // an empty helper clears the list: then the person's own, in their order
-			for _, v := range vals {
-				out = append(out, "-c", k+"="+v)
+		case credentialHelper(k):
+			// an empty helper clears the whole list, whatever URL each entry was set for: one clear, then every helper of the
+			// person's own, generic and per-URL, in their order
+			if !helpers {
+				helpers = true
+				out = append(out, "-c", "credential.helper=")
+				for _, o := range own {
+					if credentialHelper(o[0]) {
+						out = append(out, "-c", o[0]+"="+o[1])
+					}
+				}
 			}
+			continue
+		case strings.HasPrefix(k, "credential."):
+			v := ""
+			if len(vals) > 0 {
+				v = vals[len(vals)-1]
+			}
+			out = append(out, "-c", k+"="+v)
 			continue
 		case len(vals) > 0:
 			out = append(out, "-c", k+"="+vals[len(vals)-1])
@@ -391,4 +406,10 @@ func shortSHA(sha string) string {
 		return sha[:12]
 	}
 	return sha
+}
+
+// credentialHelper reports whether a configuration key names a credential helper: credential.helper, or
+// credential.<url>.helper.
+func credentialHelper(k string) bool {
+	return k == "credential.helper" || strings.HasPrefix(k, "credential.") && strings.HasSuffix(k, ".helper")
 }

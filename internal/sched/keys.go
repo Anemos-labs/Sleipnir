@@ -129,6 +129,13 @@ func withoutUserinfo(v string) string {
 		return v
 	}
 	if u.User == nil {
+		if u.Host == "" {
+			// http:///user:pass@proxy:3128 has no authority for url.Parse, but curl takes user:pass as the proxy's credentials
+			if at := strings.LastIndexByte(v, '@'); at >= 0 {
+				scheme, _, _ := strings.Cut(v, "://")
+				return scheme + "://" + v[at+1:]
+			}
+		}
 		return v
 	}
 	u.User = nil

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -973,4 +974,33 @@ func TestGrepSkipsCredentialDirectoriesBelowItsRoot(t *testing.T) {
 			t.Errorf("a search inside the directory itself found nothing:\n%s", inside)
 		}
 	})
+}
+
+// Ripgrep is told to leave the credential directories alone, so it never opens what they hold: the filter after it is a
+// backstop, not the guard.
+func TestRipgrepIsKeptOutOfCredentialDirectories(t *testing.T) {
+	rg, err := exec.LookPath("rg")
+	if err != nil || runtime.GOOS == "windows" {
+		t.Skip("needs ripgrep and a POSIX shell")
+	}
+	log := filepath.Join(t.TempDir(), "args")
+	wrapper := filepath.Join(t.TempDir(), "rg")
+	if err := os.WriteFile(wrapper, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" >> '"+log+"'\nexec '"+rg+"' \"$@\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	env := testEnv(t)
+	tree(t, env.Cwd, map[string]string{"bob/.SSH/id_rsa": "secret\n", "bob/notes.txt": "secret\n"})
+	got := grep(t, &Grep{RipgrepPath: wrapper}, env, map[string]any{"pattern": "secret", "glob": "**/*", "output_mode": "files_with_matches"})
+	args, _ := os.ReadFile(log)
+	for _, want := range []string{"--iglob=!**/.ssh", "--iglob=!**/.config/gcloud"} {
+		if !strings.Contains(string(args), want) {
+			t.Errorf("ripgrep was not given %s: %s", want, args)
+		}
+	}
+	if strings.Index(string(args), "--iglob=!**/.ssh") < strings.Index(string(args), "--glob=") {
+		t.Errorf("the credential globs come before the caller's: %s", args)
+	}
+	if strings.Contains(got, "id_rsa") || !strings.Contains(got, "notes.txt") {
+		t.Errorf("results:\n%s", got)
+	}
 }
