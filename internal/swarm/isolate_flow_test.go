@@ -1232,3 +1232,40 @@ func TestTheManagerHearsOfARewriteTheWorkersGateMade(t *testing.T) {
 	}
 	t.Fatal("the manager was not told that the verify rewrote a.txt")
 }
+
+// In an isolated team the shared tree is the integration branch, not the person's checkout, which does not change until
+// delivery. Read there, every merge after an accepted review looked like no change, so the review stood for each product
+// change merged after it and a later review was held to "no merge … 0 minutes".
+func TestAProductChangeMergedAfterAnAcceptedReviewIsDueAReviewInAnIsolatedTeam(t *testing.T) {
+	sc := script{
+		"be-1": {act(writeCall("a.txt", "first change\n")), act(doneCall("T1", "added a"))},
+		"be-2": {act(writeCall("b.txt", "product change\n")), act(doneCall("T2", "added b"))},
+	}
+	r := newIsoRig(t, isoOpts{verify: true, cfg: Config{MaxWriters: 4}}, sc.fn())
+	if _, err := r.sw.StartManager(); err != nil {
+		t.Fatal(err)
+	}
+	// A first merge, then a review of it that is accepted.
+	r.mustSpawn("backend", "add a", "a.txt")
+	r.waitStatus("T1", StatusReview)
+	if res := r.accept("T1"); res.IsError {
+		t.Fatal(res.Text)
+	}
+	review := Task{ID: "R1", Role: ReviewerRole}
+	r.sw.noteReviewBegan(review)
+	if err := r.sw.reviewSubmission(review)(nil, review); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.noteAccepted(review)
+	if _, ids := r.sw.review.unreviewedWork(); len(ids) != 0 {
+		t.Fatalf("unreviewed after the accepted review: %v", ids)
+	}
+	r.mustSpawn("backend", "add b", "b.txt")
+	r.waitStatus("T2", StatusReview)
+	if res := r.accept("T2"); res.IsError {
+		t.Fatal(res.Text)
+	}
+	if _, ids := r.sw.review.unreviewedWork(); !slices.Contains(ids, "T2") {
+		t.Fatalf("after a product change merged past the accepted review, unreviewed = %v, want T2 among them", ids)
+	}
+}
