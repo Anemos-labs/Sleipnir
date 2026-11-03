@@ -99,6 +99,8 @@
       case 'final': { const c = calc.totals(m); return '<div class="msg final">-- ' + Math.round(e.t) + 's · ' + (m.final ? m.final.steps : m.steps) + ' steps · ' + U.fmtSpend(c, 2) + U.planTag(c) + (SL.settings.cache === 'full' && c.prompt ? ' · cache hit ' + c.pct + '%' : '') + '</div>'; }
       case 'local': return '<div class="msg local"><div class="who">' + esc(e.title) + ' <time>' + T + '</time></div>' + e.html + '</div>';
       case 'mail': return '<div class="msg mailrow" data-ag="' + esc(e.from) + ' ' + esc(e.to) + '"><div class="who"><span style="color:' + agCol(e.from) + '">' + esc(e.from) + '</span> <span class="dim">→</span> <span style="color:' + agCol(e.to) + '">' + esc(e.to) + '</span> <time>' + T + '</time></div><span class="mailtxt">“' + esc(e.text) + '”</span></div>';
+      /* a message of another session of the server to this one's agent (sessions op send), or its answer to one of this one's */
+      case 'peer': return '<div class="msg peer" data-ag="peer"><div class="who"><span aria-hidden="true">✉</span> ' + (e.reply ? 'Answer' : 'Message') + ' from <button class="peerlink" type="button" data-peer-tab="' + esc(e.peer) + '" title="switch to session ' + esc(e.name) + '">' + esc(e.name) + '</button> <span class="dim">another session</span> <time>' + T + '</time></div><span class="pt">' + esc(e.text) + '</span></div>';
       case 'steer': return '<div class="msg steer" data-ag="' + esc(e.to) + '"><div class="who">You → <span style="color:' + agCol(e.to) + '">' + esc(e.to) + '</span> <time>' + T + '</time></div><span>' + esc(e.text) + '</span></div>';
       /* the manager's answers to the workers' routine questions: one collapsed line that grows while no other row comes between */
       case 'mgrdec': return '<div class="msg mgrdec">' + (ui.approvals ? ui.approvals.mgrHtml(Array.isArray(e.list) ? e.list : [], !!e.open, 'qmgr', typeof e.n === 'number' ? { n: e.n, d: e.nd || 0 } : null) : '') + '</div>';
@@ -179,6 +181,7 @@
       L.rows.push(rec);
       if (e.k === 'stream' || (e.k === 'say' && e.stream)) { const t = $('.st,.mt', el); if (t) { rec.t = t; rec.done = false; L.stream.push(rec); } }
       if (e.k === 'sys' && e.open) $$('[data-open-page]', el).forEach(b => b.addEventListener('click', () => ui.settingsPage(b.dataset.openPage)));
+      if (e.k === 'peer') $$('[data-peer-tab]', el).forEach(b => b.addEventListener('click', () => { if (SL.sessions.reg.byId[b.dataset.peerTab]) SL.sessions.activate(b.dataset.peerTab); }));
       if (e.k === 'mgrdec') { rec.v = e.v; L.dec = rec; }
       return rec;
     }

@@ -67,19 +67,28 @@ const harnessDescription = "Sleipnir's own features, for when the person asks fo
 	"plugins (op list|check|install|enable|disable|reset|remove; install and check take source, a plugin directory or a git URL: load the " +
 	"sleipnir-plugin skill before you write one); " +
 	"reload (start the session again when your turn ends, with this conversation, so plugin and configuration changes apply; you are told " +
-	"to go on after it). Changes ask the person unless the permission mode allows them."
+	"to go on after it); " +
+	"sessions (the other sessions running beside this one, a team's manager or a single agent each: op list; op read with id; op send with id " +
+	"and text, a message its agent reads as mail, whose answer comes back to you as mail by itself; op wait with id: one call that returns " +
+	"its answer when it comes, for when you cannot go on without it (never poll with sleep or read); op spawn with text and/or goal, and " +
+	"dir, name, model, workers: a new session, whose first answer comes back to you). Changes ask the person unless the permission mode allows them."
 
 const harnessSchema = `{"type":"object","properties":{` +
-	`"action":{"type":"string","enum":["help","run","schedule","plugins","reload"]},` +
+	`"action":{"type":"string","enum":["help","run","schedule","plugins","reload","sessions"]},` +
 	`"line":{"type":"string","description":"run: the slash command"},` +
-	`"op":{"type":"string","description":"schedule: list|add|remove|pause|resume; plugins: list|check|install|enable|disable|reset|remove"},` +
-	`"id":{"type":"string","description":"schedule: the job (j3); plugins: the plugin id"},` +
+	`"op":{"type":"string","description":"schedule: list|add|remove|pause|resume; plugins: list|check|install|enable|disable|reset|remove; sessions: list|read|send|wait|spawn"},` +
+	`"id":{"type":"string","description":"schedule: the job (j3); plugins: the plugin id; sessions read, send, wait: the session"},` +
 	`"cron":{"type":"string","description":"schedule add: five fields minute hour day-of-month month day-of-week, or @hourly, @daily, @weekly"},` +
-	`"goal":{"type":"string","description":"schedule add: what each run works on, complete in itself: nobody is there to ask"},` +
-	`"model":{"type":"string","description":"schedule add: provider/model (default: this session's)"},` +
+	`"goal":{"type":"string","description":"schedule add: what each run works on, complete in itself: nobody is there to ask; sessions spawn: a standing goal for the new session"},` +
+	`"model":{"type":"string","description":"schedule add, sessions spawn: provider/model (default: this session's)"},` +
 	`"mode":{"type":"string","enum":["default","accept-edits","plan"],"description":"schedule add: the run's permissions (default refuses what needs a person)"},` +
 	`"budget_usd":{"type":"number","description":"schedule add: stop a run at this many dollars (default 1, 0: no limit)"},` +
-	`"dir":{"type":"string","description":"schedule add: the folder the run works in (default: this project)"},` +
+	`"dir":{"type":"string","description":"schedule add, sessions spawn: the folder it works in (default: this project)"},` +
+	`"text":{"type":"string","description":"sessions send: the message; sessions spawn: the new session's first message"},` +
+	`"name":{"type":"string","description":"sessions spawn: the new session's name"},` +
+	`"workers":{"type":"integer","description":"sessions spawn: worker slots of its team, 0 for a single agent (default: as many as this session has)"},` +
+	`"n":{"type":"integer","description":"sessions read: how many of its newest transcript rows (default 20)"},` +
+	`"timeout_sec":{"type":"integer","description":"sessions wait: the longest it waits, in seconds (default 300, at most 600)"},` +
 	`"source":{"type":"string","description":"plugins install, check: a plugin directory (relative to the project) or a git URL"},` +
 	`"replace":{"type":"boolean","description":"plugins install: replace the installed plugin of the same id (an update of your own plugin)"},` +
 	`"why":{"type":"string","description":"reload: what changed, in a line, shown to the person"}},` +
@@ -105,6 +114,12 @@ type harnessInput struct {
 	Source    string   `json:"source"`
 	Replace   bool     `json:"replace"`
 	Why       string   `json:"why"`
+	Text      string   `json:"text"`
+	Name      string   `json:"name"`
+	Workers   *int     `json:"workers"`
+	N         *int     `json:"n"`
+	// TimeoutSec is sessions wait's bound on the wait, in seconds.
+	TimeoutSec *int `json:"timeout_sec"`
 }
 
 // Run implements tools.Tool.
@@ -144,8 +159,10 @@ func (t harnessTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, err
 		return t.plugins(ctx, in, cwd, ask), nil
 	case "reload":
 		return t.reload(in.Why, ask), nil
+	case "sessions":
+		return t.sessions(ctx, in, ask), nil
 	}
-	return tools.Errorf("sleipnir: action is help, run, schedule, plugins or reload"), nil
+	return tools.Errorf("sleipnir: action is help, run, schedule, plugins, reload or sessions"), nil
 }
 
 // lookLines are the slash commands that only look: the host answers them at once, beside the running turn.
@@ -259,6 +276,9 @@ func (t harnessTool) help() string {
 	b.WriteString("- Schedules: schedule op add with cron and goal: a headless run on that schedule (the web page and `sleipnir daemon` start the due ones).\n")
 	b.WriteString("- Plugins: plugins op list|enable|disable|reset, then reload. A plugin of your own (skills, slash commands, roles, hooks, tool servers, a web card): load the sleipnir-plugin skill, write it in the project or $TMPDIR, plugins op check, op install, then reload.\n")
 	b.WriteString("- Look: run /status, /cost, /skills, /mcp, /jobs, /agents.\n")
+	if _, ok := t.s.currentHost().(Peers); ok {
+		b.WriteString("- Other sessions: sessions op list shows the sessions running beside this one (a team's manager or a single agent each), op read what one said, op send writes to one (its answer comes back to you as mail by itself), op wait returns that answer when you cannot go on without it, op spawn starts a new one on a goal or a first message.\n")
+	}
 	b.WriteString("The person's own: the permission mode and rules, models and roles, the team's shape, the budget, sign-in, project trust, and starting the conversation over.\n")
 	if h := t.s.currentHost(); h == nil {
 		b.WriteString("This session has no interactive chat: run and reload are not available here; schedule and plugins are.\n")
