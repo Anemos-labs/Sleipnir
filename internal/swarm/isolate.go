@@ -397,6 +397,9 @@ func (s *Swarm) integrate(ctx context.Context, m *member, t Task, message string
 		if len(carried) > 0 {
 			note += "; it carried the work of " + strings.Join(carried, ", ") + ", done in the same tree"
 		}
+		if res.Verify != nil {
+			s.noteVerifyWrote(res.Verify.Cmd, res.Verify.Wrote)
+		}
 		s.tellSiblingsOfMerge(t, m.id)
 		return integration{ok: true, evidence: note}
 	case workspace.OutcomeEmpty:
@@ -657,6 +660,39 @@ func (s *Swarm) mergedFor(t Task) (mergeRec, bool) {
 	defer s.mu.Unlock()
 	r, ok := s.merged[t.ID]
 	return r, ok && r.rev == t.Rev && slices.Equal(r.files, t.Files)
+}
+
+// noteVerifyWrote tells the manager, once for each set of files, that a passing run of the verify command (cmd) changed
+// tracked files in the tree it ran in: the merge queue's, or a member's own gate. Rewritten files show up in each checkout the
+// command runs in, and a worker discards them or carries them into its submission: a team whose verify regenerated a committed
+// screenshot split one task four times to discard the same file.
+func (s *Swarm) noteVerifyWrote(cmd string, files []string) {
+	if len(files) == 0 {
+		return
+	}
+	key := strings.Join(files, "\x00")
+	s.mu.Lock()
+	if s.verifyWrote == nil {
+		s.verifyWrote = map[string]bool{}
+	}
+	seen := s.verifyWrote[key]
+	s.verifyWrote[key] = true
+	s.mu.Unlock()
+	if seen {
+		return
+	}
+	// notifyManager keeps 400 runes: bound the command and the list so the guidance after them survives.
+	list := cleanText(strings.Join(firstN(files, 3), ", ")+andMore(len(files)-3), 140)
+	s.notifyManager(fmt.Sprintf("A passing run of the verify command `%s` rewrote tracked files: %s. Have the command write that "+
+		"output outside the tree, or commit what it produces, rather than having workers discard it.", cleanText(cmd, 80), list))
+}
+
+// andMore is " and N more" for n > 0 left out of a list, "" otherwise.
+func andMore(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return fmt.Sprintf(" and %d more", n)
 }
 
 // countBounce counts the times this assignment came back from the merge queue.

@@ -332,6 +332,11 @@ func (s *Swarm) runVerify(ctx context.Context, dir string, files []string) verif
 		code int
 		err  error
 	}
+	// The tracked files already changed before the run: a passing verify that changes others rewrote them (rewrittenBy).
+	var before map[string]bool
+	if s.isolated() {
+		before = trackedChanges(vctx, dir)
+	}
 	ch := make(chan outcome, 1)
 	go func() {
 		defer func() { <-s.verifySem }()
@@ -350,6 +355,9 @@ func (s *Swarm) runVerify(ctx context.Context, dir string, files []string) verif
 		}
 		if r.err != nil {
 			return verifyResult{infra: true, err: r.err, out: r.out}
+		}
+		if r.code == 0 && before != nil {
+			s.noteVerifyWrote(cmd, rewrittenBy(before, trackedChanges(vctx, dir)))
 		}
 		return verifyResult{ran: true, ok: r.code == 0, code: r.code, out: r.out}
 	case <-vctx.Done():
@@ -393,6 +401,40 @@ func (s *Swarm) interruptedVerification(ctx context.Context) verifyResult {
 		return verifyResult{infra: true, err: err}
 	}
 	return verifyResult{infra: true, err: fmt.Errorf("verification timed out after %s", s.cfg.VerifyTimeout)}
+}
+
+// trackedChanges is the set of tracked paths git reports as changed in dir (staged or not), or nil when it cannot say.
+func trackedChanges(ctx context.Context, dir string) map[string]bool {
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	repo, err := gitx.Open(dir)
+	if err != nil {
+		return nil
+	}
+	st, err := repo.StatusWith(cctx, gitx.StatusOptions{Untracked: "no"})
+	if err != nil || st.Truncated {
+		return nil
+	}
+	seen := map[string]bool{}
+	for _, c := range append(append([]gitx.Change(nil), st.Staged...), st.Unstaged...) {
+		seen[c.Path] = true
+	}
+	return seen
+}
+
+// rewrittenBy is the tracked paths changed after a run (after) that were not before it, sorted; none when either is unknown.
+func rewrittenBy(before, after map[string]bool) []string {
+	if before == nil || after == nil {
+		return nil
+	}
+	var out []string
+	for p := range after {
+		if !before[p] {
+			out = append(out, p)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // changedFiles is the paths git reports as changed in dir (modified, added, untracked), or nil when it cannot say. It asks

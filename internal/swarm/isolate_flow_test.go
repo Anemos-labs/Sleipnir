@@ -1174,3 +1174,61 @@ func TestASubmissionCarriesTheOtherTaskTheWorkerHoldsInTheSameTree(t *testing.T)
 		}
 	}
 }
+
+// A verify command that passes but rewrites a tracked file is named to the manager, once: it rewrites the file in every
+// member's tree too, and a team whose verify regenerated a committed screenshot split one task four times to discard it.
+func TestTheManagerHearsOnceThatTheVerifyRewritesTrackedFiles(t *testing.T) {
+	sc := script{
+		"be-1": {act(writeCall("b.txt", "one\n")), act(doneCall("T1", "added b"))},
+		"be-2": {act(writeCall("c.txt", "two\n")), act(doneCall("T2", "added c"))},
+	}
+	rewrites := func(dir string) (string, int) {
+		if err := writeFileString(filepath.Join(dir, "a.txt"), "regenerated\n"); err != nil {
+			return err.Error(), 1
+		}
+		return "ok", 0
+	}
+	r := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 4}, queueVerify: rewrites}, sc.fn())
+	r.sw.StartManager()
+	r.mustSpawn("backend", "add b", "b.txt")
+	r.waitStatus("T1", StatusReview)
+	r.mustSpawn("backend", "add c", "c.txt")
+	r.waitStatus("T2", StatusReview)
+	var told []string
+	for _, e := range r.log.OfType(events.TypeMailSend) {
+		var m Message
+		_ = json.Unmarshal(e.Data, &m)
+		if m.To == "mgr" && strings.Contains(m.Text, "rewrote tracked files") {
+			told = append(told, m.Text)
+		}
+	}
+	if len(told) != 1 || !strings.Contains(told[0], "a.txt") || !strings.Contains(told[0], "verify-dir") {
+		t.Fatalf("the manager was told %d time(s): %q", len(told), told)
+	}
+}
+
+// A verify that rewrites a tracked file the same way each time rewrites it first in the worker's own gate, and the submission
+// carries the rewrite, so the merge queue's run finds nothing changed: the worker's gate is what tells the manager.
+func TestTheManagerHearsOfARewriteTheWorkersGateMade(t *testing.T) {
+	sc := script{"be-1": {act(writeCall("b.txt", "one\n")), act(doneCall("T1", "added b"))}}
+	rewrites := func(dir string) (string, int) {
+		if err := writeFileString(filepath.Join(dir, "a.txt"), "regenerated\n"); err != nil {
+			return err.Error(), 1
+		}
+		return "ok", 0
+	}
+	r := newIsoRig(t, isoOpts{queueVerify: rewrites, treeVerify: rewrites}, sc.fn())
+	r.sw.StartManager()
+	r.mustSpawn("backend", "add b", "b.txt")
+	// Polled rather than awaited by status: the rewrite lies outside the task's scope and can hold up its done.
+	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		for _, e := range r.log.OfType(events.TypeMailSend) {
+			var m Message
+			_ = json.Unmarshal(e.Data, &m)
+			if m.To == "mgr" && strings.Contains(m.Text, "rewrote tracked files") && strings.Contains(m.Text, "a.txt") {
+				return
+			}
+		}
+	}
+	t.Fatal("the manager was not told that the verify rewrote a.txt")
+}

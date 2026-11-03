@@ -58,6 +58,9 @@ type VerifyResult struct {
 	Truncated bool
 	// Err is set when the command could not be run at all.
 	Err error
+	// Wrote are the tracked files the command left modified in the tree it ran in (set by the merge queue): a verifier that
+	// rewrites tracked files (a test that regenerates committed screenshots) changes them in every tree it runs in.
+	Wrote []string
 }
 
 // OK reports whether the verifier ran and succeeded.

@@ -157,6 +157,8 @@ type isoOpts struct {
 	dirty    map[string]string
 	// queueVerify replaces the merge queue's verifier (the trees keep verifyDir).
 	queueVerify func(dir string) (string, int)
+	// treeVerify replaces the verifier of the trees' gates (verifyDir).
+	treeVerify func(dir string) (string, int)
 	// dirsVerify makes the verify command "check-dirs {dirs}": every directory it names must hold
 	// done.txt, in the trees and in the merge queue alike (see checkDirs).
 	dirsVerify bool
@@ -215,7 +217,7 @@ func newIsoRig(t *testing.T, o isoOpts, fn func(ctx context.Context, c *rvCall) 
 	}
 	mgr := &workspace.Manager{Repo: git, Dir: trees, Prefix: "sleipnir/t", Snapshot: o.snapshot, OnEvent: workspace.EmitTo(log)}
 	qo := workspace.QueueOptions{}
-	if o.verify || o.queueVerify != nil || o.dirsVerify {
+	if o.verify || o.queueVerify != nil || o.treeVerify != nil || o.dirsVerify {
 		check := verifyDir
 		if o.queueVerify != nil {
 			check = o.queueVerify
@@ -235,11 +237,17 @@ func newIsoRig(t *testing.T, o isoOpts, fn func(ctx context.Context, c *rvCall) 
 	}
 	iso := &Isolation{Manager: mgr, Queue: q, Commit: o.commit}
 	cfg := o.cfg
-	if o.verify || o.queueVerify != nil || o.dirsVerify {
+	if o.verify || o.queueVerify != nil || o.treeVerify != nil || o.dirsVerify {
 		cfg.VerifyCmd = "verify-dir"
 		cfg.Verify = func(ctx context.Context, dir, cmd string) (string, int, error) {
 			out, code := verifyDir(dir)
 			return out, code, nil
+		}
+		if o.treeVerify != nil {
+			cfg.Verify = func(ctx context.Context, dir, cmd string) (string, int, error) {
+				out, code := o.treeVerify(dir)
+				return out, code, nil
+			}
 		}
 		if o.dirsVerify {
 			cfg.VerifyCmd = "check-dirs {dirs}"
