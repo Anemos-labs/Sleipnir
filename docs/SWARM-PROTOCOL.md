@@ -185,7 +185,7 @@ stays there, and agrees and executes before its children start again). The leade
 told; the rest of the pool is not. A revise of the pool task itself stops every
 member and the harness restarts them, so the manager is not asked to resume it: a
 leader's stop reaches the manager only when the manager could not have caused it. `task resolve` records “no longer needed” with an explanation once any
-children are closed. The manager cannot finish while tasks, reconciliation or review
+children are closed, and tells the owner of each task blocked on it, with that explanation, to block on its replacement or resume. The manager cannot finish while tasks, reconciliation or review
 remain unresolved. Cancellation, budget exhaustion and unanswered permission requests
 stop or suspend progress without pretending that the objective succeeded. A tool
 that ignores cancellation keeps its worker slot quarantined until it exits; a second
@@ -883,7 +883,7 @@ same findings; `idle_capacity`, `review_overrun` and `task_overrun` alone also r
 
 | Kind | Holds when | Told |
 |---|---|---|
-| `claimed_no_progress` | a running worker owns a doing task and has taken `StallTurns` turns without a progress call: a successful call of a tool that is neither read-only nor a coordination tool (an edit, a test run, a command that may change files), or task `update`, `block`, `done`, `resume`, `claim` or `handover`. A shell command that only reads and prints is not one: every command of the line is on the permission engine's read-only allowlist (`cat`, `sed -n`, `grep`, `find` without `-exec`, `git log`, `cd`, `echo`), no assignment steers what runs, and no redirection writes a file (`perm.ReadsOnly`); a test or check run (`go test`, `npm test`, `pytest`, `go vet`) is progress. A new assignment restarts the count | the worker |
+| `claimed_no_progress` | a running worker owns a doing task and has taken `StallTurns` turns without a progress call: a successful call of a tool that is neither read-only nor a coordination tool (an edit, a test run, a command that may change files), or task `update`, `block`, `done`, `resume`, `claim` or `handover`. A shell command that only reads and prints is not one: every command of the line is on the permission engine's read-only allowlist (`cat`, `sed -n`, `grep`, `find` without `-exec`, `git log`, `cd`, `echo`), no assignment steers what runs, and no redirection writes a file (`perm.ReadsOnly`); a test or check run (`go test`, `npm test`, `pytest`, `go vet`) is progress. A new assignment restarts the count. A reviewer's review (not a planning task) is reading, so it is held to `review_overrun` instead | the worker |
 | `manager_waiting_on_idle` | the manager's wait was refused (section 2) because no worker runs and work remains, and its latest coordination call is still `wait` | the manager, by the refusal itself |
 | `orphaned_task` | a doing or blocked task, or a todo task reserved for an agent, is owned by an agent that is not on the team, on two consecutive sweeps (a spawn in progress is not one) | the manager |
 | `blocked_cycle` | blocked tasks' `blocked_on` targets lead back to themselves; one finding per cycle, named by its lowest task id | the manager |

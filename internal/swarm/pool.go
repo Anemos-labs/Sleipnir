@@ -595,6 +595,19 @@ func (s *Swarm) wakeBlockedOn(id string) {
 	}
 }
 
+// wakeBlockedOnResolved tells the owner of each task blocked on id that id was closed as no longer needed, with the manager's
+// reason. Nothing will land for it, so a worker waiting on it would wait until someone noticed: in a team run the manager
+// replaced the booking backend task with a new one, and the tour task blocked on it stayed blocked on a task that was done.
+func (s *Swarm) wakeBlockedOnResolved(id, reason string) {
+	for _, t := range s.Board.Snapshot().Tasks {
+		if t.Status != StatusBlocked || t.BlockedOn != id || t.Owner == "" {
+			continue
+		}
+		s.notify(t.Owner, "info", fmt.Sprintf("%s, which %s waits on, was closed as no longer needed (%s): nothing will land for it. "+
+			"Block %s on the task that replaces it, or call task resume on %s if it can go on without it.", id, t.ID, cleanText(reason, 300), t.ID, t.ID))
+	}
+}
+
 // wakePool uses harness mail so idle members retain their existing conversation.
 func (s *Swarm) wakePool(id, message string) {
 	t, ok := s.Board.Snapshot().Task(id)
