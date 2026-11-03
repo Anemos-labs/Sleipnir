@@ -218,14 +218,18 @@ func TestProgressPushKeepsThePersonsOwnPrograms(t *testing.T) {
 	}
 	run("init", "-q")
 	run("config", "--global", "credential.helper", "store")
-	if got := personalPrograms(context.Background(), dir); got != nil {
+	if got, err := personalPrograms(context.Background(), dir); got != nil || err != nil {
 		t.Fatalf("a repository that names no program got %q", got)
 	}
 	run("config", "include.path", "extra.cfg")
 	if err := os.WriteFile(filepath.Join(dir, ".git", "extra.cfg"), []byte("[core]\n\tsshCommand = evil\n[credential]\n\thelper = !evil\n[remote \"o\"]\n\treceivepack = evil\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got := strings.Join(personalPrograms(context.Background(), dir), " ")
+	own, err := personalPrograms(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(own, " ")
 	for _, want := range []string{"-c core.sshcommand=ssh", "-c credential.helper= -c credential.helper=store", "-c remote.o.receivepack=git-receive-pack"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %q", want, got)
@@ -233,5 +237,14 @@ func TestProgressPushKeepsThePersonsOwnPrograms(t *testing.T) {
 	}
 	if strings.Contains(got, "evil") {
 		t.Errorf("the repository's program survived: %q", got)
+	}
+	// a remote whose name holds a blank is read whole, and one whose name holds "=" (which -c cannot name) stops the push
+	run("config", "remote.a b.receivepack", "evil")
+	if own, err := personalPrograms(context.Background(), dir); err != nil || !strings.Contains(strings.Join(own, " "), "remote.a b.receivepack=git-receive-pack") {
+		t.Errorf("a remote with a blank in its name: %q %v", own, err)
+	}
+	run("config", "remote.a=b.receivepack", "evil")
+	if _, err := personalPrograms(context.Background(), dir); err == nil {
+		t.Error("a remote named a=b was pushed with its own program")
 	}
 }

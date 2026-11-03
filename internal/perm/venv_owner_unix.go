@@ -17,15 +17,22 @@ func trustedInterpreter(target string) bool {
 		return false // a resolved path has no ".." segment; a name that holds the two dots is not judged
 	}
 	uid := uint32(os.Getuid())
-	for _, p := range []string{target, filepath.Dir(target)} {
+	// the file and every directory above it: one that someone else may write lets them put another tree under the interpreter's
+	// name. A sticky directory (/tmp) lets no one rename what others own in it, so it counts as safe above an owned one.
+	for p, first := target, true; ; p, first = filepath.Dir(p), false {
 		fi, err := os.Stat(p)
 		if err != nil {
 			return false
 		}
 		st, ok := fi.Sys().(*syscall.Stat_t)
-		if !ok || st.Uid != 0 && st.Uid != uid || fi.Mode().Perm()&0o022 != 0 {
+		if !ok || st.Uid != 0 && st.Uid != uid {
 			return false
 		}
+		if fi.Mode().Perm()&0o022 != 0 && (first || fi.Mode()&os.ModeSticky == 0) {
+			return false
+		}
+		if d := filepath.Dir(p); d == p {
+			return true
+		}
 	}
-	return true
 }

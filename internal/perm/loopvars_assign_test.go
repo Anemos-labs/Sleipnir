@@ -14,6 +14,7 @@ func TestLoopVariablesChangedByArithmeticOrExpansionAreNotBound(t *testing.T) {
 		`for f in README.md; do : $((f=7)); cat "$f"; done`,
 		`for f in README.md; do unset f; : ${f:=/etc/shadow}; cat "$f"; done`,
 		`for f in README.md; do : ${f=/etc/shadow}; cat "$f"; done`,
+		"for f in README.md; do : <<EOF\n${f:=$HOME/.ssh/id_rsa}\nEOF\ncat \"$f\"; done", // assigned in a heredoc body
 	} {
 		an := shellparse.Parse(cmd)
 		if !an.Parsed {

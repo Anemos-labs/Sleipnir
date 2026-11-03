@@ -101,7 +101,7 @@ func runsAnother(prog string, args []string) bool {
 			// and any variable runs a shell command when it is assigned with != (V!=CMD). A value with a reference in it is make text, not data: $(shell CMD), and any form that reaches it indirectly
 			// ($(call), $(eval), $(value), a computed function name), is evaluated; only a literal value is the build's own.
 			if eq := strings.IndexByte(a, '='); eq > 0 && !strings.HasPrefix(a, "-") &&
-				(a[eq-1] == '!' || strings.ContainsRune(a[eq+1:], '$')) {
+				(a[eq-1] == '!' || strings.ContainsRune(a, '$')) { // a reference in the name is expanded too: $(shell CMD)=1
 				return true
 			}
 			for _, n := range refused {

@@ -120,14 +120,16 @@ func splitDiffLines(s string) []string {
 	return ls
 }
 
-// diffText is what a line shows: its control characters spelled out (\x1b), tabs expanded. A diff is what a person approves
-// a write by, so nothing the write keeps is left out of it: an escape sequence and the text it encloses are shown, inert.
+// diffText is what a line shows: its control characters drawn as control pictures (an ESC is ␛), tabs expanded. A diff is
+// what a person approves a write by, so nothing the write keeps is left out of it: an escape sequence and the text it encloses
+// are shown, inert, and never look like text the line could hold as written (\x1b in a source file stays \x1b).
 func diffText(s string, tabw int) string {
 	s = strings.ReplaceAll(safeText(visibleControls(s)), "\n", " ")
 	return expandTabStops(s, tabw)
 }
 
-// visibleControls spells each control character of s other than a tab (C0, DEL, C1) as a \x or \u escape.
+// visibleControls draws each control character of s other than a tab: C0 as its control picture (U+2400 on), DEL as ␡, C1 as
+// ⟨9b⟩.
 func visibleControls(s string) string {
 	has := false
 	for _, r := range s {
@@ -144,12 +146,12 @@ func visibleControls(s string) string {
 		switch {
 		case r == '\t' || r >= 0x20 && r < 0x7f || r >= 0xa0:
 			b.WriteRune(r)
-		case r < 0x100:
-			b.WriteString(`\x`)
-			if r < 0x10 {
-				b.WriteByte('0')
-			}
-			b.WriteString(strconv.FormatInt(int64(r), 16))
+		case r < 0x20:
+			b.WriteRune(0x2400 + r)
+		case r == 0x7f:
+			b.WriteRune(0x2421)
+		default:
+			b.WriteString("⟨" + strconv.FormatInt(int64(r), 16) + "⟩")
 		}
 	}
 	return b.String()

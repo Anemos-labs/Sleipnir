@@ -579,28 +579,49 @@ func venvLayout(real, shown string, interpLinks bool) string {
 					return strings.TrimPrefix(p, real+"/") + " of " + shown + " leads outside the environment"
 				}
 			}
-			// an install writes into the package directories that are there already: one that is a link out of the environment
-			// takes the install with it
+			// an install writes into the package directories that are there already, and into what is below them: a link
+			// anywhere in that tree that leads out of the environment takes the install with it
 			site := filepath.Join(real, lib, v, "site-packages")
-			pkgs, ok := listDir(site, 20000)
-			if !ok {
-				return strings.TrimPrefix(site, real+"/") + " of " + shown + " has more entries than can be checked, or cannot be listed"
-			}
-			for _, n := range pkgs {
-				p := filepath.Join(site, n)
-				if !strings.Contains(p, "..") { // a name with ".." in it is judged by where it leads
-					if fi, err := os.Lstat(p); err == nil && fi.Mode()&os.ModeSymlink == 0 {
-						continue // a file or a directory of its own is inside
-					}
-				}
-				if escapes(p) {
-					return strings.TrimPrefix(site, real+"/") + "/" + n + " of " + shown + " leads outside the environment"
-				}
+			if at, why := linkOut(site, maxSiteEntries, escapes); why != "" {
+				return strings.TrimPrefix(at, real+"/") + " of " + shown + " " + why
 			}
 		}
 	}
 	return ""
 }
+
+// maxSiteEntries bounds the entries of one site-packages tree that are checked for links: far past the largest environments
+// (a few tens of thousands of files), and a tree past it is not taken as checked.
+const maxSiteEntries = 400000
+
+// linkOut walks the tree at dir for a link that leads outside the environment (escapes): it returns the link and "leads outside
+// the environment", or dir and why the tree could not be checked, or "" for a tree that is all its own. A missing tree has nothing
+// in it.
+func linkOut(dir string, limit int, escapes func(string) bool) (at, why string) {
+	n := 0
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if p == dir && errors.Is(err, fs.ErrNotExist) {
+				return fs.SkipAll
+			}
+			return err
+		}
+		if n++; n > limit {
+			return errTooMany
+		}
+		if d.Type()&fs.ModeSymlink != 0 && escapes(p) {
+			at, why = p, "leads outside the environment"
+			return fs.SkipAll
+		}
+		return nil
+	})
+	if err != nil {
+		return dir, "has more entries than can be checked, or cannot be listed"
+	}
+	return at, why
+}
+
+var errTooMany = errors.New("too many entries")
 
 // listDir returns the names in dir, at most limit of them: ok is false when there are more, or when dir is there and cannot be listed
 // (what it holds is then not known, which is not the same as holding nothing). A directory that does not exist has none.

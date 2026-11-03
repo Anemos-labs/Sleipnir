@@ -103,10 +103,13 @@ func DenyKeys(cmd *exec.Cmd) {
 	cmd.Env = append(kept, NoStoredKeysEnv+"=1")
 }
 
+// schemeRE matches a URL that starts with a scheme: "user:pass@host?next=http://x" has a "://" but no scheme of its own.
+var schemeRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*://`)
+
 // withoutUserinfo drops the user and password from a proxy URL: LooksSecret leaves proxy settings to the commands that need
 // the network, but the password in one is a credential a child denied keys must not get either.
 func withoutUserinfo(v string) string {
-	if !strings.Contains(v, "://") {
+	if !schemeRE.MatchString(v) {
 		// user:pass@host:3128, which the tools that read these variables take as an http URL
 		if u, err := url.Parse("http://" + v); err == nil && u.User != nil {
 			u.User = nil

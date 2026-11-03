@@ -44,7 +44,11 @@ func commandGit(dir string) gitRunner {
 		// The person's credentials, but none of the programs a repository's own configuration can add to a push: no hooks (a
 		// pre-push hook), no fsmonitor, no ext:: transport. A push of the harness's branch needs none of them.
 		safe := []string{"-c", "core.hooksPath=" + os.DevNull, "-c", "core.fsmonitor=false", "-c", "protocol.ext.allow=never"}
-		safe = append(safe, personalPrograms(ctx, dir)...)
+		own, err := personalPrograms(ctx, dir)
+		if err != nil {
+			return nil, fmt.Errorf("git %s: %w", args[0], err)
+		}
+		safe = append(safe, own...)
 		cmd := exec.CommandContext(ctx, "git", append(safe, args...)...)
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=never")
@@ -64,14 +68,15 @@ const programKeys = `^(core\.(sshcommand|askpass|gitproxy)|credential\..*helper|
 // that the repository's configuration makes (.git/config, its worktree file, or a file they include, which commands in the
 // sandbox can write) is put back to what the person's global and system configuration say, or to git's default. It is read
 // right before each push, so an include created after the session started counts too.
-func personalPrograms(ctx context.Context, dir string) []string {
+func personalPrograms(ctx context.Context, dir string) ([]string, error) {
 	read := func(scope string) [][2]string {
-		cmd := exec.CommandContext(ctx, "git", "config", scope, "--includes", "--get-regexp", programKeys)
+		// -z: a key and its value end with a newline and a NUL, so a remote name with a blank in it is read whole
+		cmd := exec.CommandContext(ctx, "git", "config", scope, "--includes", "--null", "--get-regexp", programKeys)
 		cmd.Dir = dir
 		out, _ := cmd.Output() // exit 1: no such setting; anything else leaves the defaults below
 		var kv [][2]string
-		for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
-			if k, v, ok := strings.Cut(line, " "); ok || k != "" {
+		for _, rec := range strings.Split(string(out), "\x00") {
+			if k, v, _ := strings.Cut(rec, "\n"); k != "" {
 				kv = append(kv, [2]string{k, v})
 			}
 		}
@@ -79,7 +84,13 @@ func personalPrograms(ctx context.Context, dir string) []string {
 	}
 	local := append(read("--local"), read("--worktree")...)
 	if len(local) == 0 {
-		return nil
+		return nil, nil
+	}
+	for _, l := range local {
+		if strings.Contains(l[0], "=") {
+			// -c takes the key up to the first "=": remote."a=b".receivepack could not be put back, and keeps its program
+			return nil, fmt.Errorf("the repository's configuration sets %s, a name the push cannot override; rename the remote", l[0])
+		}
 	}
 	var own [][2]string
 	if os.Getenv("GIT_CONFIG_NOSYSTEM") == "" {
@@ -128,7 +139,7 @@ func personalPrograms(ctx context.Context, dir string) []string {
 			out = append(out, "-c", k+"=git-upload-pack")
 		}
 	}
-	return out
+	return out, nil
 }
 
 // clipText bounds s to n bytes.

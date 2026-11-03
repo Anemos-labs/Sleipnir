@@ -556,7 +556,13 @@ func recheckVia(ctx context.Context, env *tools.Env, start *url.URL, via []*url.
 // and not from https down to http. An upgrade from http to https on the default ports is
 // the same site.
 func sameSite(a, b *url.URL) bool {
-	norm := func(u *url.URL) string { return strings.TrimPrefix(weburl.Host(u), "www.") }
+	norm := func(u *url.URL) string {
+		h := strings.TrimPrefix(weburl.Host(u), "www.")
+		if _, zone, ok := strings.Cut(u.Hostname(), "%"); ok {
+			h += "%" + zone // fe80::1%eth0 and fe80::1%eth1 are two machines: the zone is part of the site
+		}
+		return h
+	}
 	if norm(a) != norm(b) {
 		return false
 	}

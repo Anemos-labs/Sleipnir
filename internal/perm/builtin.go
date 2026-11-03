@@ -71,7 +71,7 @@ var credentialDirs = []string{"/.ssh", "/.aws", "/.gnupg", "/.config/gcloud"}
 // .aws or .gnupg directory, or a .config/gcloud. A recursive search allowed for a directory above one (grep in /home, where another
 // user's home is) must not read what is in it: the permission check of the search's root cannot see that far.
 func InCredentialDir(p string) bool {
-	segs := strings.Split(filepath.ToSlash(p), "/")
+	segs := strings.Split(fold(filepath.ToSlash(p)), "/") // folded as the engine folds paths: .SSH is .ssh on a case-insensitive disk
 	for i, s := range segs[:max(len(segs)-1, 0)] {
 		switch s {
 		case ".ssh", ".aws", ".gnupg":

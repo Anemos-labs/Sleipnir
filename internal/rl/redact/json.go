@@ -12,7 +12,11 @@ import (
 // redaction changes are rewritten, so a document with nothing to redact comes back
 // byte for byte, and one with a secret differs only at the secret. Input that is
 // not valid JSON is returned unchanged.
-func (r *Redactor) JSON(raw json.RawMessage) json.RawMessage {
+func (r *Redactor) JSON(raw json.RawMessage) json.RawMessage { return r.jsonDoc(raw, false) }
+
+// jsonDoc is JSON; with keys, an object key that redaction changes is rewritten too (a document inside a string, where a key is
+// text that a scan of the string would have read).
+func (r *Redactor) jsonDoc(raw json.RawMessage, keys bool) json.RawMessage {
 	if len(raw) == 0 || !json.Valid(raw) {
 		return raw
 	}
@@ -59,6 +63,16 @@ func (r *Redactor) JSON(raw json.RawMessage) json.RawMessage {
 			if err := json.Unmarshal(raw[i:end], &pending); err != nil {
 				pending = ""
 			}
+			if keys && pending != "" {
+				if red, changed := r.Changed(pending); changed {
+					if out == nil {
+						out = make([]byte, 0, n+64)
+					}
+					out = append(out, raw[last:i]...)
+					out = append(out, encodeString(red)...)
+					last = end
+				}
+			}
 			i = end
 			continue
 		}
@@ -100,14 +114,14 @@ func (r *Redactor) JSON(raw json.RawMessage) json.RawMessage {
 
 // nestedJSON is s redacted as JSON when s is itself a JSON object or array (the arguments of a tool call in a provider's wire
 // format are a JSON document inside a string): its keys then count, and a value it escapes (a private key's newlines) is read
-// decoded. It reports false for any other string, which is redacted as text. Each level of nesting escapes the one inside, so the depth is bounded by the
-// logarithm of the length.
+// decoded, and its keys are redacted as text. It reports false for any other string, which is redacted as text. Each level of
+// nesting escapes the one inside, so the depth is bounded by the logarithm of the length.
 func (r *Redactor) nestedJSON(s string) (string, bool) {
-	t := strings.TrimSpace(s)
-	if len(t) < 2 || (t[0] != '{' || t[len(t)-1] != '}') && (t[0] != '[' || t[len(t)-1] != ']') || !json.Valid([]byte(t)) {
+	t := strings.Trim(s, " \t\r\n") // JSON's own blanks only: the bytes judged are the bytes redacted
+	if len(t) < 2 || (t[0] != '{' || t[len(t)-1] != '}') && (t[0] != '[' || t[len(t)-1] != ']') || !json.Valid([]byte(s)) {
 		return s, false
 	}
-	return string(r.JSON(json.RawMessage(s))), true
+	return string(r.jsonDoc(json.RawMessage(s), true)), true
 }
 
 // isJSONKey reports whether the string ending just before position end is an

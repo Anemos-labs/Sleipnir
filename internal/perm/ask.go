@@ -337,6 +337,8 @@ func (e *Engine) lead(ctx context.Context, key, skey string, p *pending, r Reque
 				// question that is no longer one the fallback may answer is not its to approve
 				if nv := again(); nv.kind == vDeny {
 					fd = Decision{Reason: changedWhileAsked + nv.reason, by: "policy"}
+				} else if nv.kind == vAsk && e.Mode() == ModeBypass {
+					fd = Decision{Reason: bypassRefusal(nv.reason), by: "policy"} // bypass asks nothing: a question is refused, as Check does
 				} else if nv.kind == vAsk && !e.fallbackFor(r, nv) {
 					fd = Decision{Reason: "approval required: " + nv.reason + "; it is no longer a question " + fd.by + " may answer", by: "policy"}
 				}
@@ -375,6 +377,8 @@ func (e *Engine) lead(ctx context.Context, key, skey string, p *pending, r Reque
 		// a deny rule or a stricter mode added while the person was asked wins over their yes, as it would have before the question
 		if nv := again(); nv.kind == vDeny {
 			return Decision{Reason: changedWhileAsked + nv.reason, by: "policy"}
+		} else if nv.kind == vAsk && e.Mode() == ModeBypass {
+			return Decision{Reason: bypassRefusal(nv.reason), by: "policy"}
 		}
 	}
 	e.pr.refuse(skey, d, gen)

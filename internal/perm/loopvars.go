@@ -48,6 +48,11 @@ func bindLoopVars(cmd string, cmds []shellparse.Simple) []shellparse.Simple {
 	// cat $f) would still be what a later $f reads. So no binding at all if anything in the line can change a variable by a builtin, and none
 	// for a variable that anything else assigns, or that two loops set.
 	assigned, loopCount := map[string]bool{}, map[string]int{}
+	// ${f=x} and ${f:=x} assign f wherever they are expanded, a heredoc body among them: the whole line is read for them (one in
+	// quotes or a literal body only keeps f from being bound, and $f then stays unknown)
+	for _, m := range paramAssignRE.FindAllStringSubmatch(cmd, -1) {
+		assigned[m[1]] = true
+	}
 	for _, s := range cmds {
 		name := shellparse.ProgramName(s.Program)
 		if mutatesVariables[name] || strings.HasPrefix(s.Program, "((") || name == "printf" && len(s.Args) > 0 && strings.HasPrefix(s.Args[0], "-v") {
@@ -57,12 +62,9 @@ func bindLoopVars(cmd string, cmds []shellparse.Simple) []shellparse.Simple {
 			n, _, _ := strings.Cut(env, "=")
 			assigned[strings.TrimSuffix(n, "+")] = true
 		}
-		// arithmetic assigns the names it holds ($((f=1)), $((f++))), and ${f=x} or ${f:=x} assigns f when it is unset or empty
+		// arithmetic assigns the names it holds ($((f=1)), $((f++)))
 		for _, n := range arithNames(s.Arith) {
 			assigned[n] = true
-		}
-		for _, m := range paramAssignRE.FindAllStringSubmatch(s.Raw, -1) {
-			assigned[m[1]] = true
 		}
 		if s.LoopVar != "" {
 			loopCount[s.LoopVar]++

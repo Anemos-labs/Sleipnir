@@ -601,3 +601,16 @@ func TestJSONRedactsADocumentInsideAString(t *testing.T) {
 		t.Fatalf("not idempotent:\n%s\n%s", out, again)
 	}
 }
+
+// In a document inside a string, a key that is a secret is redacted, as a scan of the string would; a string that only looks like
+// a document behind blanks JSON does not accept is redacted as text.
+func TestJSONInsideAStringRedactsKeysAndChecksTheSameBytes(t *testing.T) {
+	r := testRedactor()
+	for _, inner := range []string{`{"` + ghToken + `":true}`, " {\"t\":\"" + ghToken + "\"}"} {
+		outer, _ := json.Marshal(map[string]string{"arguments": inner})
+		out := r.JSON(outer)
+		if strings.Contains(string(out), ghToken) || !json.Valid(out) {
+			t.Errorf("%q: %s", inner, out)
+		}
+	}
+}

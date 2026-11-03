@@ -383,7 +383,11 @@ func gitDirs(dir string) (own, common string, ok bool) {
 	}
 	common = strings.TrimSpace(string(c))
 	if !filepath.IsAbs(common) {
-		common = filepath.Join(own, common)
+		base := own
+		if r, err := filepath.EvalSymlinks(own); err == nil {
+			base = r // git reads commondir relative to the real directory: ../common past a linked .git is beside its target
+		}
+		common = filepath.Join(base, common)
 	}
 	return own, filepath.Clean(common), true
 }

@@ -414,3 +414,35 @@ func TestGitHelpersAreReadFromTheCommonDirOfAGitDirectory(t *testing.T) {
 		t.Errorf("git status was allowed with a helper in the common directory's configuration: %+v", d)
 	}
 }
+
+// A relative commondir of a .git that is a link is read from the link's target, as git reads it: ../common beside the real
+// directory, not beside the link.
+func TestCommonDirIsReadFromTheRealGitDirectory(t *testing.T) {
+	base := t.TempDir()
+	wt, real := filepath.Join(base, "proj"), filepath.Join(base, "srv", "repo", "wt")
+	for _, d := range []string{wt, real, filepath.Join(base, "srv", "repo", "common")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(real, filepath.Join(wt, ".git")); err != nil {
+		t.Skip(err)
+	}
+	if err := os.WriteFile(filepath.Join(real, "commondir"), []byte("../common\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, common, ok := gitDirs(wt)
+	want, _ := filepath.EvalSymlinks(filepath.Join(base, "srv", "repo", "common"))
+	if got, _ := filepath.EvalSymlinks(common); !ok || got != want {
+		t.Errorf("common dir %q, want %q", common, want)
+	}
+}
+
+// InCredentialDir folds case as the engine does: .SSH is a credentials directory on a case-insensitive disk.
+func TestInCredentialDirFoldsCase(t *testing.T) {
+	for p, want := range map[string]bool{"/r/.SSH/id": true, "/r/.Aws/credentials": true, "/r/.CONFIG/GCloud/x": true, "/r/src/x": false, "/r/.ssh": false} {
+		if got := InCredentialDir(p); got != want {
+			t.Errorf("InCredentialDir(%q) = %v, want %v", p, got, want)
+		}
+	}
+}

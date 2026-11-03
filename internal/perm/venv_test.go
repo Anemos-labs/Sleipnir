@@ -122,6 +122,14 @@ func TestTheTestsPresetAllowsAProjectVirtualEnvironment(t *testing.T) {
 	if err := os.Symlink(r.f.outside, filepath.Join(pkgLink, "lib/python3.12/site-packages/requests")); err != nil {
 		t.Fatal(err)
 	}
+	nested := filepath.Join(r.wtA, ".venv-nested") // a package directory of its own with a link out below it
+	makeVenv(t, nested)
+	if err := os.MkdirAll(filepath.Join(nested, "lib/python3.12/site-packages/pytest"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(r.f.outside, filepath.Join(nested, "lib/python3.12/site-packages/pytest/_code")); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Symlink(filepath.Join(r.f.outside, "venv", "lib"), filepath.Join(r.wtA, "lnk")); err != nil {
 		t.Fatal(err)
 	}
@@ -211,6 +219,7 @@ func TestTheTestsPresetAllowsAProjectVirtualEnvironment(t *testing.T) {
 		{cmd: "../../../../outside/venv/bin/pip install pytest", want: "ask", why: "goes through"},
 		{cmd: ".venv-site/bin/pip install pytest", want: "ask", why: "leads outside the environment"},
 		{cmd: ".venv-pkg/bin/pip install requests", want: "ask", why: "leads outside the environment"},
+		{cmd: ".venv-nested/bin/pip install -U pytest", want: "ask", why: "pytest/_code of"},
 		{cmd: "lnk/../.venv/bin/pip install pytest", want: "ask"}, // the shell follows lnk before ..: another environment's pip
 		{cmd: ".venv-copy/bin/pip install pytest", want: "ask", why: "own python"},
 		{cmd: "fake/bin/pip install pytest", want: "ask", why: "not a virtual environment"},
@@ -555,5 +564,43 @@ func TestAnEnvironmentsInterpreterMustBeOneOthersCannotChange(t *testing.T) {
 	}
 	if d := r.check("be-1", r.wtA, ".venv/bin/python -m pytest -q"); outcome(d) == "allow" || !strings.Contains(d.Reason, "can change") {
 		t.Errorf("an interpreter in a directory everyone may write was run: %s (%q)", outcome(d), d.Reason)
+	}
+}
+
+// A directory of the user's own does not make the interpreter safe when one above it is one everyone may write: they can rename it away
+// and put another in its place.
+func TestAnInterpreterBelowADirectoryOthersCanWriteIsRefused(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("ownership is not checked on Windows")
+	}
+	r := venvRig(t, ModeAcceptEdits, nil)
+	shared := filepath.Join(r.f.outside, "shared")
+	if err := os.MkdirAll(shared, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(shared, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(installedPython(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	own := filepath.Join(shared, "own") // a directory of this user's, inside one everyone may write
+	if err := os.Mkdir(own, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	planted := filepath.Join(own, "python3")
+	if err := os.WriteFile(planted, b, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(r.wtA, ".venv", "bin", "python3")
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(planted, link); err != nil {
+		t.Fatal(err)
+	}
+	if d := r.check("be-1", r.wtA, ".venv/bin/python -m pytest -q"); outcome(d) == "allow" || !strings.Contains(d.Reason, "can change") {
+		t.Errorf("an interpreter below a directory everyone may write was run: %s (%q)", outcome(d), d.Reason)
 	}
 }

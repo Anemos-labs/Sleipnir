@@ -233,8 +233,16 @@ func (l *loader) entry(src mdfile.Source, e os.DirEntry) []Warning {
 	}
 	stem := fileName[:len(fileName)-3]
 
-	parsed, err := mdfile.ReadDoc(path, mdfile.ReadOpts{MaxBytes: MaxFileBytes, Contain: src.Contain})
+	// the extension and the credentials check hold for the file the read opened, as well as for the link checked above: a link
+	// swapped between the two is caught here
+	parsed, err := mdfile.ReadDoc(path, mdfile.ReadOpts{MaxBytes: MaxFileBytes, Contain: src.Contain, Ext: ".md"})
+	if err == nil && parsed.Real != "" && mdfile.SensitivePath(filepath.ToSlash(parsed.Real)) != "" {
+		return []Warning{mdfile.Skipf(display, "", "the link names a file that is not an agent definition; skipped")}
+	}
+	var extErr *mdfile.ExtError
 	switch {
+	case errors.As(err, &extErr):
+		return []Warning{mdfile.Skipf(display, "", "the link names a file that is not an agent definition; skipped")}
 	case errors.Is(err, mdfile.ErrEscapes):
 		return []Warning{mdfile.Skipf(display, "", "the file resolves outside its allowed location; skipped")}
 	case err != nil:

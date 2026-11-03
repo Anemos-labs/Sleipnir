@@ -37,7 +37,7 @@ func TestReadsCodeFromStdinSkipsLongOptionValues(t *testing.T) {
 func TestAHeredocContinuationThatJoinsASubstitutionIsNotParsed(t *testing.T) {
 	for src, parsed := range map[string]bool{
 		"cat <<EOF\n$\\\n(touch /tmp/x)\nEOF":        false,
-		"cat <<EOF\n`\\\ntouch x`\nEOF":              true, // the backtick is already there and scanned
+		"cat <<EOF\n`\\\ntouch x`\nEOF":              false, // inside an open substitution: not judged
 		"cat > Dockerfile <<EOF\nRUN a \\\n  b\nEOF": true,
 		"cat <<'EOF'\n$\\\n(touch /tmp/x)\nEOF":      true, // quoted: nothing is expanded
 	} {

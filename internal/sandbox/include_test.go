@@ -108,9 +108,10 @@ func TestWrapNamesTheDockerCommandTheBoxStartedWith(t *testing.T) {
 	}
 }
 
-// An include whose directory in the project is a link to a directory outside it is not mounted: the engine would mount the file
-// the link names, a host file, into the container.
-func TestGitMountsSkipAnIncludeBehindALinkedDirectory(t *testing.T) {
+// A repository with an include whose directory in the project is a link to a directory outside it is not mounted: the engine
+// would mount the file the link names, a host file, into the container, and without it the container could put its own
+// directory in the link's place for the host's git to read.
+func TestARepositoryWithAnIncludeBehindALinkedDirectoryIsNotMounted(t *testing.T) {
 	p := t.TempDir()
 	private := t.TempDir()
 	if err := os.WriteFile(filepath.Join(private, "id"), []byte("secret"), 0o600); err != nil {
@@ -125,9 +126,29 @@ func TestGitMountsSkipAnIncludeBehindALinkedDirectory(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(p, ".git", "config"), []byte("[include]\n\tpath = ../lnk/id\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, m := range gitMounts([]string{p}) {
-		if strings.Contains(m.path, "lnk") {
-			t.Errorf("an include behind a linked directory was mounted: %+v", m)
+	if _, err := mountPaths([]string{p}); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+		t.Errorf("a repository with an include behind a linked directory was mounted: %v", err)
+	}
+}
+
+// The docker command the helper runs on the host is never one inside a directory the sandbox mounts writable.
+func TestTheDockerCommandMustBeOutsideTheMounts(t *testing.T) {
+	proj, other := t.TempDir(), t.TempDir()
+	for _, d := range []string{proj, other} {
+		if err := os.WriteFile(filepath.Join(d, "docker"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
 		}
+	}
+	if err := dockerOutside(filepath.Join(proj, "docker"), []string{proj}); err == nil {
+		t.Error("a docker inside the project was taken")
+	}
+	if err := dockerOutside(filepath.Join(other, "docker"), []string{proj}); err != nil {
+		t.Errorf("a docker outside the project was refused: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(proj, "docker"), filepath.Join(other, "dlink")); err != nil {
+		t.Skip(err)
+	}
+	if err := dockerOutside(filepath.Join(other, "dlink"), []string{proj}); err == nil {
+		t.Error("a link to a docker inside the project was taken")
 	}
 }

@@ -180,6 +180,10 @@ func Start(ctx context.Context, spec Spec, mounts []string, workdir string, lim 
 	if err != nil {
 		return nil, err
 	}
+	// the helper runs this docker on the host for every command: one inside a mounted directory could be replaced from the container
+	if err := dockerOutside(bin, paths); err != nil {
+		return nil, err
+	}
 	name := "sleipnir-sbx-" + randomHex(6)
 	fetch := len(tc.Fetch) > 0 && !spec.Network && workdir != ""
 	args := RunArgs(name, image, spec.Network || fetch, paths, workdir, lim, os.Getuid(), os.Getgid(), os.Getpid())
@@ -401,7 +405,10 @@ func gitMounts(paths []string) []gitMount {
 		// .git/config itself (a core.sshCommand for the progress push): it is guarded the same way.
 		for _, inc := range projectIncludes(filepath.Join(gd, "config"), paths) {
 			if !dirInside(inc, paths) {
-				continue // through a link to a directory outside the project: not in the container, and not to be mounted into it
+				// through a link to a directory outside the project: the container could put a directory of its own in the link's
+				// place and write the file the host's git reads. Marked as a link, which keeps the repository from being mounted.
+				out = append(out, gitMount{inc, true, true})
+				continue
 			}
 			if ii, err := os.Lstat(inc); err == nil && !ii.IsDir() {
 				out = append(out, gitMount{inc, true, ii.Mode()&os.ModeSymlink != 0})
@@ -424,6 +431,14 @@ func gitMounts(paths []string) []gitMount {
 		seen[m.path] = true
 		return dup
 	})
+}
+
+// dockerOutside refuses a docker command that is inside one of the mounted paths, by its path or by what its links name.
+func dockerOutside(bin string, paths []string) error {
+	if real, err := filepath.EvalSymlinks(bin); err != nil || dirInside(filepath.Join(real, "x"), paths) || dirInside(filepath.Join(bin, "x"), paths) {
+		return fmt.Errorf("the sandbox will not use the docker command at %s: it is inside a directory the sandbox mounts", bin)
+	}
+	return nil
 }
 
 // dirInside reports whether the directory of p, with every link in it followed, is inside one of paths (also followed): the

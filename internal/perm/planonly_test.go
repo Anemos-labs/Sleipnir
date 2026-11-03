@@ -347,3 +347,23 @@ func TestAYesIsJudgedAgainAgainstThePolicyWhenItArrives(t *testing.T) {
 		t.Errorf("a write the policy now refuses was allowed by the earlier question's yes: %+v", d)
 	}
 }
+
+// Bypass asks nothing: a yes to a question that arrives after the mode turned to bypass is refused, as a fresh check would refuse
+// the question.
+func TestAYesThatArrivesInBypassIsRefused(t *testing.T) {
+	root := t.TempDir()
+	var e *Engine
+	var err error
+	e, err = NewEngine(Config{Mode: ModeDefault, Root: root, Home: t.TempDir(), Ask: []string{"Bash(echo:*)"},
+		Prompter: func(ctx context.Context, r Request) Decision {
+			e.SetMode(ModeBypass)
+			return Decision{Allow: true}
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := e.Check(context.Background(), Request{Tool: "bash", Command: "echo hi", Cwd: root})
+	if d.Allow || !strings.Contains(d.Reason, BypassRefusal) {
+		t.Errorf("a yes that arrived in bypass mode was taken: %+v", d)
+	}
+}

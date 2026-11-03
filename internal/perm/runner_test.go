@@ -41,6 +41,7 @@ func TestARunnerRuleDoesNotCoverAProgramTheRunnerIsToldToRun(t *testing.T) {
 		{name: "make test -j4", mode: ModeDefault, allow: []string{"Bash(make test:*)"}, req: bash("make test -j4"), want: "allow"},
 		{name: "make test SHELL:=", mode: ModeDefault, allow: []string{"Bash(make test:*)"}, req: bash("make test SHELL:=/tmp/x"), want: "ask"},
 		{name: "make test SHELL?=", mode: ModeDefault, allow: []string{"Bash(make test:*)"}, req: bash("make test SHELL?=x"), want: "ask"},
+		{name: "make test $(shell)=", mode: ModeDefault, allow: []string{"Bash(make test:*)"}, req: bash("make test '$(shell touch x)=1'"), want: "ask"},
 		{name: "make test .SHELLFLAGS+=", mode: ModeDefault, allow: []string{"Bash(make test:*)"}, req: bash("make test .SHELLFLAGS+=-c"), want: "ask"},
 		{name: "make test V!=", mode: ModeDefault, allow: []string{"Bash(make test:*)"}, req: bash("make test 'V!=touch x'"), want: "ask"},
 		{name: "make test V=$(shell)", mode: ModeDefault, allow: []string{"Bash(make test:*)"}, req: bash("make test 'V=$(shell touch x)'"), want: "ask"},

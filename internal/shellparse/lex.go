@@ -322,6 +322,33 @@ func joinsIntoExpansion(body string) bool {
 			return true
 		}
 	}
+	// a continuation inside an expansion that is open where it falls joins the expansion's own text ($((PA\\\nTH=0)) sets PATH):
+	// the scan read the halves as other names. Opens and closes are counted along each logical line.
+	open := 0
+	for i := 0; i < len(body); i++ {
+		switch c := body[i]; {
+		case c == '$' && i+1 < len(body) && (body[i+1] == '(' || body[i+1] == '{' || body[i+1] == '['):
+			open++
+			i++
+		case c == '`':
+			if open > 0 {
+				open--
+			} else {
+				open++
+			}
+		case c == ')' || c == '}' || c == ']':
+			if open > 0 {
+				open--
+			}
+		case c == '\\' && i+1 < len(body) && body[i+1] == '\n':
+			if open > 0 {
+				return true
+			}
+			i++
+		case c == '\n':
+			open = 0
+		}
+	}
 	return false
 }
 
