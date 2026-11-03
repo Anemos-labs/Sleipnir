@@ -103,11 +103,39 @@ func DenyKeys(cmd *exec.Cmd) {
 	cmd.Env = append(kept, NoStoredKeysEnv+"=1")
 }
 
+// schemeRE matches a URL that starts with a scheme: "user:pass@host?next=http://x" has a "://" but no scheme of its own.
+var schemeRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*://`)
+
 // withoutUserinfo drops the user and password from a proxy URL: LooksSecret leaves proxy settings to the commands that need
 // the network, but the password in one is a credential a child denied keys must not get either.
 func withoutUserinfo(v string) string {
+	if !schemeRE.MatchString(v) {
+		// user:pass@host:3128, which the tools that read these variables take as an http URL
+		if u, err := url.Parse("http://" + v); err == nil && u.User != nil {
+			u.User = nil
+			return strings.TrimPrefix(u.String(), "http://")
+		}
+		if at := strings.LastIndexByte(v, '@'); at >= 0 {
+			return v[at+1:] // whatever the rest is, what precedes the @ is a user and password
+		}
+		return v
+	}
 	u, err := url.Parse(v)
-	if err != nil || u.User == nil {
+	if err != nil {
+		if at := strings.LastIndexByte(v, '@'); at >= 0 {
+			scheme, _, _ := strings.Cut(v, "://")
+			return scheme + "://" + v[at+1:]
+		}
+		return v
+	}
+	if u.User == nil {
+		if u.Host == "" {
+			// http:///user:pass@proxy:3128 has no authority for url.Parse, but curl takes user:pass as the proxy's credentials
+			if at := strings.LastIndexByte(v, '@'); at >= 0 {
+				scheme, _, _ := strings.Cut(v, "://")
+				return scheme + "://" + v[at+1:]
+			}
+		}
 		return v
 	}
 	u.User = nil

@@ -233,6 +233,7 @@ func TestPathsKeepStructure(t *testing.T) {
 		{`C:\Users\Carol\AppData\Local`, `C:\Users\user\AppData\Local`},
 		{`C:\\Users\\Carol\\AppData`, `C:\\Users\\user\\AppData`},
 		{"c:/users/Dave/x", "c:/users/user/x"},
+		{`D:\uSers\Frank\x`, `D:\uSers\user\x`}, // any capitalization of Users
 		{"see /home/alice.", "see /home/user."},
 		{"/mnt/c/Users/erin/x", "/mnt/c/Users/user/x"},
 		{`{"cwd":"/home/alice/repo"}`, `{"cwd":"/home/user/repo"}`},
@@ -578,5 +579,50 @@ func TestPrivateKeyWithTokenInside(t *testing.T) {
 	out, _ := r.Changed(key)
 	if strings.Contains(out, "MIIEowIBAAKCAQEAu1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gunVTLw7onLRnrq0") {
 		t.Errorf("the key material survives:\n%s", out)
+	}
+}
+
+// A JSON document inside a string (a tool call's arguments in a provider's wire format) is redacted as JSON: its keys count, and a
+// private key whose newlines it escapes is found as it is found in the decoded input.
+func TestJSONRedactsADocumentInsideAString(t *testing.T) {
+	r := testRedactor()
+	inner, _ := json.Marshal(map[string]string{"content": pemFull, "password": "hunter2hunter2"})
+	outer, _ := json.Marshal(map[string]any{"type": "function", "function": map[string]string{"name": "write", "arguments": string(inner)}})
+	out := r.JSON(outer)
+	if !json.Valid(out) {
+		t.Fatalf("output is not JSON: %s", out)
+	}
+	for _, gone := range []string{"QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo", "hunter2hunter2"} {
+		if strings.Contains(string(out), gone) {
+			t.Errorf("%q survived: %s", gone, out)
+		}
+	}
+	if again := r.JSON(out); string(again) != string(out) {
+		t.Fatalf("not idempotent:\n%s\n%s", out, again)
+	}
+}
+
+// In a document inside a string, a key that is a secret is redacted, as a scan of the string would; a string that only looks like
+// a document behind blanks JSON does not accept is redacted as text.
+func TestJSONInsideAStringRedactsKeysAndChecksTheSameBytes(t *testing.T) {
+	r := testRedactor()
+	for _, inner := range []string{`{"` + ghToken + `":true}`, " {\"t\":\"" + ghToken + "\"}"} {
+		outer, _ := json.Marshal(map[string]string{"arguments": inner})
+		out := r.JSON(outer)
+		if strings.Contains(string(out), ghToken) || !json.Valid(out) {
+			t.Errorf("%q: %s", inner, out)
+		}
+	}
+}
+
+// A private key split across the values of a document inside a string is in none of them alone: it is redacted as the scan of
+// the whole string finds it, from BEGIN to END.
+func TestJSONInsideAStringRedactsAKeySplitAcrossValues(t *testing.T) {
+	r := testRedactor()
+	body := "MIIEowIBAAKCAQEAu1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gun"
+	inner, _ := json.Marshal([]string{"-----BEGIN RSA PRIVATE KEY-----", body, "-----END RSA PRIVATE KEY-----"})
+	outer, _ := json.Marshal(map[string]string{"arguments": string(inner)})
+	if out := r.JSON(outer); strings.Contains(string(out), body) || !json.Valid(out) {
+		t.Errorf("%s", out)
 	}
 }

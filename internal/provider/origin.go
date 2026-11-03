@@ -96,8 +96,16 @@ func SameOrigin(a, b *url.URL) bool {
 	return strings.EqualFold(a.Scheme, b.Scheme) && hostOf(a) == hostOf(b) && portOf(a) == portOf(b)
 }
 
-// hostOf removes the port and a trailing DNS dot and lowercases the URL hostname for comparison.
-func hostOf(u *url.URL) string { return strings.TrimSuffix(strings.ToLower(u.Hostname()), ".") }
+// hostOf removes the port and a trailing DNS dot and lowercases the URL hostname for comparison: ASCII letters only, since Unicode
+// lowercasing can make two names one ("İ" and "i̇") that IDNA sends to different hosts.
+func hostOf(u *url.URL) string {
+	return strings.TrimSuffix(strings.Map(func(r rune) rune {
+		if 'A' <= r && r <= 'Z' {
+			return r + 'a' - 'A'
+		}
+		return r
+	}, u.Hostname()), ".")
+}
 
 // portOf returns an explicit port or the standard HTTP/HTTPS port, leaving other schemes without a
 // default.

@@ -222,13 +222,31 @@ func (l *loader) entry(src mdfile.Source, e os.DirEntry) []Warning {
 		if err != nil || !fi.Mode().IsRegular() {
 			return nil
 		}
+		// A link is a definition only when what it names is one too: a Markdown file, and no credentials file (a link
+		// named reviewer.md to .env would make the secret a role's instructions, sent to the provider).
+		real, err := filepath.EvalSymlinks(path)
+		if err != nil || !strings.HasSuffix(strings.ToLower(real), ".md") || mdfile.SensitivePath(filepath.ToSlash(real)) != "" {
+			return []Warning{mdfile.Skipf(display, "", "the link names a file that is not an agent definition; skipped")}
+		}
 	} else if !e.Type().IsRegular() {
 		return nil
 	}
 	stem := fileName[:len(fileName)-3]
 
-	parsed, err := mdfile.ReadDoc(path, mdfile.ReadOpts{MaxBytes: MaxFileBytes, Contain: src.Contain})
+	// the extension and the credentials check hold for the file the read opened, as well as for the link checked above: a link
+	// swapped between the two is caught here
+	parsed, err := mdfile.ReadDoc(path, mdfile.ReadOpts{MaxBytes: MaxFileBytes, Contain: src.Contain, Ext: ".md"})
+	resolved := parsed.Real
+	if err != nil {
+		resolved, _ = mdfile.Canonical(path) // a read that failed has no Real, and its error can quote the file
+	}
+	if resolved != "" && mdfile.SensitivePath(filepath.ToSlash(resolved)) != "" {
+		return []Warning{mdfile.Skipf(display, "", "the link names a file that is not an agent definition; skipped")}
+	}
+	var extErr *mdfile.ExtError
 	switch {
+	case errors.As(err, &extErr):
+		return []Warning{mdfile.Skipf(display, "", "the link names a file that is not an agent definition; skipped")}
 	case errors.Is(err, mdfile.ErrEscapes):
 		return []Warning{mdfile.Skipf(display, "", "the file resolves outside its allowed location; skipped")}
 	case err != nil:

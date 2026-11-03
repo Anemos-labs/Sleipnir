@@ -115,6 +115,12 @@ func HostChecked(u *url.URL) (string, bool) {
 		// "0:0::1", "::ffff:127.0.0.1", "::0001": one address has many spellings, and a rule sees the one it is written in.
 		return ip.String(), true
 	}
+	if i := strings.IndexByte(h, '%'); i > 0 {
+		if ip := net.ParseIP(h[:i]); ip != nil {
+			// a scoped literal goes to the address: a rule about it sees the address, and no rule about a name allows it
+			return ip.String(), false
+		}
+	}
 	a, ok := ASCIIName(h)
 	if ip := inetAton(a); ip != nil {
 		// "127.1", "2130706433", "0x7f.0.0.1": a system resolver reads these as the address, so rules see it spelled as one.

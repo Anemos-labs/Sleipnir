@@ -372,7 +372,7 @@ func readMemoryFile(f memory.File) memFile {
 			m.link = true
 			fi, err = os.Stat(abs)
 		}
-		open = func() (io.ReadCloser, error) { return os.Open(abs) }
+		open = func() (io.ReadCloser, error) { return os.OpenFile(abs, os.O_RDONLY|noWait, 0) }
 	} else {
 		root, rerr := os.OpenRoot(f.Dir)
 		if rerr != nil {
@@ -386,7 +386,7 @@ func readMemoryFile(f memory.File) memFile {
 			m.why = "it is a link: edit the file it leads to"
 			return m
 		}
-		open = func() (io.ReadCloser, error) { return root.Open(rel) }
+		open = func() (io.ReadCloser, error) { return root.OpenFile(rel, os.O_RDONLY|noWait, 0) }
 	}
 	if errors.Is(err, fs.ErrNotExist) {
 		return m
@@ -403,6 +403,12 @@ func readMemoryFile(f memory.File) memFile {
 		return m
 	}
 	defer rc.Close()
+	if f, ok := rc.(*os.File); ok {
+		if st, err := f.Stat(); err != nil || !st.Mode().IsRegular() { // replaced since the stat above: a FIFO, say
+			m.why = "it is not a regular file"
+			return m
+		}
+	}
 	b, err := io.ReadAll(io.LimitReader(rc, memory.MaxFileBytes+1))
 	if err != nil {
 		m.why = "it cannot be read"
@@ -434,7 +440,7 @@ func writeMemoryFile(f memory.File, cur memFile, text string) error {
 	if f.User {
 		abs := f.Abs()
 		if cur.link {
-			fh, err := os.OpenFile(abs, os.O_WRONLY|os.O_TRUNC, 0)
+			fh, err := os.OpenFile(abs, os.O_WRONLY|os.O_TRUNC|noWait, 0)
 			if err != nil {
 				return err
 			}

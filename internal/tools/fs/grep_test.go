@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -946,5 +947,60 @@ func TestRgCompatible(t *testing.T) {
 		if got := rgCompatible(pat); got != want {
 			t.Errorf("rgCompatible(%q) = %v, want %v", pat, got, want)
 		}
+	}
+}
+
+// A search allowed for a directory above a credential directory (another user's home, /home) does not read what that directory
+// holds: the check of the search's root cannot see it. Asked inside the directory itself, the search reads it as its check allowed.
+func TestGrepSkipsCredentialDirectoriesBelowItsRoot(t *testing.T) {
+	forEachEngine(t, func(t *testing.T, g *Grep) {
+		env := testEnv(t)
+		tree(t, env.Cwd, map[string]string{
+			"bob/.ssh/id_rsa":            "secret-key-material\n",
+			"bob/.aws/credentials":       "secret-key-material\n",
+			"bob/.config/gcloud/creds":   "secret-key-material\n",
+			"bob/notes.txt":              "secret-key-material\n",
+			"bob/.config/other/settings": "secret-key-material\n",
+		})
+		got := grep(t, g, env, map[string]any{"pattern": "secret", "output_mode": "files_with_matches"})
+		if strings.Contains(got, ".ssh") || strings.Contains(got, ".aws") || strings.Contains(got, "gcloud") {
+			t.Errorf("credential directories were searched:\n%s", got)
+		}
+		if !strings.Contains(got, "notes.txt") || !strings.Contains(got, "settings") {
+			t.Errorf("ordinary files were not searched:\n%s", got)
+		}
+		inside := grep(t, g, env, map[string]any{"pattern": "secret", "path": "bob/.ssh", "output_mode": "files_with_matches"})
+		if !strings.Contains(inside, "id_rsa") {
+			t.Errorf("a search inside the directory itself found nothing:\n%s", inside)
+		}
+	})
+}
+
+// Ripgrep is told to leave the credential directories alone, so it never opens what they hold: the filter after it is a
+// backstop, not the guard.
+func TestRipgrepIsKeptOutOfCredentialDirectories(t *testing.T) {
+	rg, err := exec.LookPath("rg")
+	if err != nil || runtime.GOOS == "windows" {
+		t.Skip("needs ripgrep and a POSIX shell")
+	}
+	log := filepath.Join(t.TempDir(), "args")
+	wrapper := filepath.Join(t.TempDir(), "rg")
+	if err := os.WriteFile(wrapper, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" >> '"+log+"'\nexec '"+rg+"' \"$@\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	env := testEnv(t)
+	tree(t, env.Cwd, map[string]string{"bob/.SSH/id_rsa": "secret\n", "bob/notes.txt": "secret\n"})
+	got := grep(t, &Grep{RipgrepPath: wrapper}, env, map[string]any{"pattern": "secret", "glob": "**/*", "output_mode": "files_with_matches"})
+	args, _ := os.ReadFile(log)
+	for _, want := range []string{"--iglob=!**/.ssh", "--iglob=!**/.config/gcloud"} {
+		if !strings.Contains(string(args), want) {
+			t.Errorf("ripgrep was not given %s: %s", want, args)
+		}
+	}
+	if strings.Index(string(args), "--iglob=!**/.ssh") < strings.Index(string(args), "--glob=") {
+		t.Errorf("the credential globs come before the caller's: %s", args)
+	}
+	if strings.Contains(got, "id_rsa") || !strings.Contains(got, "notes.txt") {
+		t.Errorf("results:\n%s", got)
 	}
 }

@@ -2,7 +2,10 @@ package perm
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -281,5 +284,86 @@ func TestReadOnlyTestRulesDoNotWriteNamedOutputs(t *testing.T) {
 	}
 	if d := own.Check(ctx, Request{Tool: "bash", Command: "go test -coverprofile=c.out ./...", Cwd: root}); !d.Allow {
 		t.Errorf("the person's own rule in plan mode no longer covers the command: %s", d.Reason)
+	}
+}
+
+// The workspace's own name is literal in the rules anchored on it: a project in "proj[ab]" is guarded by Edit(./.sleipnir/**)
+// however its name reads as a glob.
+func TestRulesAnchoredOnAWorkspaceWithGlobCharacters(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "proj[ab]")
+	if err := os.MkdirAll(filepath.Join(root, ".sleipnir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e, err := NewEngine(Config{Mode: ModeAcceptEdits, Root: root, Home: t.TempDir(), Ask: []string{"Edit(./.sleipnir/**)"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := e.Check(context.Background(), Request{Tool: "write", Writes: true, Paths: []string{filepath.Join(root, ".sleipnir", "config.json")}})
+	if d.Allow {
+		t.Errorf("a write the ask rule covers was allowed: %+v", d)
+	}
+}
+
+// A glob with too many matches to judge one by one is still judged for the directory its literal part names: ~/.ssh/* is inside
+// ~/.ssh, however many files are there.
+func TestAGlobPastTheBudgetKeepsItsDirectory(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
+	ssh := filepath.Join(home, ".ssh")
+	if err := os.MkdirAll(ssh, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 20100; i++ {
+		if err := os.WriteFile(filepath.Join(ssh, fmt.Sprintf("k%05d", i)), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []Config{{Mode: ModeBypass}, {Mode: ModeYolo}, {Mode: ModeDefault, Allow: []string{"Bash(cat:*)"}}, {Mode: ModeBypass, Allow: []string{"Bash(cat:*)"}}} {
+		c.Root, c.Home = root, home
+		e, err := NewEngine(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d := e.Check(context.Background(), Request{Tool: "bash", Command: "cat " + ssh + "/k*", Cwd: root}); d.Allow {
+			t.Errorf("%s %v: a glob over ~/.ssh past the budget was allowed: %+v", c.Mode, c.Allow, d)
+		}
+	}
+}
+
+// A yes given to a question is judged against the policy in force when it arrives: the session switched to plan mode while the
+// person was asked refuses the write their yes was for.
+func TestAYesIsJudgedAgainAgainstThePolicyWhenItArrives(t *testing.T) {
+	root := t.TempDir()
+	var e *Engine
+	var err error
+	e, err = NewEngine(Config{Mode: ModeDefault, Root: root, Home: t.TempDir(), Prompter: func(ctx context.Context, r Request) Decision {
+		e.SetMode(ModePlan) // the person changed the mode while the question was on their screen, then pressed yes on it
+		return Decision{Allow: true}
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := e.Check(context.Background(), Request{Tool: "write", Writes: true, Paths: []string{filepath.Join(root, "a.txt")}})
+	if d.Allow || !strings.Contains(d.Reason, "changed while this was asked") {
+		t.Errorf("a write the policy now refuses was allowed by the earlier question's yes: %+v", d)
+	}
+}
+
+// Bypass asks nothing: a yes to a question that arrives after the mode turned to bypass is refused, as a fresh check would refuse
+// the question.
+func TestAYesThatArrivesInBypassIsRefused(t *testing.T) {
+	root := t.TempDir()
+	var e *Engine
+	var err error
+	e, err = NewEngine(Config{Mode: ModeDefault, Root: root, Home: t.TempDir(), Ask: []string{"Bash(echo:*)"},
+		Prompter: func(ctx context.Context, r Request) Decision {
+			e.SetMode(ModeBypass)
+			return Decision{Allow: true}
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := e.Check(context.Background(), Request{Tool: "bash", Command: "echo hi", Cwd: root})
+	if d.Allow || !strings.Contains(d.Reason, BypassRefusal) {
+		t.Errorf("a yes that arrived in bypass mode was taken: %+v", d)
 	}
 }

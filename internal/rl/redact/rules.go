@@ -773,7 +773,7 @@ func detectPath(r *Redactor, s, work string) []span {
 			out = r.pathSpan(out, s, m[2], m[3])
 		}
 	}
-	if strings.Contains(work, "Users") || strings.Contains(work, "users") || strings.Contains(work, "USERS") {
+	if containsFold(work, "users") {
 		for _, m := range homeWinRE.FindAllStringSubmatchIndex(work, -1) {
 			out = r.pathSpan(out, s, m[2], m[3])
 		}

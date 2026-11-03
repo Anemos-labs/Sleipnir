@@ -18,6 +18,11 @@ func TestAScopedAddressIsNotADomainName(t *testing.T) {
 			t.Errorf("%s: %q passes as a name", raw, h)
 		}
 	}
+	// ... and a rule about the address sees the address it goes to, whatever its zone says
+	u, _ := url.Parse("http://[2606:4700:0::1%25eth0]/")
+	if h := Host(u); h != "2606:4700::1" {
+		t.Errorf("a scoped literal is seen as %q", h)
+	}
 	for _, raw := range []string{"http://[::1]/", "http://127.0.0.1/", "https://_dmarc.example.com/", "https://xn--bcher-kva.test/"} {
 		u, _ := url.Parse(raw)
 		if _, ok := HostChecked(u); !ok {

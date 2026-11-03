@@ -203,13 +203,35 @@ func TestPrompterConditionMustCoverTheWholeRequest(t *testing.T) {
 func TestPrompterConditionKeepsTheSessionsAskRules(t *testing.T) {
 	allow := heredoc(`{"hookSpecificOutput":{"decision":{"behavior":"allow"}}}`)
 	r := newRunner(t, settings(t, PermissionRequest, group{hooks: []hookSpec{cmdHook(allow).when("Bash(make deploy:*)")}}))
-	r.AskRules = func() []string { return []string{"Bash(git status)"} }
+	r.AskRules = func(string) []string { return []string{"Bash(git status)"} }
 	ask := r.Prompter(nil)
 	if d := ask(context.Background(), bashReq(r, "make deploy && git status")); d.Allow {
 		t.Errorf("a hook for make deploy approved a git status an ask rule names: %+v", d)
 	}
 	if d := ask(context.Background(), bashReq(r, "make deploy")); !d.Allow {
 		t.Errorf("the hook did not answer for make deploy: %+v", d)
+	}
+}
+
+// The requesting role's ask rules hold there too: a role whose profile asks about git push is not let through by a hook for make
+// deploy, while the same line from another role is.
+func TestPrompterConditionKeepsTheRolesAskRules(t *testing.T) {
+	allow := heredoc(`{"hookSpecificOutput":{"decision":{"behavior":"allow"}}}`)
+	r := newRunner(t, settings(t, PermissionRequest, group{hooks: []hookSpec{cmdHook(allow).when("Bash(make deploy:*)")}}))
+	eng, err := perm.NewEngine(perm.Config{Mode: perm.ModeDefault, Root: r.Dir,
+		Roles: map[string]perm.RoleProfile{"rel": {Ask: []string{"Bash(echo:*)"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.AskRules = eng.AskRulesFor
+	ask := r.Prompter(nil)
+	req := bashReq(r, "make deploy && echo hi")
+	if d := ask(context.Background(), req); !d.Allow {
+		t.Errorf("without the role, the hook did not answer: %+v", d)
+	}
+	req.Role = "rel"
+	if d := ask(context.Background(), req); d.Allow {
+		t.Errorf("a hook for make deploy approved an echo the role's ask rule names: %+v", d)
 	}
 }
 

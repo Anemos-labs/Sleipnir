@@ -9,9 +9,11 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"regexp/syntax"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -200,6 +202,11 @@ func (g Grep) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 		if files == nil {
 			files = k.walkCandidates(base, globs)
 		}
+		if !perm.InCredentialDir(filepath.Join(base, "x")) {
+			// the root was authorized, not every directory below it: what a credential directory holds is not searched unless the
+			// search was asked for inside it
+			files = slices.DeleteFunc(files, perm.InCredentialDir)
+		}
 		sort.Strings(files)
 	} else {
 		files = []string{base}
@@ -304,6 +311,9 @@ func matchesNewlineLiteral(re *syntax.Regexp) bool {
 // ---------------------------------------------------------------------------
 // Candidate selection
 
+// rgCredentialGlobs keep ripgrep out of the directories perm.InCredentialDir names, in any case.
+var rgCredentialGlobs = []string{"--iglob=!**/.ssh", "--iglob=!**/.aws", "--iglob=!**/.gnupg", "--iglob=!**/.config/gcloud"}
+
 // rgCandidates asks ripgrep which files contain a match. ok is false when the
 // caller should fall back to the pure-Go walk.
 //
@@ -322,6 +332,11 @@ func (k *call) rgCandidates(rg, base string, a grepArgs, globs []string, ignoreC
 	}
 	for _, gl := range globs {
 		args = append(args, "--glob="+gl)
+	}
+	if !perm.InCredentialDir(filepath.Join(base, "x")) {
+		// ripgrep never opens what a credential directory holds, as the filter after it would drop it anyway: after the
+		// caller's globs, so none of them lets it back in
+		args = append(args, rgCredentialGlobs...)
 	}
 	args = append(args, "--regexp="+a.Pattern, "--", ".")
 

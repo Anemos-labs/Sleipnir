@@ -9,6 +9,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/goal"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/swarm"
 )
 
@@ -318,5 +319,23 @@ func TestAToolCallAndItsResultPointAtEachOther(t *testing.T) {
 	}
 	if strings.Contains(got, "\x00") {
 		t.Fatalf("a mark was left in the evidence: %q", got)
+	}
+}
+
+// A solo session's delivery commands are judged as its worker's: a deny rule of the worker's profile refuses them.
+func TestDeliveryCommandsAreJudgedAsTheMainAgentsRole(t *testing.T) {
+	dir := t.TempDir()
+	log, err := events.Open(dir, "delivery-role")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer log.Close()
+	eng, err := perm.NewEngine(perm.Config{Root: dir, Roles: map[string]perm.RoleProfile{soloRole().Name: {Deny: []string{"Bash(git --version)"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Session{Dir: dir, Log: log, Blobs: events.NewMemBlobs(), Perm: eng}
+	if _, err := s.deliveryExec(dir)(context.Background(), "git", "--version"); err == nil || !strings.Contains(err.Error(), "denied") {
+		t.Fatalf("the worker's deny rule did not hold: %v", err)
 	}
 }

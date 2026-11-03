@@ -942,3 +942,20 @@ func TestUnquotedWord(t *testing.T) {
 		}
 	}
 }
+
+// Arithmetic that assigns a variable which steers programs (PATH) asks, as an assignment statement of it does: a bare program name
+// after it may be any file.
+func TestArithmeticAssignmentOfPathAsks(t *testing.T) {
+	f := newFixture(t)
+	e := f.engine(t, Config{Mode: ModeAcceptEdits})
+	for _, cmd := range []string{"echo $((PATH=0)); ls", "(( PATH=0 )); ls", ": $((LD_PRELOAD=1)) && cat README.md"} {
+		if d := e.Check(bg, f.request(rq{tool: "Bash", cmd: cmd, cwd: "{root}"})); d.Allow {
+			t.Errorf("%q was allowed: %+v", cmd, d)
+		}
+	}
+	for _, cmd := range []string{"echo $((1+2)); ls", "i=0; echo $((i+1))"} {
+		if d := e.Check(bg, f.request(rq{tool: "Bash", cmd: cmd, cwd: "{root}"})); !d.Allow {
+			t.Errorf("%q was refused: %+v", cmd, d)
+		}
+	}
+}

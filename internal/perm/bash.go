@@ -1059,6 +1059,9 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 	if s.Program == "for" || s.Program == "select" {
 		names = append(names, s.LoopVar)
 	}
+	// So does arithmetic, which assigns any name it is given: $((PATH=0)) and ((PATH=0)) leave PATH "0", and a bare program name is
+	// then looked up in ./0.
+	names = append(names, arithNames(s.Arith)...)
 	for _, n := range names {
 		if i := strings.IndexByte(n, '['); i >= 0 {
 			n = n[:i] // an element of the array

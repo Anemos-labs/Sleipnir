@@ -301,13 +301,14 @@ func title(s string) string {
 // thousands writes n with thin separators: 12,345.
 func thousands(n int) string {
 	s := fmt.Sprint(n)
+	sign := ""
 	if n < 0 {
-		return "-" + thousands(-n)
+		sign, s = "-", s[1:] // not -n, which is n again for the smallest int
 	}
 	for i := len(s) - 3; i > 0; i -= 3 {
 		s = s[:i] + "," + s[i:]
 	}
-	return s
+	return sign + s
 }
 
 // teamIDRE matches the ids a team's agents go by (mgr, be-1, rv-12) wherever an agent wrote one into a note.

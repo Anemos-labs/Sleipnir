@@ -666,6 +666,9 @@ func readsCodeFromStdin(prog string, args []string) bool {
 		return false
 	}
 	values := interpreterValueOpts[name]
+	if name == "node" && nodeInteractive(args) {
+		return true // forced interactive: after any inline code, node reads code from stdin
+	}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
@@ -705,6 +708,30 @@ func readsCodeFromStdin(prog string, args []string) bool {
 		}
 	}
 	return true
+}
+
+// nodeInteractive reports whether node's options, those before the script or "--", ask for its interactive prompt (-i,
+// --interactive), which reads code from stdin even when -e or -p gave it code to run first.
+func nodeInteractive(args []string) bool {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--":
+			return false
+		case a == "--interactive":
+			return true
+		case slices.Contains(interpreterLongValueOpts["node"], a) || a == "-r" || a == "-C" || a == "-e" || a == "-p" ||
+			a == "--eval" || a == "--print":
+			i++ // the value is the next argument
+		case len(a) > 1 && a[0] == '-' && a[1] != '-':
+			if strings.IndexByte(a, 'i') > 0 {
+				return true
+			}
+		case len(a) > 0 && a[0] != '-':
+			return false // the script, and its own arguments after it
+		}
+	}
+	return false
 }
 
 // interpreterName maps python3.11, nodejs, perl5.34, ... to the key used in

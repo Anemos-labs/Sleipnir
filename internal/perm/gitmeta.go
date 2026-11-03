@@ -238,6 +238,10 @@ func indexGitlinks(p string) ([]string, bool) {
 	return links, ok
 }
 
+// maxIndexPath bounds one path of an index: PATH_MAX, past which no checkout could hold the file. A version 4 index rebuilds each
+// path from the one before it, so without a bound a few bytes per entry could make each path, and the memory, grow.
+const maxIndexPath = 4096
+
 // parseIndexGitlinks reads a git index (versions 2 to 4) with object IDs w bytes long: the paths of its gitlink entries, the hex
 // name of the shared index a split index points to, and whether it read through.
 func parseIndexGitlinks(b []byte, w int) (links []string, shared string, ok bool) {
@@ -296,6 +300,9 @@ func parseIndexGitlinks(b []byte, w int) (links []string, shared string, ok bool
 			if o > end {
 				return nil, "", false
 			}
+		}
+		if len(name) > maxIndexPath {
+			return nil, "", false // longer than any path a file system takes: a v4 prefix grown on purpose
 		}
 		prev = name
 		if mode == 0o160000 {
@@ -373,7 +380,8 @@ func gitConfigHelper(b []byte) string {
 		k, v, _ := strings.Cut(line, "=")
 		k, v = strings.ToLower(strings.TrimSpace(k)), strings.Trim(strings.TrimSpace(v), `"`)
 		lv := strings.ToLower(v)
-		if v == "" || lv == "false" || lv == "no" || lv == "off" || lv == "0" {
+		// only core.fsmonitor is a boolean as well as a command; for the others "off" names a program
+		if v == "" || section == "core" && k == "fsmonitor" && (lv == "false" || lv == "no" || lv == "off" || lv == "0") {
 			continue
 		}
 		switch {
@@ -381,8 +389,9 @@ func gitConfigHelper(b []byte) string {
 			section == "diff" && k == "external",
 			section == "filter" && (k == "clean" || k == "smudge" || k == "process"),
 			section == "diff" && (k == "textconv" || k == "command"),
-			section == "gpg" && k == "program":
-			return "core.fsmonitor, a filter, a diff driver or a gpg program in its git configuration (" + section + "." + k + ")"
+			section == "gpg" && k == "program",
+			section == "core" && k == "alternaterefscommand":
+			return "core.fsmonitor, a filter, a diff driver, a gpg program or an alternate-refs command in its git configuration (" + section + "." + k + ")"
 		}
 	}
 	return ""
@@ -430,21 +439,27 @@ func gitLineContinues(raw string, quoted bool) (cont, quote bool) {
 // looks like a section header is not taken for one.
 func gitConfigLines(b []byte) []string {
 	var out []string
-	cur, quoted := "", false
+	// git skips a UTF-8 byte order mark at the start of the file: the first section after one is read like any other
+	b = bytes.TrimPrefix(b, []byte("\xef\xbb\xbf"))
+	var cur strings.Builder // a continued value grows in place: copying it again at each continuation is quadratic in its lines
+	quoted := false
 	for _, raw := range strings.Split(string(b), "\n") {
 		raw = strings.TrimSuffix(raw, "\r")
 		if cont, q := gitLineContinues(raw, quoted); cont {
-			cur, quoted = cur+raw[:len(raw)-1], q
+			cur.WriteString(raw[:len(raw)-1])
+			quoted = q
 			continue
 		}
-		line := strings.TrimSpace(cur + raw)
-		cur, quoted = "", false
+		cur.WriteString(raw)
+		line := strings.TrimSpace(cur.String())
+		cur.Reset()
+		quoted = false
 		if line == "" || line[0] == '#' || line[0] == ';' {
 			continue
 		}
 		out = append(out, line)
 	}
-	if line := strings.TrimSpace(cur); line != "" && line[0] != '#' && line[0] != ';' {
+	if line := strings.TrimSpace(cur.String()); line != "" && line[0] != '#' && line[0] != ';' {
 		out = append(out, line)
 	}
 	return out

@@ -796,7 +796,7 @@ func showEpisode(dir string, asJSON bool, w io.Writer) error {
 		fmt.Fprintf(w, "\nsignals: %s\n", floatLine(ep.Signals))
 	}
 	for _, n := range ep.Reward.Notes {
-		fmt.Fprintf(w, "note: %s\n", n)
+		fmt.Fprintf(w, "note: %s\n", oneLineSafe(n)) // a note can quote a file name, newlines and all
 	}
 	return nil
 }

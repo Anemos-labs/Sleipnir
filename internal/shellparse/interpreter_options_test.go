@@ -18,9 +18,35 @@ func TestReadsCodeFromStdinSkipsLongOptionValues(t *testing.T) {
 		{"bun", []string{"--preload", "setup.ts"}, true},
 		{"ruby", []string{"--encoding", "UTF-8"}, true},
 		{"python3", []string{"--check-hash-based-pycs", "always", "x.py"}, false},
+		{"node", []string{"-e", "1"}, false},
+		{"node", []string{"-i", "-e", "1"}, true}, // forced interactive reads stdin after the inline code
+		{"node", []string{"-e", "1", "--interactive"}, true},
+		{"node", []string{"-ie", "1"}, true},
+		{"node", []string{"app.js", "-i"}, false}, // the script's own argument
+		{"node", []string{"-e", "-i"}, false},     // -i is the code
 	} {
 		if got := ReadsCodeFromStdin(tc.prog, tc.args); got != tc.stdin {
 			t.Errorf("%s %q: reads code from stdin = %v, want %v", tc.prog, tc.args, got, tc.stdin)
+		}
+	}
+}
+
+// Removing the backslash-newlines of an unquoted here-document, as the shell does before expanding it, can join "$" and "(" into a
+// substitution the text as written does not show; such a command is not parsed as complete. Continuations that only join plain
+// text, as in a Dockerfile written with cat, parse as before.
+func TestAHeredocContinuationThatJoinsASubstitutionIsNotParsed(t *testing.T) {
+	for src, parsed := range map[string]bool{
+		"cat <<EOF\n$\\\n(touch /tmp/x)\nEOF":        false,
+		"cat <<EOF\n`\\\ntouch x`\nEOF":              false, // inside an open substitution: not judged
+		"cat > Dockerfile <<EOF\nRUN a \\\n  b\nEOF": true,
+		"cat <<'EOF'\n$\\\n(touch /tmp/x)\nEOF":      true, // quoted: nothing is expanded
+		"cat <<EOF\n$((PA\\\nTH=0))\nEOF":            false,
+		"cat <<EOF\n$(( (1), PA\\\nTH=0 ))\nEOF":     false, // the inner (1) does not close the expansion
+		"cat <<EOF\n$\\\n'hello'\nEOF":               true,  // $' is no quote in a here-document
+		"cat <<EOF\n$\\\n\"hello\"\nEOF":             true,
+	} {
+		if an := Parse(src); an.Parsed != parsed {
+			t.Errorf("%q: Parsed %v, want %v (%s)", src, an.Parsed, parsed, an.Problem)
 		}
 	}
 }
