@@ -323,6 +323,7 @@ type Swarm struct {
 	// teamIDs holds the id of every team member registered in the run, retired ones included (everyMember). Guarded by mu.
 	teamIDs map[string]bool
 	queued  map[string]queuedSpawn // parents waiting for a free member of their role (spawnqueue.go), by task id; guarded by mu
+	rounds  map[string]poolRound   // pool rounds waiting on votes (poolround.go), by task id; guarded by mu
 	members map[string]*member
 	// arriving (under mu) holds the IDs of agents that are being added to the team: the task is assigned to the agent before the
 	// agent is registered, and the stall sweep must not read that interval as an owner that left (arrive).
