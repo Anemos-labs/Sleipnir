@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -150,5 +151,36 @@ func TestAManagersOwnChangeIsIntegratedBeforeItStartsAMember(t *testing.T) {
 	}
 	if got := r.sw.review.merges; got != 1 {
 		t.Fatalf("the review gate counts %d merges, want the manager's change", got)
+	}
+}
+
+// A manager change is named, verified and recorded for review by the files it changes on top of the integration, not by
+// every file the checkout has changed since it started: once its earlier changes are integrated, they are not part of the
+// next one. A one-file change of a manager's was committed as "Update .dockerignore, .github/ISSUE_TEMPLATE/bug_report.md, …"
+// and held for review as touching all of them.
+func TestAManagerChangeListsOnlyWhatItChangesOnTopOfTheIntegration(t *testing.T) {
+	r := newIsoRig(t, isoOpts{verify: true}, script{}.fn())
+	if _, err := r.sw.StartManager(); err != nil {
+		t.Fatal(err)
+	}
+	m := r.sw.get(r.sw.ManagerID())
+	ctx := context.Background()
+	for _, name := range []string{"first.txt", "second.txt"} {
+		if err := writeFileString(filepath.Join(m.dir, name), name+"\n"); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.sw.flushManager(ctx, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	g := &r.sw.review
+	g.mu.Lock()
+	merges, landed := g.merges, g.landed[g.merges]
+	g.mu.Unlock()
+	if merges != 2 {
+		t.Fatalf("%d merges, want the two manager changes", merges)
+	}
+	if !slices.Equal(landed, []string{"second.txt"}) {
+		t.Fatalf("the second manager change is recorded as touching %v, want [second.txt]", landed)
 	}
 }
