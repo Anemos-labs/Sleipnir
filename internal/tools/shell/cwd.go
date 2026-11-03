@@ -102,6 +102,15 @@ func (m *Manager) startDir(env *tools.Env, base string) string {
 	return base
 }
 
+// Dir is the directory the agent's next command starts in. An agent with no directory of its own has "".
+func (m *Manager) Dir(env *tools.Env) string {
+	base, err := baseDir(env)
+	if err != nil {
+		return ""
+	}
+	return m.startDir(env, base)
+}
+
 // recordCwd reads the directory the command ended in and updates the agent's
 // remembered directory. It returns the directory the agent is now in and, when
 // the agent was put back because it left the project, a note for the model.

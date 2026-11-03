@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/session"
 )
@@ -250,5 +251,58 @@ func TestSessionStartSaysWhetherTheSessionIsResumed(t *testing.T) {
 	b, _ := os.ReadFile(dump)
 	if got := strings.Fields(string(b)); len(got) != 2 || got[0] != "startup" || got[1] != "resume" {
 		t.Errorf("SessionStart sources = %q, want startup then resume", got)
+	}
+}
+
+// A condition about a guarded directory sees the command the shell runs from inside it: the shell's remembered directory carries over
+// from one call to the next, and the hook is judged there and told so.
+func TestToolHookConditionFollowsTheShellsDirectory(t *testing.T) {
+	repo := newRepo(t)
+	if err := os.MkdirAll(filepath.Join(repo, "secret"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "secret", "key.pem"), []byte("k\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dump := filepath.Join(t.TempDir(), "payload.json")
+	step := 0
+	client, model := startMock(t, func(c *mock.Call) mock.Reply {
+		step++
+		switch step {
+		case 1:
+			return mock.Reply{Text: "go", ToolCalls: []mock.ToolCall{{ID: "c1", Name: "bash", Args: `{"command":"cd secret"}`}}}
+		case 2:
+			return mock.Reply{Text: "read", ToolCalls: []mock.ToolCall{{ID: "c2", Name: "bash", Args: `{"command":"cat key.pem"}`}}}
+		}
+		return mock.Reply{Text: "done"}
+	})
+	o := opts(t, repo, client, model)
+	o.Mode = perm.ModeBypass
+	o.Config = config.Defaults()
+	o.Config.Hooks = map[string]json.RawMessage{"PreToolUse": json.RawMessage(
+		`[{"hooks":[{"type":"command","if":"Read(secret/**)","command":"cat > ` + dump + `"}]}]`)}
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.Run(context.Background(), "go"); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(dump)
+	if err != nil {
+		t.Fatalf("the hook about secret/ did not run for a command in it: %v", err)
+	}
+	var p struct {
+		Cwd       string `json:"cwd"`
+		ToolInput struct {
+			Command string `json:"command"`
+		} `json:"tool_input"`
+	}
+	if err := json.Unmarshal(b, &p); err != nil {
+		t.Fatal(err)
+	}
+	if p.ToolInput.Command != "cat key.pem" || filepath.Base(p.Cwd) != "secret" {
+		t.Errorf("payload: %+v", p)
 	}
 }

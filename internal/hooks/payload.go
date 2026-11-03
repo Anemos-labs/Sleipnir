@@ -17,6 +17,16 @@ var reservedKeys = map[string]bool{
 	"payload_truncated": true,
 }
 
+// firstNonEmptyDir is the first directory named.
+func firstNonEmptyDir(dirs ...string) string {
+	for _, d := range dirs {
+		if d != "" {
+			return d
+		}
+	}
+	return ""
+}
+
 // payload builds the JSON a hook reads on stdin: the fields Claude Code hooks
 // expect (session_id, cwd, hook_event_name, tool_name, tool_input, tool_response,
 // agent_id, agent_type) plus Sleipnir's own (agent, role) and Event.Extra. Keys
@@ -28,10 +38,7 @@ var reservedKeys = map[string]bool{
 // tool calls it path, for the same reason: a hook that reads
 // .tool_input.file_path and finds nothing would silently allow everything.
 func (r *Runner) payload(event string, ev Event) ([]byte, error) {
-	cwd := ev.Cwd
-	if cwd == "" {
-		cwd = r.Dir
-	}
+	cwd := firstNonEmptyDir(ev.ToolDir, ev.Cwd, r.Dir)
 	sid := ev.SessionID
 	if sid == "" {
 		sid = r.SessionID

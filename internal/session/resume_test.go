@@ -595,6 +595,92 @@ func TestRecallStillWorksForFoldedTurnsAndHandlesAfterAResume(t *testing.T) {
 
 // --continue goes on under the rules the session had: the allow rules a person gave ("don't ask again", /allow) and a mode they chose are read back
 // from the log, so that the same go test is not asked again. A mode on the new command line wins, and bypass is never brought back.
+// A delegated run names a session and gets back what restricts it, never what widens it, and leaves the person's record as it was.
+func TestDelegatedResumeBringsBackOnlyRestrictions(t *testing.T) {
+	repo := newRepo(t)
+	dir := filepath.Join(t.TempDir(), "sessions", "20260101-000000-abcdef")
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+
+	o := opts(t, repo, client, model)
+	o.Dir, o.Mode = dir, perm.ModeDefault
+	s1, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allow, _ := perm.ParseRule(perm.Allow, "Bash(go test:*)")
+	deny, _ := perm.ParseRule(perm.Deny, "Bash(git push:*)")
+	s1.Perm.AddRule(perm.ScopeSession, allow)
+	s1.Perm.AddRule(perm.ScopeSession, deny)
+	s1.Perm.SetMode(perm.ModeAcceptEdits)
+	if _, err := s1.Run(context.Background(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	o2 := opts(t, repo, client, model)
+	o2.Resume, o2.Mode, o2.Delegated = dir, perm.ModeDefault, true
+	s2, err := session.New(context.Background(), o2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := s2.Perm.Granted(); len(got) != 0 {
+		t.Errorf("recorded allow rules came back: %v", got)
+	}
+	if s2.Perm.Mode() != perm.ModeDefault {
+		t.Errorf("the recorded mode came back: %v", s2.Perm.Mode())
+	}
+	if got := s2.Perm.Added(perm.Deny); len(got) != 1 {
+		t.Errorf("the recorded deny rule: %v", got)
+	}
+	if _, err := s2.Run(context.Background(), "again"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s2.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	o3 := opts(t, repo, client, model)
+	o3.Resume, o3.Mode = dir, perm.ModeDefault
+	s3, err := session.New(context.Background(), o3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s3.Close()
+	if got := s3.Perm.Granted(); len(got) != 1 || s3.Perm.Mode() != perm.ModeAcceptEdits {
+		t.Errorf("the person's own resume after a delegated run: %v %v", got, s3.Perm.Mode())
+	}
+}
+
+// A delegated run's verification command is held to the run's permissions before any agent starts.
+func TestDelegatedVerifyIsJudgedAsAShellCommand(t *testing.T) {
+	repo := newRepo(t)
+	client, model := startMock(t, func(c *mock.Call) mock.Reply { return mock.Reply{Text: "ok"} })
+	start := func(mode perm.Mode, allow []string, delegated bool) error {
+		o := opts(t, repo, client, model)
+		o.Dir = filepath.Join(t.TempDir(), "sessions", "20260101-000000-abcdef")
+		o.Mode, o.Allow, o.Verify, o.Delegated, o.Prompter = mode, allow, "touch made-by-verify", delegated, nil
+		s, err := session.New(context.Background(), o)
+		if err == nil {
+			s.Close()
+		}
+		return err
+	}
+	if err := start(perm.ModeDefault, nil, true); err == nil || !strings.Contains(err.Error(), "verification command is not allowed") {
+		t.Errorf("a command nobody can approve: %v", err)
+	}
+	if err := start(perm.ModePlan, nil, true); err == nil {
+		t.Error("plan mode ran a command that writes")
+	}
+	if err := start(perm.ModeDefault, []string{"Bash(touch:*)"}, true); err != nil {
+		t.Errorf("a command a rule allows: %v", err)
+	}
+	if err := start(perm.ModeDefault, nil, false); err != nil {
+		t.Errorf("the person's own --verify: %v", err)
+	}
+}
+
 func TestResumeKeepsThePermissionsTheSessionHad(t *testing.T) {
 	repo := newRepo(t)
 	dir := filepath.Join(t.TempDir(), "sessions", "20260101-000000-abcdef")
