@@ -103,7 +103,10 @@ type member struct {
 	idleAt    time.Time
 	// outage is when its last run ended on an outage of its model's endpoint (provider.Error.Outage); zero after a run that
 	// ended any other way. The manager's assignments steer away from it for a while (steer.go).
-	outage    time.Time
+	outage time.Time
+	// editSince is when the manager's checkout was first seen holding changes not yet integrated (flushManager), zero when it
+	// holds none: how long the manager's own change took to build, for the review that covers it.
+	editSince time.Time
 	gateTries int
 	stuckWarn bool
 	autoRuns  int

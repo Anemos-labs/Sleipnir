@@ -3,6 +3,8 @@ package swarm
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/anemos-labs/sleipnir/internal/gitx"
 )
 
@@ -17,13 +19,18 @@ func (s *Swarm) flushManager(ctx context.Context, m *member) error {
 		return err
 	}
 	if len(diff.Files) == 0 {
+		m.setEditSince(time.Time{})
 		return s.syncManager(ctx, m)
 	}
 	if ahead, err := s.managerAhead(ctx, m); err != nil {
 		return err
 	} else if !ahead {
+		m.setEditSince(time.Time{})
 		return s.syncManager(ctx, m)
 	}
+	// The change may take many steps to pass verification (a manager that writes a feature itself): its duration runs from the
+	// first step that left it in the checkout, so the review that covers it is held to how long it took, not to the floor.
+	began := m.markEditSince(s.deps.Now())
 	files := make([]string, 0, len(diff.Files))
 	for _, f := range diff.Files {
 		files = append(files, f.Path)
@@ -35,11 +42,12 @@ func (s *Swarm) flushManager(ctx context.Context, m *member) error {
 	if !result.ok {
 		return fmt.Errorf("manager changes were not integrated: %s %v", result.bounce, result.infra)
 	}
+	m.setEditSince(time.Time{})
 	if result.evidence == "nothing to merge: the tree has no changes" {
 		return s.syncManager(ctx, m)
 	}
 	s.review.mu.Lock()
-	s.review.landLocked("manager changes", files, 0)
+	s.review.landLocked("manager changes", files, s.deps.Now().Sub(began))
 	s.review.mu.Unlock()
 	for _, f := range files {
 		s.noteManagerEdit(f)
@@ -98,4 +106,21 @@ func (s *Swarm) syncManager(ctx context.Context, m *member) error {
 		return fmt.Errorf("manager checkout needs repair: %s", note)
 	}
 	return nil
+}
+
+// markEditSince records at as the start of the manager's pending change unless one is already recorded, and returns the start.
+func (m *member) markEditSince(at time.Time) time.Time {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.editSince.IsZero() {
+		m.editSince = at
+	}
+	return m.editSince
+}
+
+// setEditSince sets the start of the manager's pending change; the zero time clears it.
+func (m *member) setEditSince(at time.Time) {
+	m.mu.Lock()
+	m.editSince = at
+	m.mu.Unlock()
 }
