@@ -381,7 +381,7 @@ func gitDirs(dir string) (own, common string, ok bool) {
 	if err != nil {
 		return own, own, true
 	}
-	common = strings.TrimSpace(string(c))
+	common = strings.TrimRight(string(c), "\r\n") // git strips line endings only: a blank ends a directory name
 	if !filepath.IsAbs(common) {
 		base := own
 		if r, err := filepath.EvalSymlinks(own); err == nil {

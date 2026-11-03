@@ -20,3 +20,28 @@ func TestDiffTextShowsControlCharacters(t *testing.T) {
 		t.Error("an ESC and the text \\x1b look the same")
 	}
 }
+
+// A CRLF line ending is a line ending, but a bare carriage return that ends the text is content the file keeps, and is drawn.
+func TestSplitDiffLinesKeepsAFinalBareCarriageReturn(t *testing.T) {
+	for in, want := range map[string][]string{
+		"a\r\nb\r\n": {"a", "b"},
+		"a\r\nb":     {"a", "b"},
+		"text\r":     {"text\r"},
+		"a\nb\r":     {"a", "b\r"},
+	} {
+		got := splitDiffLines(in)
+		if len(got) != len(want) {
+			t.Errorf("splitDiffLines(%q) = %q, want %q", in, got, want)
+			continue
+		}
+		for i := range got {
+			if got[i] != want[i] {
+				t.Errorf("splitDiffLines(%q) = %q, want %q", in, got, want)
+				break
+			}
+		}
+	}
+	if diffText(splitDiffLines("text\r")[0], 4) != "text␍" {
+		t.Errorf("a final bare carriage return is not drawn: %q", diffText(splitDiffLines("text\r")[0], 4))
+	}
+}

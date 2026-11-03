@@ -145,7 +145,7 @@ flags:
 		fmt.Fprintf(stdout, "%d old enough but written to in the last ten minutes: left alone\n", len(plan.inUse))
 	}
 	if len(plan.skipped) > 0 {
-		fmt.Fprintf(stderr, "left alone, not sessions (no events.jsonl): %s\n", strings.Join(plan.skipped, ", "))
+		fmt.Fprintf(stderr, "left alone, not sessions (no events.jsonl): %s\n", oneLineSafe(strings.Join(plan.skipped, ", ")))
 	}
 	if !*yes {
 		fmt.Fprintln(stdout, "nothing deleted: run again with --yes")
@@ -162,7 +162,7 @@ flags:
 		report, err := session.RemoveStoredSession(ctx, it.path)
 		cancel()
 		if err != nil {
-			fmt.Fprintf(stderr, "sessions prune: %s: %v\n", it.id, err)
+			fmt.Fprintf(stderr, "sessions prune: %s: %s\n", oneLineSafe(it.id), oneLineSafe(err.Error()))
 			failed++
 			continue
 		}

@@ -115,7 +115,9 @@ func splitDiffLines(s string) []string {
 	}
 	ls := strings.Split(strings.TrimSuffix(s, "\n"), "\n")
 	for i, l := range ls {
-		ls[i] = strings.TrimSuffix(l, "\r")
+		if i < len(ls)-1 || strings.HasSuffix(s, "\n") { // a CRLF ending; a bare \r that ends the text is content, and is shown
+			ls[i] = strings.TrimSuffix(l, "\r")
+		}
 	}
 	return ls
 }

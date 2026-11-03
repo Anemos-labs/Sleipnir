@@ -271,6 +271,7 @@ func TestGitReadsAskWhenTheRepositoryNamesAHelper(t *testing.T) {
 	}
 	for _, cfg := range []string{"[core]\n\tfsmonitor = ./hook.sh\n", "[filter \"x\"]\n\tclean = ./run\n", "[include]\n\tpath = other\n",
 		"[diff \"x\"]\n\ttextconv = ./conv\n", "[core]\n\talternateRefsCommand = ./refs.sh\n",
+		"[core]\n\talternateRefsCommand = off\n", "[diff]\n\texternal = no\n", // a command named off is a command: only fsmonitor is a boolean
 		"\xef\xbb\xbf[core]\n\tfsmonitor = ./hook.sh\n", // git skips a byte order mark before the first section
 	} {
 		if err := os.WriteFile(filepath.Join(f.root, ".git", "config"), []byte(cfg), 0o600); err != nil {
@@ -435,6 +436,17 @@ func TestCommonDirIsReadFromTheRealGitDirectory(t *testing.T) {
 	want, _ := filepath.EvalSymlinks(filepath.Join(base, "srv", "repo", "common"))
 	if got, _ := filepath.EvalSymlinks(common); !ok || got != want {
 		t.Errorf("common dir %q, want %q", common, want)
+	}
+	// git strips only the line ending: a trailing blank is part of the directory's name
+	if err := os.MkdirAll(filepath.Join(base, "srv", "repo", "common "), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(real, "commondir"), []byte("../common \r\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, common, _ = gitDirs(wt)
+	if filepath.Base(common) != "common " {
+		t.Errorf("common dir %q, want the one named with a trailing blank", common)
 	}
 }
 

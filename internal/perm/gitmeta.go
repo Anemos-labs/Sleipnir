@@ -380,7 +380,8 @@ func gitConfigHelper(b []byte) string {
 		k, v, _ := strings.Cut(line, "=")
 		k, v = strings.ToLower(strings.TrimSpace(k)), strings.Trim(strings.TrimSpace(v), `"`)
 		lv := strings.ToLower(v)
-		if v == "" || lv == "false" || lv == "no" || lv == "off" || lv == "0" {
+		// only core.fsmonitor is a boolean as well as a command; for the others "off" names a program
+		if v == "" || section == "core" && k == "fsmonitor" && (lv == "false" || lv == "no" || lv == "off" || lv == "0") {
 			continue
 		}
 		switch {
