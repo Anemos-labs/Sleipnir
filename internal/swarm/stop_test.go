@@ -189,3 +189,30 @@ func TestAResumeKeepsTheStartOfWorkInFlight(t *testing.T) {
 		t.Fatalf("finding = %+v, %v", f, ok)
 	}
 }
+
+// A worker the person stops is not started again on the task it held: with persistent pools the repair retries a requeued task on
+// its last owner, and it gave the task straight back to the worker that had just been stopped. The task waits for the manager.
+func TestAStoppedWorkerIsNotRepairedOntoItsTask(t *testing.T) {
+	cfg := stallCfg()
+	cfg.StallTurns = 100
+	cfg.PersistentPools = true
+	r := newRVRigWith(t, cfg, gatedWorkers(nil), nil)
+	r.sw.StartManager()
+	id, task := spawnWorker(t, r, "build the importer", 1)
+	if _, err := r.sw.StopAgent(id); err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, id+" to stop", func() bool { return r.idle(id) })
+	rvWait(t, task.ID+" to go back to todo", func() bool {
+		got, _ := r.sw.Board.Snapshot().Task(task.ID)
+		return got.Status == StatusTodo
+	})
+	r.sw.repairTick(time.Now().Add(time.Hour))
+	if got, _ := r.sw.Board.Snapshot().Task(task.ID); got.Status != StatusTodo || got.Owner != "" {
+		t.Fatalf("after the repair pass %s is %s, owned by %q: the stopped worker was started on it again", task.ID, got.Status, got.Owner)
+	}
+	told := strings.Join(harnessMailTo(r, "mgr"), "\n")
+	if !strings.Contains(told, task.ID+" returned to todo") {
+		t.Fatalf("the manager was not handed the task: %q", told)
+	}
+}

@@ -167,7 +167,9 @@ func openPoolOf(snap *Snapshot, agent string) string {
 func (s *Swarm) settleFailed(m *member, rs *runState, tasks map[string]uint64, kind stopKind, why string, count bool, err error) (*pendingRestart, int, string) {
 	p, tried := s.planRestart(m, rs, tasks, kind, why, count, err)
 	if p == nil {
-		return nil, tried, s.settleStopped(m, tasks, kind, why, count, tried > 0)
+		// A run that was stopped (by the person, or by the harness for a stall) hands its work back to the manager like one whose
+		// restarts ran out: the repair would otherwise start the same worker on it again a moment later.
+		return nil, tried, s.settleStopped(m, tasks, kind, why, count, tried > 0 || rs.stopped)
 	}
 	rest := maps.Clone(tasks)
 	snap := s.Board.Snapshot()
