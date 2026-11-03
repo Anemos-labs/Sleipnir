@@ -181,7 +181,7 @@
       L.rows.push(rec);
       if (e.k === 'stream' || (e.k === 'say' && e.stream)) { const t = $('.st,.mt', el); if (t) { rec.t = t; rec.done = false; L.stream.push(rec); } }
       if (e.k === 'sys' && e.open) $$('[data-open-page]', el).forEach(b => b.addEventListener('click', () => ui.settingsPage(b.dataset.openPage)));
-      if (e.k === 'peer') $$('[data-peer-tab]', el).forEach(b => b.addEventListener('click', () => { if (SL.sessions.reg.byId[b.dataset.peerTab]) SL.sessions.activate(b.dataset.peerTab); }));
+      if (e.k === 'peer') $$('[data-peer-tab]', el).forEach(b => b.addEventListener('click', () => { if (Object.prototype.hasOwnProperty.call(SL.sessions.reg.byId, b.dataset.peerTab)) SL.sessions.activate(b.dataset.peerTab); }));
       if (e.k === 'mgrdec') { rec.v = e.v; L.dec = rec; }
       return rec;
     }

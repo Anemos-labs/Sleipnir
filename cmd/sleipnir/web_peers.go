@@ -238,11 +238,17 @@ func (t *webTab) deliverPeer(from *webTab, text string, reply bool) (string, err
 	if turning && s != nil {
 		if a := s.Main(); a != nil {
 			t.noteAnswer(sum.ID, text, true)
-			t.mu.Lock()
-			t.peerInTurn = true // if the turn was ending, readStranded runs one on it
-			t.mu.Unlock()
 			t.emit(row)
 			a.Send(peerFrame(from, text, reply, true))
+			// The turn may have ended while the message went in: then its own readStranded may have looked at the inbox before
+			// the message was there, and this one reads it.
+			t.mu.Lock()
+			t.peerInTurn = true
+			ended := !t.turning
+			t.mu.Unlock()
+			if ended {
+				t.readStranded(s)
+			}
 			return fmt.Sprintf("delivered to %s (%s): it is working and reads your message with its next step; it answers with the sleipnir tool if it does, and its answer then reaches you as mail. %s", t.id, name, noPoll), nil
 		}
 	}
@@ -620,6 +626,13 @@ func (h webHarnessHost) PeerSpawn(req session.PeerSpawn) (string, error) {
 	t.parent = from.id
 	t.mu.Unlock()
 	spec := startSpec{args: args, name: name, goalText: req.Goal, note: "started by session " + from.id + " (" + from.Summary().Name + ")"}
+	if nr.TrustProject {
+		from.mu.Lock()
+		if from.trusted != nil && from.trustedDir == cleanDir(dir) {
+			spec.trusted = from.trusted // the files the person confirmed for this project, as the spawning session holds them
+		}
+		from.mu.Unlock()
+	}
 	from.h.track(func() { _ = t.startGen(spec) })
 	out := fmt.Sprintf("started session %s in %s (%s, %s)", t.id, dir, teamWord(workers), firstNonEmpty(model, "the default model"))
 	if req.Goal != "" {

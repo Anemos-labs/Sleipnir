@@ -1606,6 +1606,12 @@ func (s *Session) runTurnWith(ctx context.Context, goal, mail string, onMail boo
 		if err != nil {
 			return nil, err
 		}
+	} else if first {
+		// a session whose first turn is on mail (one another session started with a message) still starts: SessionStart runs,
+		// and what it adds goes with the mail
+		if c := s.sessionStartHook(ctx); c != "" && mail != "" {
+			mail += "\n\n[context from your hooks]\n" + c
+		}
 	}
 	if after {
 		goal = InterruptNote + goal
