@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/skills"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
@@ -43,7 +44,7 @@ func catalog(t *testing.T) *skills.Catalog {
 func run(t *testing.T, tool *Tool, in any) *tools.Result {
 	t.Helper()
 	b, _ := json.Marshal(in)
-	res, err := tool.Run(context.Background(), &tools.Call{ID: "1", Name: "skill", Input: b, Env: &tools.Env{}})
+	res, err := tool.Run(context.Background(), &tools.Call{ID: "1", Name: "skill", Input: b, Env: &tools.Env{Perm: perm.AllowAll{}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,5 +105,37 @@ func TestBadInput(t *testing.T) {
 	}
 	if res := run(t, New(catalog(t)), map[string]any{"name": "  "}); !res.IsError {
 		t.Fatal("an empty name must be an error")
+	}
+}
+
+// A rule about the skill tool holds before anything is read, and no rule leaves a load alone in every mode: it touches no file the
+// agent named and no network.
+func TestSkillAsksThePolicy(t *testing.T) {
+	load := func(cfg perm.Config) *tools.Result {
+		t.Helper()
+		cfg.Root, cfg.Home = t.TempDir(), t.TempDir()
+		e, err := perm.NewEngine(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := New(catalog(t)).Run(context.Background(), &tools.Call{Input: json.RawMessage(`{"name":"release"}`), Env: &tools.Env{Agent: "a", Perm: e}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	for name, cfg := range map[string]perm.Config{
+		"deny": {Mode: perm.ModeBypass, Deny: []string{"skill"}},
+		"ask":  {Mode: perm.ModeDefault, Ask: []string{"skill"}},
+	} {
+		res := load(cfg)
+		if !res.IsError || !strings.Contains(res.Text, "permission denied") || strings.Contains(res.Text, "Tag the commit") {
+			t.Errorf("%s: %+v", name, res)
+		}
+	}
+	for _, mode := range []perm.Mode{perm.ModePlan, perm.ModeDefault, perm.ModeBypass} {
+		if res := load(perm.Config{Mode: mode}); res.IsError {
+			t.Errorf("%s: %s", mode, res.Text)
+		}
 	}
 }

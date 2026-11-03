@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
 
@@ -165,5 +166,31 @@ func TestDeliveredCommitIsANoopAfterResume(t *testing.T) {
 	rep, err = restarted.Accept(ctx, AcceptOptions{Commits: true, DryRun: true})
 	if err != nil || !errors.Is(rep.CommitBlocked, ErrBranchMoved) {
 		t.Fatalf("moved: %+v %v", rep, err)
+	}
+}
+
+// A deny rule that names a checkout file does not match the worker tree's copy, so the worker can edit the copy; the rule holds where
+// the change would land, as a patch and as commits, and the work stays on the integration branch.
+func TestIntegrationHoldsTheDenyRulesOfTheCheckout(t *testing.T) {
+	for _, commit := range []bool{false, true} {
+		r := newIsoRig(t, isoOpts{commit: commit}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "idle"} })
+		integrationCandidate(t, r)
+		dest := filepath.Join(r.repo, "resume.txt")
+		e, err := perm.NewEngine(perm.Config{Mode: perm.ModeBypass, Root: t.TempDir(), Home: t.TempDir(), Deny: []string{"Edit(" + dest + ")"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.sw.deps.Perm = e
+		report := r.sw.Integrate(context.Background())
+		if report.Applied || !report.BranchKept || !strings.Contains(report.Message, "deny rule") {
+			t.Fatalf("commit=%v: %+v", commit, report)
+		}
+		if _, err := os.Stat(dest); !os.IsNotExist(err) {
+			t.Fatalf("commit=%v: the protected file was written: %v", commit, err)
+		}
+		r.sw.deps.Perm = perm.AllowAll{}
+		if report := r.sw.Integrate(context.Background()); !report.Applied {
+			t.Fatalf("commit=%v: without the rule: %+v", commit, report)
+		}
 	}
 }

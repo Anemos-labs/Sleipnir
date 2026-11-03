@@ -110,6 +110,9 @@ type Runner struct {
 	// a hook's "if" covers a request only where those rules would not ask, and Home is the home directory they are read with.
 	AskRules func() []string
 	Home     string
+	// TreeParents are the directories whose subdirectories are per-agent trees of the project (perm.Config.TreeParents): a
+	// condition relative to the project holds inside each of them, as a permission rule does. Set before the first event.
+	TreeParents []string
 
 	semOnce   sync.Once
 	sem       chan struct{}
@@ -593,7 +596,7 @@ func (r *Runner) conditionCovers(ctx context.Context, h Hook, ev Event) bool {
 	}
 	key := h.If + "\x00" + strings.Join(ask, "\x00")
 	eng, err := r.engine(&r.covers, key, func() (*perm.Engine, error) {
-		return perm.NewEngine(perm.Config{Mode: perm.ModeDefault, Root: r.Dir, Home: r.Home, Allow: []string{h.If}, Ask: ask})
+		return perm.NewEngine(perm.Config{Mode: perm.ModeDefault, Root: r.Dir, Home: r.Home, TreeParents: r.TreeParents, Allow: []string{h.If}, Ask: ask})
 	})
 	if err != nil {
 		return false
@@ -639,7 +642,7 @@ func (r *Runner) condEngine(cond string) (*perm.Engine, error) {
 	}
 	// The condition is also an allow rule, which lifts the protections a specific allow rule lifts (a .env file, say): the
 	// session may allow what they guard, and a hook about it must still see the call.
-	e, err := perm.NewEngine(perm.Config{Mode: perm.ModeBypass, Root: r.Dir, Allow: []string{cond}, Deny: []string{cond}})
+	e, err := perm.NewEngine(perm.Config{Mode: perm.ModeBypass, Root: r.Dir, TreeParents: r.TreeParents, Allow: []string{cond}, Deny: []string{cond}})
 	if err != nil {
 		r.engines[cond] = nil
 		return nil, err
@@ -659,10 +662,7 @@ func (r *Runner) condRequest(ev Event) perm.Request {
 		}
 		return req
 	}
-	req := perm.Request{Agent: ev.Agent, Role: ev.Role, Tool: ev.Tool, Input: ev.Input, Cwd: ev.Cwd, Summary: "hook condition"}
-	if req.Cwd == "" {
-		req.Cwd = r.Dir
-	}
+	req := perm.Request{Agent: ev.Agent, Role: ev.Role, Tool: ev.Tool, Input: ev.Input, Cwd: firstNonEmptyDir(ev.ToolDir, ev.Cwd, r.Dir), Summary: "hook condition"}
 	if in := inputObject(ev.Input); in != nil {
 		// No Command: the permission engine reads a shell tool's command from Input itself, and would take a "command" field
 		// that another tool ignores for the operation, judging a file write as a shell command.

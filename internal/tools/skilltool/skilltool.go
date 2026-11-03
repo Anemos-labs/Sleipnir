@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/skills"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
@@ -46,7 +47,7 @@ type input struct {
 }
 
 // Run implements tools.Tool.
-func (t *Tool) Run(_ context.Context, c *tools.Call) (*tools.Result, error) {
+func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	var in input
 	if err := json.Unmarshal(c.Input, &in); err != nil {
 		return tools.Errorf("invalid arguments: %v", err), nil
@@ -57,6 +58,15 @@ func (t *Tool) Run(_ context.Context, c *tools.Call) (*tools.Result, error) {
 	}
 	if t.cat == nil || t.cat.Len() == 0 {
 		return tools.Errorf("there are no skills in this project"), nil
+	}
+	// The policy is asked before anything is read: a rule that denies the skill tool, or asks about it, holds for every skill.
+	env := c.Env.Defaults()
+	if d := env.Perm.Check(ctx, perm.Request{Agent: env.Agent, Role: env.Role, Tool: "skill", Input: c.Input, Summary: "load the skill " + name}); !d.Allow {
+		reason := strings.TrimSpace(d.Reason)
+		if reason == "" {
+			reason = "not allowed by the permission policy"
+		}
+		return tools.Errorf("permission denied (skill): %s", reason), nil
 	}
 	loaded, err := t.cat.LoadForModel(name, in.Args)
 	if err != nil {

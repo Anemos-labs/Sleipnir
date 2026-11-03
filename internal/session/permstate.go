@@ -11,8 +11,8 @@ import (
 // keepPermissions writes the permission mode and the allow rules given so far into the log when a turn ends and they are not what was written
 // last. A resumed session reads them back (restorePermissions): what a person said yes to once is not asked again after --continue.
 func (s *Session) keepPermissions() {
-	if s.Perm == nil || s.Log == nil {
-		return
+	if s.Perm == nil || s.Log == nil || s.opts.Delegated {
+		return // a delegated run neither gains rules nor rewrites what the person's own session recorded
 	}
 	// The state is read and written in one step: two changes saved at once (a rule added from the web while another is taken back)
 	// write their states in the order they were read, so the last one in the log is the state after both.
@@ -38,6 +38,8 @@ func (s *Session) keepPermissions() {
 
 // restorePermissions gives a resumed session the rules its log ends with. A mode the person chose on this command line (anything but the default)
 // wins over the one in the log, and bypass and yolo are never brought back: they are said again, on purpose, each time.
+// A delegated run gets back only what restricts it: plan mode and the deny and ask rules. What it may do was fixed by the program
+// that started it, and the session it names is that program's choice.
 func (s *Session) restorePermissions() {
 	type state struct {
 		Mode  string   `json:"mode"`
@@ -60,7 +62,7 @@ func (s *Session) restorePermissions() {
 	if !found {
 		return
 	}
-	if m := perm.Mode(last.Mode); s.Perm.Mode() == perm.ModeDefault && m != perm.ModeBypass && m != perm.ModeYolo && m != "" && m != perm.ModeDefault {
+	if m := perm.Mode(last.Mode); s.Perm.Mode() == perm.ModeDefault && m != perm.ModeBypass && m != perm.ModeYolo && m != "" && m != perm.ModeDefault && (!s.opts.Delegated || m == perm.ModePlan) {
 		s.Perm.SetMode(m)
 		s.restoredMode = last.Mode
 	}
@@ -68,6 +70,9 @@ func (s *Session) restorePermissions() {
 		a     perm.Action
 		rules []string
 	}{{perm.Deny, last.Deny}, {perm.Ask, last.Ask}, {perm.Allow, last.Allow}} {
+		if set.a == perm.Allow && s.opts.Delegated {
+			continue
+		}
 		for _, r := range set.rules {
 			if rule, err := perm.ParseRule(set.a, r); err == nil {
 				s.Perm.AddRule(perm.ScopeSession, rule)

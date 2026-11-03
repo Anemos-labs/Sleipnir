@@ -228,10 +228,11 @@ func (a *Agent) runOne(ctx context.Context, call core.Block) (out core.Block, ex
 		res.Meta = withErrorKind(res.Meta, ErrKindUnknownTool)
 		return
 	}
-	hc := ToolHookCall{Agent: a.cfg.ID, Role: a.cfg.Role, Tool: name, Input: call.Input}
+	hc := ToolHookCall{Agent: a.cfg.ID, Role: a.cfg.Role, Tool: name, Input: call.Input, Env: a.env()}
 	var hookText []string
 	if h := a.cfg.Hooks; h != nil {
 		o := h.BeforeTool(ctx, hc)
+		hc.Dir = o.Dir
 		if o.Veto {
 			res = tools.Errorf("A hook blocked this call: %s", o.Reason)
 			res.Meta = withErrorKind(res.Meta, ErrKindHook)

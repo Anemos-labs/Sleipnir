@@ -100,6 +100,7 @@ Flags are applied by the commands themselves, after the merge, and always win ov
 | `--compact-at N` | `cache.compact_at_percent`, for that session: 10 to 90; `0` is the same as leaving the flag out. A session restarted from the chat or the page keeps it | `chat`, `web` |
 | `--no-web` | removes `web_fetch` and `web_search` | `run`, `swarm` |
 | `--trust-project` | the trust gate of section 4 | `chat`, `run`, `swarm`, `config`, `doctor` |
+| `--delegated` | another program chose the run's goal, `--verify` and `--resume`: `--verify` is judged as a shell command of the run, and a resume brings back no recorded allow rules and no wider mode. `sleipnir mcp serve` sets it ([MCP](MCP.md)) | `run`, `swarm` |
 
 ## 3. File format
 
