@@ -279,7 +279,6 @@ func changedNames(ctx context.Context, repo *gitx.Repo) string {
 	seen := map[string]bool{}
 	var paths []string
 	add := func(p string) {
-		p = clipRunes(strings.Join(strings.Fields(p), " "), 120) // a path may hold a newline: keep the refusal on one line
 		if p != "" && !seen[p] {
 			seen[p] = true
 			paths = append(paths, p)
@@ -301,7 +300,11 @@ func changedNames(ctx context.Context, repo *gitx.Repo) string {
 		return ""
 	}
 	const shown = 5
-	txt := strings.Join(paths[:min(len(paths), shown)], ", ")
+	names := make([]string, 0, shown)
+	for _, p := range paths[:min(len(paths), shown)] {
+		names = append(names, clipRunes(strings.Join(strings.Fields(p), " "), 120)) // a path may hold a newline: keep the refusal on one line
+	}
+	txt := strings.Join(names, ", ")
 	if len(paths) > shown {
 		txt += fmt.Sprintf(" and %d more", len(paths)-shown)
 	}

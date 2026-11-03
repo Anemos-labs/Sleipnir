@@ -66,8 +66,9 @@ func TestPreflightIsolation(t *testing.T) {
 	if got := pf(session.IsolationPreflight{Cwd: repo, Swarm: true, Isolation: "worktree", Commit: true}); !strings.Contains(got, "clean checkout") || !strings.Contains(got, "in list.txt (") {
 		t.Errorf("a dirty checkout, the refusal names the file: %q", got)
 	}
-	// Past five paths the rest are counted, and a path with a newline stays on one line.
-	for _, n := range []string{"a.txt", "b.txt", "c.txt", "d.txt", "e\nf.txt", "g.txt"} {
+	// Past five paths the rest are counted, a path with a newline stays on one line, and two paths that read the same once
+	// on one line ("e f.txt", "e\nf.txt") are both counted.
+	for _, n := range []string{"a.txt", "b.txt", "c.txt", "e f.txt", "e\nf.txt", "g.txt"} {
 		if err := os.WriteFile(filepath.Join(repo, n), []byte("x\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -75,7 +76,7 @@ func TestPreflightIsolation(t *testing.T) {
 	if got := pf(session.IsolationPreflight{Cwd: repo, Swarm: true, Isolation: "worktree", Commit: true}); !strings.Contains(got, " and 2 more (") || strings.Contains(got, "\n") {
 		t.Errorf("seven changed paths: %q", got)
 	}
-	for _, n := range []string{"a.txt", "b.txt", "c.txt", "d.txt", "e\nf.txt", "g.txt"} {
+	for _, n := range []string{"a.txt", "b.txt", "c.txt", "e f.txt", "e\nf.txt", "g.txt"} {
 		if err := os.Remove(filepath.Join(repo, n)); err != nil {
 			t.Fatal(err)
 		}
