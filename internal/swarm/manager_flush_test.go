@@ -62,45 +62,58 @@ func TestManagerFlushSkipsACheckoutWithNothingBeyondTheIntegrationTip(t *testing
 	}
 }
 
-// A change the manager makes itself is held to how long it took to build: from the first step that left it in the checkout to
-// the step that integrated it. Recorded as taking no time, a review of the M4 backend a manager wrote over most of an hour was
-// held to the ten-minute floor and found overrunning "work that took 3 minutes to build".
+// A change the manager makes itself is held to how long it took to build: from the last flush that found its checkout with
+// nothing pending to the step that integrated it. Recorded as taking no time, a review of the M4 backend a manager wrote over
+// most of an hour was held to the ten-minute floor and found overrunning "work that took 3 minutes to build".
 func TestAManagerChangeIsHeldToHowLongItTookToBuild(t *testing.T) {
-	var mu sync.Mutex
-	now := time.Date(2026, 11, 3, 3, 0, 0, 0, time.UTC)
-	clock := func() time.Time { mu.Lock(); defer mu.Unlock(); return now }
-	advance := func(d time.Duration) { mu.Lock(); now = now.Add(d); mu.Unlock() }
-	r := newIsoRig(t, isoOpts{verify: true, tweak: func(d *Deps) { d.Now = clock }}, script{}.fn())
-	if _, err := r.sw.StartManager(); err != nil {
-		t.Fatal(err)
+	start := func(t *testing.T) (*isoRig, *member, func(time.Duration)) {
+		var mu sync.Mutex
+		now := time.Date(2026, 11, 3, 3, 0, 0, 0, time.UTC)
+		clock := func() time.Time { mu.Lock(); defer mu.Unlock(); return now }
+		advance := func(d time.Duration) { mu.Lock(); now = now.Add(d); mu.Unlock() }
+		r := newIsoRig(t, isoOpts{verify: true, tweak: func(d *Deps) { d.Now = clock }}, script{}.fn())
+		if _, err := r.sw.StartManager(); err != nil {
+			t.Fatal(err)
+		}
+		m := r.sw.get(r.sw.ManagerID())
+		// a step that left nothing pending
+		if err := r.sw.flushManager(context.Background(), m); err != nil {
+			t.Fatal(err)
+		}
+		return r, m, advance
 	}
-	m := r.sw.get(r.sw.ManagerID())
-	ctx := context.Background()
-	if err := writeFileString(filepath.Join(m.dir, "a.txt"), "BROKEN first draft\n"); err != nil {
-		t.Fatal(err)
+	write := func(t *testing.T, m *member, name, text string) {
+		if err := writeFileString(filepath.Join(m.dir, name), text); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := r.sw.flushManager(ctx, m); err == nil {
-		t.Fatal("a manager change that fails verification was integrated")
+	want := func(t *testing.T, r *isoRig, d time.Duration) {
+		t.Helper()
+		if work, ids := r.sw.review.unreviewedWork(); work != d || len(ids) != 1 || ids[0] != "manager changes" {
+			t.Fatalf("unreviewed work %v %v, want %v for the manager's changes", work, ids, d)
+		}
 	}
-	advance(40 * time.Minute)
-	if err := writeFileString(filepath.Join(m.dir, "a.txt"), "working\n"); err != nil {
-		t.Fatal(err)
-	}
-	if err := r.sw.flushManager(ctx, m); err != nil {
-		t.Fatal(err)
-	}
-	if work, ids := r.sw.review.unreviewedWork(); work != 40*time.Minute || len(ids) != 1 || ids[0] != "manager changes" {
-		t.Fatalf("unreviewed work %v %v, want 40m0s for the manager's changes", work, ids)
-	}
-	// The next change starts its own clock.
-	advance(time.Hour)
-	if err := writeFileString(filepath.Join(m.dir, "b.txt"), "later\n"); err != nil {
-		t.Fatal(err)
-	}
-	if err := r.sw.flushManager(ctx, m); err != nil {
-		t.Fatal(err)
-	}
-	if work, _ := r.sw.review.unreviewedWork(); work != 40*time.Minute {
-		t.Fatalf("unreviewed work %v after a change that took no time, want the 40m0s of the first", work)
-	}
+	t.Run("across the steps that failed verification", func(t *testing.T) {
+		r, m, advance := start(t)
+		advance(5 * time.Minute)
+		write(t, m, "a.txt", "BROKEN first draft\n")
+		if err := r.sw.flushManager(context.Background(), m); err == nil {
+			t.Fatal("a manager change that fails verification was integrated")
+		}
+		advance(40 * time.Minute)
+		write(t, m, "a.txt", "working\n")
+		if err := r.sw.flushManager(context.Background(), m); err != nil {
+			t.Fatal(err)
+		}
+		want(t, r, 45*time.Minute)
+	})
+	t.Run("in the one step that made it", func(t *testing.T) {
+		r, m, advance := start(t)
+		advance(25 * time.Minute)
+		write(t, m, "a.txt", "working\n")
+		if err := r.sw.flushManager(context.Background(), m); err != nil {
+			t.Fatal(err)
+		}
+		want(t, r, 25*time.Minute)
+	})
 }

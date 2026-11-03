@@ -104,9 +104,11 @@ type member struct {
 	// outage is when its last run ended on an outage of its model's endpoint (provider.Error.Outage); zero after a run that
 	// ended any other way. The manager's assignments steer away from it for a while (steer.go).
 	outage time.Time
-	// editSince is when the manager's checkout was first seen holding changes not yet integrated (flushManager), zero when it
-	// holds none: how long the manager's own change took to build, for the review that covers it.
+	// editSince is when the manager's pending change began (flushManager), zero when its checkout holds none, and cleanAt the
+	// last time a flush found the checkout with nothing pending: how long the manager's own change took to build, for the
+	// review that covers it.
 	editSince time.Time
+	cleanAt   time.Time
 	gateTries int
 	stuckWarn bool
 	autoRuns  int
