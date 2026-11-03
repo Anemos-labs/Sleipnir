@@ -103,7 +103,7 @@ Usage of sessions:
 A session is a directory of the state directory (its event log, the blobs the log points at, its checkpoints) and nothing deletes one;
 a person who uses the harness every day has thousands within a year. `sessions prune` deletes the old ones: those whose newest file
 is older than `--older-than` (30 days), except the newest `--keep` (20), whatever their age, and any that was written to in the last
-ten minutes (it may be running). A directory without an `events.jsonl` is not a session and is never touched. Without `--yes` nothing
+ten minutes (it may be running), and any that is pinned. A directory without an `events.jsonl` is not a session and is never touched. Without `--yes` nothing
 is deleted: it lists what would go, with the size of each and the total.
 
 <!-- flags: sessions prune -->
@@ -111,8 +111,8 @@ is deleted: it lists what would go, with the size of each and the total.
 usage: sleipnir sessions prune [flags]
 
 Deletes recorded sessions that are old: the event log, the blobs it points at and the checkpoints of each. The newest ones are
-kept whatever their age, and so is any session that was written to in the last ten minutes. Nothing is deleted without --yes;
-without it the sessions that would go are listed, with their size.
+kept whatever their age, and so is any session that was written to in the last ten minutes or is pinned (sleipnir web tries to
+reopen a pinned session when it starts). Nothing is deleted without --yes; without it the sessions that would go are listed, with their size.
 
 flags:
   -dir string

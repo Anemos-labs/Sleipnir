@@ -895,6 +895,15 @@
   },
   {
    "group": "sessions",
+   "name": "Pin or unpin this session",
+   "kind": "action",
+   "live": true,
+   "effects": [
+    "act:pinSession"
+   ]
+  },
+  {
+   "group": "sessions",
    "name": "Close this session…",
    "kind": "action",
    "live": true,

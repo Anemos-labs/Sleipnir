@@ -155,6 +155,13 @@ command line quotes every value for a POSIX shell. `↺ Resume` continues a reco
 opened read-only, to replay it, or followed while another process writes it; its first 400,000 events are read, and the banner
 says when the log has more. With no session hosted, the page opens the New session dialog.
 
+A session can be pinned from the session menu (`⋯`) or the palette: a pushpin marks its tab, and each time `sleipnir web` starts it
+opens the pinned sessions again, each in a tab of its own, beside its first one. A pinned session comes back as `↺ Resume` would
+resume it: with the server's flags, the team of its last start and the verify command it ran with when it was pinned. One that
+would need a new confirmation (another verify command, the project files of a folder other than the server's that the trust
+ledger does not cover) is left for the person: the server's terminal says why, and the Resume dialog marks it pinned. Closing a
+pinned tab unpins it; a pinned session is never pruned.
+
 The left rail switches views: the Cockpit (the team as a horse whose eight legs are the eight roles of the team, the stalls, the
 gantt, the task board, the merge queue, mail and the governor), the Workspace (Files, Changes, Checkpoints), Cache, Mail,
 Board, Replay, Sessions, Schedule, Tools and Settings. The Radio rail on the right is the conversation with the manager, which is the
@@ -364,6 +371,26 @@ decision of each.
 A question is answered with its buttons only, never with a key. The buttons work only after the keyboard has been quiet for 0.8
 seconds since the question appeared on screen or since the last key; text typed meanwhile goes to the message box and never
 answers. A question that arrives while the rail is collapsed opens it. The server also refuses an answer given within 350 ms. The `Needs you` inbox answers questions of every session under the same rule.
+
+### The right-click menu
+
+A right-click (a long press on a touch screen, or the Menu key or Shift+F10 on the focused element) opens the page's own menu in
+place of the browser's. It has a section for each thing under the pointer, the closest first:
+
+| Under the pointer | Entries |
+|---|---|
+| a session tab | switch to it, rename, pin or unpin it (it opens again when Sleipnir starts), open it in a new browser tab, copy its id, stop the run, start the team again, close |
+| an agent (a stall, a timeline row, a row of the team feed, a file it owns) | answer its open question, its details, ask the manager about it, copy its name, stop the worker (the manager: interrupt its turn) |
+| a task | its verify output, the task board, ask the manager about it, copy its id |
+| a file or a folder of the Workspace, or a tool row that names a file | open its changes, the whole file or its preview, mention it in a message (`@path`), copy the path |
+| a message of the Radio | copy its text, quote it in a reply; your own line: edit it and send it again |
+| a view of the rail | open it, open it in a new browser tab |
+| a card | its options, hide it; on the card's empty space, also Add card and arranging the page |
+
+Elsewhere the menu holds the palette, the manager, a new session, resume and help. Each entry does what a button of the page
+does; the menu adds no action of its own, so the terminal has nothing to match. The browser's menu stays in text fields, on links,
+pictures, videos and frames, over selected text, and on a right-click with Shift held. The arrows, `Home` and `End` move in the
+menu, `Enter` runs an entry, and `Esc` or `Tab` closes it.
 
 ### Keys
 

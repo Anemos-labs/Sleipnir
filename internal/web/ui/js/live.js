@@ -44,8 +44,8 @@
     const V = verOf(id), mv = +snap.metaV || 0, rv = +snap.rosterV || 0, newMeta = !S || mv >= V.meta, newRoster = !S || rv >= V.roster;
     const meta = newMeta ? metaOf(snap.meta) : {};
     if (newMeta) V.meta = Math.max(V.meta, mv); if (newRoster) V.roster = Math.max(V.roster, rv);
-    if (!S) S = ss().make({ id, name: t.name || id, sid: t.sid, gen: snap.gen || t.gen, cwd: t.cwd, headless: t.headless, order: t.order, meta, roster: roster(snap.roster), recorded: t.kind === 'recorded', follow: !!t.follow });
-    else { S.name = t.name || S.name; S.sid = t.sid || S.sid; S.gen = snap.gen || t.gen || S.gen; S.order = t.order || S.order; Object.assign(S.meta, meta); S.roster = snap.roster && newRoster ? roster(snap.roster) : S.roster; if (t.headless) S.meta.headless = true; }
+    if (!S) S = ss().make({ id, name: t.name || id, sid: t.sid, gen: snap.gen || t.gen, cwd: t.cwd, headless: t.headless, pinned: t.pinned, order: t.order, meta, roster: roster(snap.roster), recorded: t.kind === 'recorded', follow: !!t.follow });
+    else { S.name = t.name || S.name; S.sid = t.sid || S.sid; S.pinned = !!t.pinned; S.gen = snap.gen || t.gen || S.gen; S.order = t.order || S.order; Object.assign(S.meta, meta); S.roster = snap.roster && newRoster ? roster(snap.roster) : S.roster; if (t.headless) S.meta.headless = true; }
     ss().setStart(S);
     if (meta.queued) S.ui.queued = meta.queued.map(q => ({ id: q.id, text: q.text, kind: q.kind || 'message' }));
     const log = keyframeOf(snap.keyframe).concat((Array.isArray(snap.events) ? snap.events : []).filter(e => e && typeof e === 'object').map(inbound));
@@ -92,7 +92,7 @@
   function failed(id, rec, r) {
     rec.loading = null; const wait = RETRY.steps[rec.tries] != null ? RETRY.steps[rec.tries] : RETRY.later; rec.tries++;
     let S = ss().get(id); const t = L.tabs[id];
-    if (!S && t) S = ss().make({ id, name: t.name || id, sid: t.sid, cwd: t.cwd, headless: t.headless, order: t.order, meta: {} });
+    if (!S && t) S = ss().make({ id, name: t.name || id, sid: t.sid, cwd: t.cwd, headless: t.headless, pinned: t.pinned, order: t.order, meta: {} });
     if (S) { S.loading = { why: r.message || 'the server did not answer', next: Date.now() + wait, tries: rec.tries }; S.touch(); SL.bus.emit('sessions-changed'); }
     if (rec.tries === 1 && SL.ui && SL.ui.toast) SL.ui.toast('could not load ' + ((S && S.name) || id) + ': retrying (' + (r.message || 'the server did not answer') + ')', 'warm');
     rec.timer = setTimeout(() => { if (L.pending[id] === rec) loadTab(id); }, wait);
@@ -165,7 +165,7 @@
       if (d.op !== 'remove') L.tabs[t.id] = t;
       if (d.op === 'remove') { if (SL.data) SL.data.forget(t.id); delete L.pending[t.id]; if (ss().get(t.id)) ss().drop(t.id); return; }
       const S = ss().get(t.id);
-      if (d.op === 'update' && S) { S.name = t.name || S.name; S.sid = t.sid || S.sid; S.order = t.order != null ? t.order : S.order; if (t.headless) S.meta.headless = true; else if (isWatch(t.id)) S.meta.headless = false; S.touch(); SL.bus.emit('sessions-changed'); return; }
+      if (d.op === 'update' && S) { S.name = t.name || S.name; S.sid = t.sid || S.sid; S.pinned = !!t.pinned; S.order = t.order != null ? t.order : S.order; if (t.headless) S.meta.headless = true; else if (isWatch(t.id)) S.meta.headless = false; S.touch(); SL.bus.emit('sessions-changed'); return; }
       if (!S || d.op === 'add') loadTab(t.id);
     },
     reset(d) { const S = ss().get(d.tab); if (!S && !L.pending[d.tab]) return; L.gen[d.tab] = d.gen; loadTab(d.tab, { fresh: true }); },
@@ -328,7 +328,7 @@
   function placeTab(t) {
     if (!t || !t.id) return null; const have = ss().get(t.id); if (have) return have;
     L.tabs[t.id] = Object.assign({}, L.tabs[t.id] || {}, t);
-    const S = ss().make({ id: t.id, name: t.name || t.id, sid: t.sid, cwd: t.cwd, headless: t.headless, order: t.order != null ? t.order : 1000, meta: {} });
+    const S = ss().make({ id: t.id, name: t.name || t.id, sid: t.sid, cwd: t.cwd, headless: t.headless, pinned: t.pinned, order: t.order != null ? t.order : 1000, meta: {} });
     SL.bus.emit('sessions-changed'); loadTab(t.id);
     return S;
   }
