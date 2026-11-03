@@ -48,7 +48,7 @@
     const sh = SL.shell = SL.makeScope($('#app'), 'shell');
     /* first of all the page's key handlers: a key of an input method's composition reaches none of them (no Enter sends half a word) */
     sh.listen(document, 'keydown', e => { if (U.composing(e)) e.stopImmediatePropagation(); }, true);
-    ui.shell.mount(sh); ui.navMount(sh); SL.chat.mount(sh); ui.approvals.mount(sh); SL.link.bind(sh); SL.keys.mount(sh);
+    ui.shell.mount(sh); ui.navMount(sh); SL.chat.mount(sh); ui.approvals.mount(sh); SL.link.bind(sh); SL.keys.mount(sh); ui.ctx.mount(sh);
     /* the card layout of every page: the header's and the rail's hidden parts now, the server's copy of the layout when it answers (it
        follows the person across browsers), and what is still waiting to be saved when the page goes away */
     ui.chrome.mount(sh); SL.dash.sync();

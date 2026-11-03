@@ -304,7 +304,7 @@
   ui.ws = {
     counts, derived,
     setTab(t) { const S = SL.sessions.active; if (!S) return; wsOf(S).tab = t; S.touch(); },
-    open(path, tab) { const S = SL.sessions.active; if (!S) return; Object.assign(wsOf(S), { file: path, view: 'diff', tab: tab || wsOf(S).tab || 'files' }); if (SL.views.current && SL.views.current.name === 'workspace') S.touch(); else SL.views.show('workspace', { tab: wsOf(S).tab }); },
+    open(path, tab) { const S = SL.sessions.active; if (!S) return; const W = wsOf(S); Object.assign(W, { file: path, view: 'diff', tab: tab || W.tab || 'files' }); if (SL.views.current && SL.views.current.name === 'workspace') S.touch(); else SL.views.show('workspace', { tab: wsOf(S).tab }); },
     restore(id) { const S = SL.sessions.active; if (!S) return; Object.assign(wsOf(S), { tab: 'checkpoints', cp: null }); if (SL.views.current && SL.views.current.name === 'workspace') S.touch(); else SL.views.show('workspace', { tab: 'checkpoints' }); restoreDialog(S, id); },
     /** /diff [id]: the newest checkpoint's change, or everything from the start of id to now */
     diff(id) { const S = SL.sessions.active; if (!S) return; const I = ws.info(S); const cp = id && I ? I.cps.find(c => c.id === id && c.step) : null; if (id && !cp) { ui.toast(id + ' has nothing to diff', 'warm'); return; } Object.assign(wsOf(S), { tab: 'changes', mode: cp ? 'from' : 'step', cp: cp ? cp.id : null, file: null }); if (SL.views.current && SL.views.current.name === 'workspace') S.touch(); else SL.views.show('workspace', { tab: 'changes' }); },
