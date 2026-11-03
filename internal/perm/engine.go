@@ -596,6 +596,23 @@ person:
 	return d
 }
 
+// DeniedWrite returns the deny rule of the session that a write to one of paths (absolute) meets, "" when none does. It asks about
+// deny rules alone: the harness writes these files itself, on the session's behalf, so no mode, protection or question is at stake,
+// and a rule that names a file refuses the harness as it refuses an agent.
+func (e *Engine) DeniedWrite(paths []string) string {
+	sess, _ := e.snapshot("")
+	ev := &evaluator{e: e, v: sess, rs: e.rs, r: Request{Tool: "write", Writes: true, Paths: paths}, globBudget: 20000}
+	u := &unit{tool: true, req: &ev.r, label: "write"}
+	cw := &cwdSet{dirs: []string{ev.startDir()}}
+	for _, p := range paths {
+		u.accesses = append(u.accesses, ev.resolve(pathUse{raw: p, write: true, literal: true}, cw)...)
+	}
+	if r := ev.restrictMatch(sess.deny, u, u.allAccesses()); r != nil {
+		return r.String()
+	}
+	return ""
+}
+
 // Granted are the allow rules added while the session ran (/allow, and "don't ask again"), in the order they were given: what a session that
 // starts again in its place has to be told, or the person is asked what they have already answered.
 func (e *Engine) Granted() []string {

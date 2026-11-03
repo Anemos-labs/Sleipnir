@@ -2,9 +2,12 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/machine"
+	"github.com/anemos-labs/sleipnir/internal/perm"
+	"github.com/anemos-labs/sleipnir/internal/swarm"
 	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
 
@@ -32,6 +35,23 @@ func (s *Session) verifier() func(ctx context.Context, dir, cmd string) (string,
 		}
 		return runVerifyIn(ctx, dir, cmd, wrap, env, mb)
 	}
+}
+
+// checkDelegatedVerify judges a delegated run's verification command as the run's own shell tool would judge it, before any agent
+// starts: the program that delegated the run chose the command, and what it may run is what the run's permissions say. The command
+// stays the same for the whole run and such a run takes on no new rules, so one verdict covers every time it runs.
+func (s *Session) checkDelegatedVerify(ctx context.Context) error {
+	if !s.opts.Delegated || s.opts.Verify == "" {
+		return nil
+	}
+	d := s.Perm.Check(ctx, perm.Request{
+		Agent: s.mainAgent(), Tool: "bash", Command: swarm.ExpandVerify(s.opts.Verify, s.opts.Cwd, nil), Cwd: s.opts.Cwd, Writes: true,
+		Summary: "verification command",
+	})
+	if !d.Allow {
+		return fmt.Errorf("the verification command is not allowed in this run: %s", d.Reason)
+	}
+	return nil
 }
 
 // runVerifyIn is runVerify under an argv prefix, a base environment (nil: the process's own) and a machine share (nil: none).

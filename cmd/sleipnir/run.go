@@ -85,6 +85,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	verbose := fs.Bool("verbose", false, "print notices and tool errors")
 	noRecon := fs.Bool("no-recon", false, "do not survey the project into the shared prompt layer")
 	trust := fs.Bool("trust-project", false, trustProjectHelp)
+	delegated := fs.Bool("delegated", false, "another program chose this run's goal, --verify and --resume (sleipnir mcp serve sets it): --verify is judged as a shell command of the run, and a resume brings back no recorded allow rules and no wider mode")
 	dir := fs.String("session-dir", "", "directory for this run's recording (events.jsonl, blobs/, checkpoints/); default <state>/sessions/<id>, <state> being $SLEIPNIR_HOME or ~/.sleipnir")
 	ctxWin := fs.Int("context-window", 0, "override the model's context window (small values force frequent compaction)")
 	capture := fs.Bool("capture", false, "ask the endpoint for token ids and logprobs (self-hosted policy servers; RL data); keeps training logs, as --training-logs does")
@@ -169,7 +170,7 @@ func runCommand(ctx context.Context, name string, args []string) error {
 	o := session.Options{Sandbox: box, AutoFix: *autoFix, AutoMerge: *autoMerge,
 		AskTimeout: *askTimeout,
 		Cwd:        *cwd, Model: *model, Mode: perm.Mode(*mode), Swarm: team, Workers: workers,
-		MaxSteps: *maxSteps, FixedSteps: *maxSteps > 0, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust,
+		MaxSteps: *maxSteps, FixedSteps: *maxSteps > 0, BudgetUSD: *budget, Verify: *verify, NoRecon: *noRecon, TrustProject: *trust, Delegated: *delegated,
 		Dir: *dir, ContextWindow: *ctxWin, CaptureTokens: *capture, NoWeb: *noWeb, RoleModels: roleModels,
 		Resume: spec, NoMCP: *noMCP, MCPServers: mcpServers, NoMemory: *noMemory, TrainingLogs: *trainingLogs || *capture, Isolation: *isolation, Commit: *commit, Mailman: mailman(), Allow: expandAllow(*allow),
 		AutoDocs: autoDocs(), ManagerApproves: managerApproves(), Team: teamSlots, DefaultTeam: true,

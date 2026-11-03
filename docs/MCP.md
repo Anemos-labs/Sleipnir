@@ -201,7 +201,10 @@ the caller should treat them as data.
 fixed by the flags the server was started with: `--mode` is a ceiling (default `bypass`, which is what an unattended
 `sleipnir run` uses; a call may ask for a stricter mode, never a wider one), `--allow` rules and `--trust-project` apply
 to every run, a run's `cwd` must be inside one of the server's roots (`--root`, default your home directory; or `--cwd` alone), and
-`--max-jobs` (default 4) bounds the runs at once. A run has no one to answer its questions, so in the default mode what
+`--max-jobs` (default 4) bounds the runs at once. Each run is started with `--delegated`, so a call's `verify` and `resume` stay
+under the same limits: a `verify` command is judged as the run's own shell tool would judge it, and a job whose command is refused
+ends at once with the reason; a `resume` brings back the session's plan mode and deny and ask rules, never a wider mode or its
+allow rules. A run has no one to answer its questions, so in the default mode what
 would ask is refused; `bypass` still refuses the high-risk class and protected paths (see [Configuration](CONFIGURATION.md)).
 The provider keys reach each run on an inherited pipe, not in its environment, as they do for the web interface's runner.
 When the client disconnects, the server cancels the runs that are still going and waits for them to end.

@@ -246,7 +246,7 @@ func TestArgsKeepTheServersLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"run", "--json", "--cwd", filepath.Join(real, "sub"), "--mode", "plan", "--allow", "tests", "--trust-project",
+	want := []string{"run", "--json", "--delegated", "--cwd", filepath.Join(real, "sub"), "--mode", "plan", "--allow", "tests", "--trust-project",
 		"--model", "heimdallm/x", "--swarm", "8", "--role-model", "manager=heimdallm/y", "--verify", "go test {dirs}",
 		"--isolation", "worktree", "--budget-usd", "2.5", "-"}
 	if !slices.Equal(args, want) || dir != filepath.Join(real, "sub") {

@@ -126,10 +126,23 @@ func (h *hookAdapter) fire(ctx context.Context, ev hooks.Event) hooks.Result {
 	return res
 }
 
+// toolDir is the directory a call acts from: where the agent's shell is for a shell command, the agent's own directory for any
+// other tool, which reads a relative path from there. "" when the call says nothing about it.
+func (h *hookAdapter) toolDir(c agent.ToolHookCall) string {
+	if c.Env == nil {
+		return ""
+	}
+	if c.Tool == "bash" && h.s.shell != nil {
+		return h.s.shell.Dir(c.Env)
+	}
+	return c.Env.Cwd
+}
+
 // BeforeTool implements agent.Hooks.
 func (h *hookAdapter) BeforeTool(ctx context.Context, c agent.ToolHookCall) agent.ToolHookOutcome {
-	res := h.fire(ctx, hooks.Event{Name: hooks.PreToolUse, Tool: c.Tool, Input: c.Input, Agent: c.Agent, Role: c.Role})
-	out := agent.ToolHookOutcome{Context: res.AdditionalContext}
+	dir := h.toolDir(c)
+	res := h.fire(ctx, hooks.Event{Name: hooks.PreToolUse, Tool: c.Tool, Input: c.Input, Agent: c.Agent, Role: c.Role, ToolDir: dir})
+	out := agent.ToolHookOutcome{Context: res.AdditionalContext, Dir: dir}
 	switch {
 	case res.Blocked || res.Decision == hooks.Deny || res.Stop:
 		out.Veto = true

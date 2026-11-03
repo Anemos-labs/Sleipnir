@@ -209,6 +209,9 @@ type Options struct {
 	// callers set it explicitly: a hostile repository's AGENTS.md is a prompt
 	// injection vector.
 	TrustProject bool
+	// Delegated marks a run whose goal, Verify and Resume another program chose (sleipnir mcp serve): Verify is judged as the
+	// run's own shell command before any agent starts, and a resume brings back only what restricts the run.
+	Delegated bool
 	// TrustDigest, with TrustProject, is the digest of the project's files (trust.Footprint) that the person confirmed: the
 	// session trusts them only while they still have it, and otherwise resolves trust as if TrustProject were unset. Empty, the
 	// files are trusted whatever they hold.
@@ -697,6 +700,13 @@ func New(ctx context.Context, o Options) (*Session, error) {
 		}
 		s.restorePermissions()
 	}
+	if err := s.checkDelegatedVerify(ctx); err != nil {
+		if s.Swarm != nil {
+			s.Swarm.Shutdown()
+		}
+		s.Log.Close()
+		return nil, err
+	}
 	built = true
 	if o.Interactive && !o.Offline {
 		go s.checkReach(s.Provider)
@@ -894,7 +904,7 @@ func (s *Session) buildPerm() error {
 	}
 	s.Perm = e
 	if s.hooks != nil { // a PermissionRequest hook's condition is judged with the rules that made the engine ask
-		s.hooks.AskRules, s.hooks.Home = e.AskRulesFor, o.Home
+		s.hooks.AskRules, s.hooks.Home, s.hooks.TreeParents = e.AskRulesFor, o.Home, extra
 	}
 	return nil
 }

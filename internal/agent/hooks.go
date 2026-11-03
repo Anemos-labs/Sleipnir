@@ -64,6 +64,10 @@ type ToolHookCall struct {
 	Agent, Role string
 	Tool        string
 	Input       json.RawMessage
+	// Env is the environment the tool runs with.
+	Env *tools.Env
+	// Dir is the directory the call acts from, as BeforeTool found it (AfterTool): a call may leave the agent somewhere else.
+	Dir string
 }
 
 // ToolHookOutcome is what the hooks of a tool event decided.
@@ -73,6 +77,8 @@ type ToolHookOutcome struct {
 	Reason string
 	// UpdatedInput replaces the call's input (BeforeTool), when set and not vetoed.
 	UpdatedInput json.RawMessage
+	// Dir is the directory the call acts from (BeforeTool), handed back to AfterTool.
+	Dir string
 	// Context is extra text for the model.
 	Context string
 }
