@@ -123,7 +123,8 @@ func (s *Swarm) emptyMerges(snap *Snapshot) map[string]bool {
 			continue
 		}
 		r, ok := s.mergedFor(t)
-		if ok && r.empty || !ok && parents[t.ID] {
+		// A plan's agreement merges nothing by nature: a reconciled one is news of its own, whatever its children agreed.
+		if ok && r.empty || !ok && parents[t.ID] && t.Kind != TaskKindPlan {
 			out[t.ID] = true
 		}
 	}
