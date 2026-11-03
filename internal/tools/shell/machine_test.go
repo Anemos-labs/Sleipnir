@@ -18,31 +18,41 @@ import (
 func TestHeavyCommandsTakeTurnsForTheMachinesSlots(t *testing.T) {
 	b := machine.Fixed(machine.Settings{CPUs: 2, HeavySlots: 1}, t.TempDir(), 4, 0, nil)
 	h := newHarness(t, Options{Machine: b})
-	if err := os.WriteFile(filepath.Join(h.root, "build.sh"), []byte("#!/bin/sh\nsleep 0.6\necho built\n"), 0o755); err != nil {
+	// the build says when it runs and holds its slot until the test opens the gate, so the order does not hang on timing
+	running, gate := filepath.Join(h.root, "running"), filepath.Join(h.root, "gate")
+	script := "#!/bin/sh\ntouch '" + running + "'\nwhile [ ! -e '" + gate + "' ]; do sleep 0.02; done\necho built\n"
+	if err := os.WriteFile(filepath.Join(h.root, "build.sh"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	openGate := func() { _ = os.WriteFile(gate, nil, 0o644) }
+	defer openGate() // a failing test still lets the builds end
 	first := make(chan *tools.Result, 1)
 	go func() {
 		res, _ := h.tryCall(context.Background(), h.env("a"), "bash", map[string]any{"command": "./build.sh"})
 		first <- res
 	}()
-	time.Sleep(150 * time.Millisecond)
+	waitFor(t, "the first build to run", time.Minute, func() bool { _, err := os.Stat(running); return err == nil })
 
 	// a light command does not wait for the build
-	start := time.Now()
-	if txt := mustText(t, h.bash(h.env("c"), "echo light")); strings.Contains(txt, "waited") || time.Since(start) > 400*time.Millisecond {
-		t.Errorf("a light command waited for the slot: %q after %v", txt, time.Since(start))
+	if txt := mustText(t, h.bash(h.env("c"), "echo light")); strings.Contains(txt, "waited") {
+		t.Errorf("a light command waited for the slot: %q", txt)
 	}
 
 	var live outLog
 	env := h.env("b")
 	env.Out = live.fn
-	second := mustText(t, h.call(context.Background(), env, "bash", map[string]any{"command": "./build.sh"}))
-	if !strings.Contains(second, "built") || !strings.Contains(second, "[waited ") || !strings.Contains(second, "waiting for a free slot") {
-		t.Errorf("the second build did not wait its turn:\n%s", second)
-	}
-	if _, stderr, _ := live.get(); !strings.Contains(stderr, "[sleipnir: waiting for a free slot") {
-		t.Errorf("the wait was not shown live: %q", stderr)
+	second := make(chan *tools.Result, 1)
+	go func() {
+		res, _ := h.tryCall(context.Background(), env, "bash", map[string]any{"command": "./build.sh"})
+		second <- res
+	}()
+	waitFor(t, "the second build to show its wait live", time.Minute, func() bool {
+		_, stderr, _ := live.get()
+		return strings.Contains(stderr, "[sleipnir: waiting for a free slot")
+	})
+	openGate()
+	if txt := mustText(t, <-second); !strings.Contains(txt, "built") || !strings.Contains(txt, "[waited ") || !strings.Contains(txt, "waiting for a free slot") {
+		t.Errorf("the second build did not wait its turn:\n%s", txt)
 	}
 	if txt := mustText(t, <-first); strings.Contains(txt, "waited") {
 		t.Errorf("the first build waited:\n%s", txt)
