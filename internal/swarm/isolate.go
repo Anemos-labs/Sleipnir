@@ -369,9 +369,10 @@ func (s *Swarm) integrate(ctx context.Context, m *member, t Task, message string
 	if _, err := m.tree.Commit(ctx, message); err != nil {
 		return s.notCommitted(ctx, err)
 	}
+	scope, enforce, carried := s.treeScope(m.id, t)
 	res, err := iso.Queue.Submit(ctx, workspace.Submission{
 		Agent: m.id, Tree: m.tree, Task: subject, VerifyCmd: ExpandVerify(s.cfg.VerifyCmd, m.dir, t.Files), Message: message,
-		Scope: t.Files, EnforceScope: len(t.Files) > 0, Refuse: s.submitRefusal(m.role, t),
+		Scope: scope, EnforceScope: enforce, Refuse: s.submitRefusal(m.role, t),
 	})
 	if err != nil {
 		if ctx.Err() != nil {
@@ -392,6 +393,9 @@ func (s *Swarm) integrate(ctx context.Context, m *member, t Task, message string
 		note := "merged into integration " + short(res.After)
 		if res.Verify != nil && res.Verify.OK() {
 			note += " (verified)"
+		}
+		if len(carried) > 0 {
+			note += "; it carried the work of " + strings.Join(carried, ", ") + ", done in the same tree"
 		}
 		s.tellSiblingsOfMerge(t, m.id)
 		return integration{ok: true, evidence: note}
@@ -439,6 +443,33 @@ func (s *Swarm) ownedRefusal(role string) func(string) string {
 		}
 		return ""
 	}
+}
+
+// treeScope is the scope a submission of t from member's tree is held to. A worker may hold several tasks at once (a task it
+// split and kept both halves of, a fix it was handed while blocked), and they share its one tree: a submission of any of them
+// carries the work of all. Held to t's scope alone, each is refused for the other's files, and the worker cannot separate them
+// in one tree. In a team build a worker who kept both halves of a split task had the first refused for the second's stylesheet
+// and the second for the first's Ruby files, over and over. So the scope is widened by the scopes of the other tasks the member
+// holds that are doing or blocked, carried names those whose work came along, and the scope is not enforced when one of them
+// has none. A task whose work landed with another finds nothing left to merge when it is submitted in its turn.
+func (s *Swarm) treeScope(member string, t Task) (scope []string, enforce bool, carried []string) {
+	scope, enforce = t.Files, len(t.Files) > 0
+	if !enforce {
+		return scope, false, nil
+	}
+	for _, o := range s.Board.Snapshot().Tasks {
+		if o.ID == t.ID || o.Owner != member || (o.Status != StatusDoing && o.Status != StatusBlocked) || o.Kind == TaskKindPlan {
+			continue
+		}
+		carried = append(carried, o.ID)
+		if len(o.Files) == 0 {
+			enforce = false
+			continue
+		}
+		scope = append(slices.Clone(scope), o.Files...)
+	}
+	slices.Sort(carried)
+	return scope, enforce, carried
 }
 
 // submitRefusal is the merge queue's refusal of single files for task t, submitted by an agent of role: a path another role owns

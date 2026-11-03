@@ -1130,3 +1130,47 @@ func TestAWorkerThatClaimsTheTaskContinuesTheDraftOfTheOneThatStopped(t *testing
 		t.Error("the claim's answer does not name the draft's files")
 	}
 }
+
+// A worker who holds two tasks does both in its one tree, so the submission of either carries the work of both: it is held to
+// the scopes of the two, not refused for the other's files. Held to its own scope, each was refused for the other's files in
+// turn and neither could land.
+func TestASubmissionCarriesTheOtherTaskTheWorkerHoldsInTheSameTree(t *testing.T) {
+	sc := script{
+		"be-1": {
+			act(writeCall("a.txt", "alpha edited\n"), rvToolCall{"task", map[string]any{"action": "claim", "id": "T2"}}, writeCall("b.txt", "beta edited\n")),
+			act(doneCall("T1", "edited a")),
+			act(doneCall("T2", "edited b")),
+		},
+	}
+	r := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 4}, verify: true}, sc.fn())
+	r.sw.StartManager()
+	r.mustSpawn("backend", "edit a", "a.txt")
+	if _, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "edit b", Role: "backend", Files: []string{"b.txt"}}); err != nil {
+		t.Fatal(err)
+	}
+	r.waitStatus("T1", StatusReview)
+	r.waitStatus("T2", StatusReview)
+	if o := r.task("T2").Owner; o != "be-1" {
+		t.Fatalf("T2 is owned by %q, want be-1", o)
+	}
+	if r.prov.sawEver("outside its scope") {
+		t.Fatal("a submission was refused for the files of the other task in the same tree")
+	}
+	if st := r.q.Status(); st.Rejected != 0 {
+		t.Fatalf("queue: %+v", st)
+	}
+	if ev := r.task("T1").Evidence; !strings.Contains(ev, "carried the work of T2") {
+		t.Errorf("T1's evidence does not say it carried T2's work:\n%s", ev)
+	}
+	for _, id := range []string{"T1", "T2"} {
+		if res := r.accept(id); res.IsError {
+			t.Fatal(res.Text)
+		}
+	}
+	r.finish()
+	for f, want := range map[string]string{"a.txt": "alpha edited\n", "b.txt": "beta edited\n"} {
+		if got := readText(t, r.repo+"/"+f); got != want {
+			t.Errorf("%s = %q, want %q", f, got, want)
+		}
+	}
+}
