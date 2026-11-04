@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -51,6 +52,13 @@ type Leases struct {
 	board *Board
 	ev    events.Emitter
 	roots []string
+	// scratch is the session's scratch directory ($TMPDIR, Deps.Tmp): no project file lies there, so neither a task's scope nor
+	// an isolated writer's tree refuses a write to it. "" when the session has none.
+	scratch string
+	// treeParent is the directory that holds the isolated writers' trees (workspace.Manager.Dir), "" when there is none.
+	treeParent string
+	// sysTemp are the system's temporary directories (systemTempDirs), scratch space when they are not in the workspace.
+	sysTemp []string
 
 	owners PathOwners          // nil: no path is owned
 	roleOf func(string) string // agent id -> role, for owners
@@ -76,7 +84,98 @@ func NewLeases(ttl time.Duration, board *Board) *Leases {
 		ttl = 10 * time.Minute
 	}
 	return &Leases{ttl: ttl, now: time.Now, board: board, ev: events.Discard{}, held: map[string]*lease{},
-		trees: map[string]string{}, marks: map[string]map[string]time.Time{}}
+		trees: map[string]string{}, marks: map[string]map[string]time.Time{}, sysTemp: systemTempDirs()}
+}
+
+// SetScratch names the session's scratch directory ($TMPDIR). The runtime context sends every agent's throwaway files there and
+// the file tools take $TMPDIR/name, so a write below it is not an edit of the project: it holds no lease and passes the scope,
+// ownership and tree checks. An agent the guard refuses every write (an isolated agent with no tree: a read-only role) is still
+// refused. Call it before the swarm starts.
+func (l *Leases) SetScratch(dir string) {
+	if dir != "" {
+		dir = filepath.Clean(dir)
+	}
+	l.mu.Lock()
+	l.scratch = dir
+	l.mu.Unlock()
+}
+
+// inScratch reports whether the absolute, cleaned path lies inside the scratch directory (SetScratch).
+func (l *Leases) inScratch(path string) bool {
+	l.mu.Lock()
+	dir := l.scratch
+	l.mu.Unlock()
+	if dir == "" || !filepath.IsAbs(path) {
+		return false
+	}
+	_, ok := relTo(dir, path)
+	return ok
+}
+
+// SetTreeParent names the directory that holds the isolated writers' trees: a path below it is another agent's tree even when
+// that tree is not bound (a tree kept from an earlier run).
+func (l *Leases) SetTreeParent(dir string) {
+	if dir != "" {
+		dir = filepath.Clean(dir)
+	}
+	l.mu.Lock()
+	l.treeParent = dir
+	l.mu.Unlock()
+}
+
+// inWorkspace reports whether the absolute, cleaned path lies in a directory of the team's workspace: a root (the person's
+// checkout, the session's working directory), an agent's tree or the directory of the trees. A relative path is taken to be one.
+func (l *Leases) inWorkspace(path string) bool {
+	if !filepath.IsAbs(path) {
+		return true
+	}
+	l.mu.Lock()
+	dirs := append([]string(nil), l.roots...)
+	for _, d := range l.trees {
+		dirs = append(dirs, d)
+	}
+	if l.treeParent != "" {
+		dirs = append(dirs, l.treeParent)
+	}
+	l.mu.Unlock()
+	if len(dirs) == 0 {
+		return true // nothing is known about the workspace: every path may be in it
+	}
+	for _, d := range dirs {
+		if _, ok := relTo(d, path); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// scratchSpace reports whether a write to the absolute, cleaned path is a scratch file rather than an edit of the project: it lies
+// in the session's scratch directory (SetScratch), or in the system's temporary directory (os.TempDir, and /tmp outside Windows)
+// and not in the workspace (inWorkspace: a project checked out below /tmp is still the project). The permission engine has already
+// judged the write by the session's mode and rules; the guard's scope, ownership and tree checks are about project files only.
+func (l *Leases) scratchSpace(path string) bool {
+	if l.inScratch(path) {
+		return true
+	}
+	if !filepath.IsAbs(path) || l.inWorkspace(path) {
+		return false
+	}
+	for _, d := range l.sysTemp {
+		if _, ok := relTo(d, path); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// systemTempDirs are the system's temporary directories a model may name for a scratch file: os.TempDir and, outside Windows,
+// /tmp, which models write whatever $TMPDIR says.
+func systemTempDirs() []string {
+	dirs := []string{filepath.Clean(os.TempDir())}
+	if runtime.GOOS != "windows" && dirs[0] != "/tmp" {
+		dirs = append(dirs, "/tmp")
+	}
+	return dirs
 }
 
 // Isolate puts the guard in isolated mode: see the type's comment.
@@ -322,8 +421,12 @@ func (l *Leases) checkScopeAt(agent, path, rel string, relOK bool) error {
 	}
 	l.raiseScopeAlert(agent, rel, relOK, ids)
 	l.emit(agent, "scope", path, "")
-	return fmt.Errorf("%s is outside the scope of your task %s (scope: %s). Edit only inside your scope; if the task needs more, ask the manager to widen it (mail)",
-		displayPath(path), strings.Join(ids, ", "), strings.Join(shownScopes(scopes), ", "))
+	hint := ""
+	if !relOK {
+		hint = "; a scratch file goes in $TMPDIR"
+	}
+	return fmt.Errorf("%s is outside the scope of your task %s (scope: %s). Edit only inside your scope; if the task needs more, ask the manager to widen it (mail)%s",
+		displayPath(path), strings.Join(ids, ", "), strings.Join(shownScopes(scopes), ", "), hint)
 }
 
 // raiseScopeAlert tells the manager (in its hot view) which agent tried to write which file outside the scope of which tasks,
@@ -383,8 +486,11 @@ func (l *Leases) beforeIsolatedWrite(agent, path string) error {
 		return fmt.Errorf("this run gives every writer a git worktree of its own, and %s has none: it does not edit files. Ask the manager (mail) or, as the manager, spawn a worker for the change: the harness verifies and merges its work", safeToken(agent, 24))
 	}
 	rel, ok := relTo(dir, path)
+	if !ok && l.scratchSpace(path) {
+		return nil // $TMPDIR (or the system's temporary directory) is every writer's scratch space, not the project
+	}
 	if !ok {
-		return fmt.Errorf("%s is outside your working tree: this run gives every writer its own git worktree, so edit files under your working directory (the paths there are the project's paths)", displayPath(path))
+		return fmt.Errorf("%s is outside your working tree: this run gives every writer its own git worktree, so edit files under your working directory (the paths there are the project's paths); a scratch file goes in $TMPDIR", displayPath(path))
 	}
 	if err := l.checkOwner(agent, rel, true); err != nil {
 		return err
@@ -475,6 +581,9 @@ func (l *Leases) BeforeWrite(agent, path string) error {
 		return l.beforeIsolatedWrite(agent, path)
 	}
 	rel, relOK := l.rel(path)
+	if !relOK && l.scratchSpace(path) {
+		return nil // a scratch file is in no task's scope and nobody else's to lease
+	}
 	if err := l.checkOwner(agent, rel, relOK); err != nil {
 		return err
 	}

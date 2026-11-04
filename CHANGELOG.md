@@ -16,6 +16,13 @@ they do not indicate whether a change has been released.
   gets that note in place of the image. Prompt-cache change: only requests
   that carry an image change bytes.
 
+- A team's write guard no longer refuses the file tools' writes to the
+  session's scratch directory (`$TMPDIR`) or to the system's `/tmp` outside
+  the workspace: they are no edit of the project, so no task scope, path owner
+  or isolated tree applies, and the permission engine alone judges them by the
+  session's mode. Other paths outside the project are refused as before, and a
+  refusal of one names `$TMPDIR` for scratch files.
+
 - The `sleipnir` tool has a `sessions` action: the agent the person talks to
   in a tab of `sleipnir web` lists the server's other sessions, reads what one
   said, sends one a message (read as mail, and answered back as mail), waits
