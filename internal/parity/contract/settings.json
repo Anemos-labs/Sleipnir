@@ -121,6 +121,14 @@
       "reason": "the machine share of the agents' commands: set in the user's configuration file or a SLEIPNIR_RESOURCES_* variable in both interfaces (a project file cannot set it); Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
     },
     {
+      "item": "storage.clean",
+      "reason": "the housekeeping of the data directory: set in the user's configuration file or a SLEIPNIR_STORAGE_* variable in both interfaces (a project file cannot set it); Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does, and the command runner of the page runs `sleipnir storage clean` as the terminal does"
+    },
+    {
+      "item": "storage.worktree_idle",
+      "reason": "the housekeeping of the data directory: set in the user's configuration file or a SLEIPNIR_STORAGE_* variable in both interfaces (a project file cannot set it); Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does, and the command runner of the page runs `sleipnir storage clean` as the terminal does"
+    },
+    {
       "item": "swarm.max_concurrent_requests",
       "reason": "a request limit of the swarm: a file or SLEIPNIR_SWARM_MAX_CONCURRENT_REQUESTS in both interfaces; the governor line of the HUD shows its effect and Configuration its value"
     },

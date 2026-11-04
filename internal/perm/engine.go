@@ -256,6 +256,38 @@ func compileList(action Action, list []string, rs *resolver, origin func(string)
 	return out, nil
 }
 
+// markStateWide marks the rules of list that cover exactly what the state directory's own rule covers (the person's
+// Edit(~/.sleipnir/**) for the default state directory) as that rule is marked: they do not reach into the agents' trees kept
+// below it. A rule about something narrower or wider (Edit(~/**)) is left as it is.
+func markStateWide(list []*crule, state *crule) {
+	for _, c := range list {
+		if c.class == classWrite && !c.blanket && sameGlobs(c.globs, state.globs) {
+			c.outsideTrees = true
+		}
+	}
+}
+
+// sameGlobs reports whether two compiled rules match through the same set of patterns.
+func sameGlobs(a, b []*pathGlob) bool {
+	key := func(gs []*pathGlob) map[string]bool {
+		m := map[string]bool{}
+		for _, g := range gs {
+			m[strings.Join(g.segs, "/")] = true
+		}
+		return m
+	}
+	ka, kb := key(a), key(b)
+	if len(ka) != len(kb) {
+		return false
+	}
+	for k := range ka {
+		if !kb[k] {
+			return false
+		}
+	}
+	return true
+}
+
 // fixedOrigin names the same origin for every rule of a list.
 func fixedOrigin(o string) func(string) string { return func(string) string { return o } }
 
@@ -306,13 +338,21 @@ func NewEngine(cfg Config) (*Engine, error) {
 	if e.ask, err = compileList(Ask, cfg.Ask, rs, configured(Ask)); err != nil {
 		return nil, err
 	}
-	for _, dir := range append([]string{cfg.StateDir}, cfg.RecordDirs...) {
+	for i, dir := range append([]string{cfg.StateDir}, cfg.RecordDirs...) {
 		if dir == "" {
 			continue
 		}
 		state, err := compileList(Ask, []string{"Edit(" + escapeGlob(cleanAbs(dir)) + "/**)"}, rs, fixedOrigin(OriginBuiltIn))
 		if err != nil {
 			return nil, err
+		}
+		if i == 0 {
+			// The state directory holds the agents' trees (TreeParents) as well: its protection is about what steers a later
+			// session, and an agent's own copy of the project is its workspace, held to the project's rules instead.
+			for _, c := range state {
+				c.outsideTrees = true
+			}
+			markStateWide(e.ask, state[0])
 		}
 		e.ask = append(e.ask, state...)
 	}

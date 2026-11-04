@@ -91,6 +91,8 @@ type Config struct {
 	Tools       Tools               `json:"tools"`
 	// Resources is the share of the machine the agents' commands may use (internal/machine).
 	Resources Resources `json:"resources"`
+	// Storage is the housekeeping of the harness's data directory (docs/STORAGE.md).
+	Storage Storage `json:"storage"`
 	// Plugins switches the harness's plugins on and off (internal/plugin,
 	// docs/PLUGINS.md).
 	Plugins Plugins `json:"plugins"`
@@ -268,8 +270,9 @@ type Swarm struct {
 	// guarded by write leases; "shared" is the older spelling of the same thing) or
 	// "worktree": each writer gets a git worktree of its own and finished work is
 	// integrated through a verifying merge queue (docs/SWARM-PROTOCOL.md section 14).
-	// The trees always live in the user's cache directory, never in the repository
-	// and never anywhere a configuration value names: a project's file may switch
+	// The trees live in the data directory ($SLEIPNIR_HOME, else ~/.sleipnir; a session
+	// started before they moved keeps its trees in the user's cache directory), never in
+	// the repository and never anywhere a configuration value names: a project's file may switch
 	// isolation on (it only reduces risk), but it cannot choose where anything is
 	// written.
 	Isolation string `json:"isolation,omitempty"`
@@ -364,6 +367,40 @@ type Resources struct {
 	Priority string `json:"priority,omitempty"`
 	// Unlimited turns every limit off.
 	Unlimited bool `json:"unlimited"`
+}
+
+// Storage is the housekeeping of the data directory ($SLEIPNIR_HOME, else ~/.sleipnir; docs/STORAGE.md): what the harness reclaims
+// by itself. It never deletes a session or its history: only what a session can do without, the worktrees of a stopped session that
+// hold nothing of their own, scratch directories and the worktrees of sessions that are gone. Only the user's own file sets it.
+type Storage struct {
+	// Clean is "auto" (the default, also for "") or "off": whether the harness reclaims room by itself, at most once a day.
+	// `sleipnir storage clean` works either way.
+	Clean string `json:"clean,omitempty"`
+	// WorktreeIdle is how long a stopped session must have gone unwritten before the trees of its team that hold nothing of
+	// their own are removed ("3d" when empty; 36h, 2w and the like; at least an hour). A resumed session makes them again.
+	WorktreeIdle string `json:"worktree_idle,omitempty"`
+}
+
+// Storage cleanup modes.
+const (
+	StorageCleanAuto = "auto"
+	StorageCleanOff  = "off"
+)
+
+// DefaultWorktreeIdle is the default of Storage.WorktreeIdle.
+const DefaultWorktreeIdle = "3d"
+
+// AutoClean reports whether the harness reclaims room in the data directory by itself.
+func (s Storage) AutoClean() bool {
+	return !strings.EqualFold(strings.TrimSpace(s.Clean), StorageCleanOff)
+}
+
+// Idle is WorktreeIdle, or its default when empty.
+func (s Storage) Idle() string {
+	if v := strings.TrimSpace(s.WorktreeIdle); v != "" {
+		return v
+	}
+	return DefaultWorktreeIdle
 }
 
 // DefaultTimeout is DefaultTimeoutSec as a duration.

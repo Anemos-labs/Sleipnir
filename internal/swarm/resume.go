@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/gitx"
 	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
@@ -186,7 +187,7 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 		unfinished := hasTask && task.Status != StatusDone && task.Status != StatusFailed && !keep[task.ID]
 		if s.isolated() && !role.ReadOnly {
 			path := filepath.Join(s.deps.Isolation.Manager.Dir, w.ID)
-			if _, err := os.Lstat(path); os.IsNotExist(err) && unfinished && w.Snapshot != nil {
+			if _, err := os.Lstat(path); os.IsNotExist(err) && unfinished && w.Snapshot != nil && !s.releasedEmpty(ctx, w.ID) {
 				return fmt.Errorf("worker %s's unfinished worktree is missing at %s; restore it before resuming", w.ID, path)
 			}
 			tree, err = s.deps.Isolation.Manager.Create(ctx, w.ID, workspace.CreateOptions{Reuse: true, Base: s.deps.Isolation.Queue.Tip()})
@@ -253,4 +254,17 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 		m.setState(s, "idle", line)
 	}
 	return nil
+}
+
+// releasedEmpty reports whether the missing tree of worker id was released holding nothing of its own: the storage cleanup removes
+// the tree of a stopped session only when it is clean and its branch holds no commit that exists nowhere else, and deletes the
+// branch with it (workspace.PruneOptions.KeepUnmerged). With no branch left there is no work to restore, and a new tree made from
+// the integration tip loses nothing. A tree that went any other way leaves its branch behind.
+func (s *Swarm) releasedEmpty(ctx context.Context, id string) bool {
+	iso := s.deps.Isolation
+	if iso == nil || iso.Manager == nil || iso.Manager.Repo == nil || iso.Manager.Prefix == "" {
+		return false
+	}
+	_, err := iso.Manager.Repo.BranchSHA(ctx, iso.Manager.Prefix+"/"+id)
+	return gitx.KindOf(err) == gitx.KindNotFound
 }

@@ -1625,6 +1625,24 @@
   },
   {
    "group": "the program (sleipnir ...)",
+   "name": "sleipnir storage",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:storage"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir storage clean",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:storage clean"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
    "name": "sleipnir swarm",
    "kind": "program",
    "live": true,
@@ -2625,6 +2643,8 @@
    "demo",
    "sessions",
    "sessions prune",
+   "storage",
+   "storage clean",
    "replay",
    "watch",
    "inspect",
@@ -2946,6 +2966,26 @@
      "dir",
      "keep",
      "older-than",
+     "yes"
+    ],
+    "modeWith": {
+     "yes": "priv"
+    }
+   },
+   "storage": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [],
+    "modeWith": {}
+   },
+   "storage clean": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [
+     "idle",
+     "keep",
+     "older-than",
+     "sessions",
      "yes"
     ],
     "modeWith": {
