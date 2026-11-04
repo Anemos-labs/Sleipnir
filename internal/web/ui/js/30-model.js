@@ -147,7 +147,9 @@
       }
       case 'task': {   /* each task event is the whole task (the server's TaskX): a field it omits is empty, never "as before" */
         let T = m.tasks[ev.id];
-        if (!T) { T = m.tasks[ev.id] = { id: ev.id, title: ev.title || ev.id, owner: null, deps: [], scope: '', st: 'todo', t: ev.t, ms: 0 }; m.torder.push(ev.id); }
+        if (!T) { T = m.tasks[ev.id] = { id: ev.id, title: ev.title || ev.id, owner: null, deps: [], scope: '', st: 'todo', t: ev.t, ms: 0, since: ev.t }; m.torder.push(ev.id); }
+        /* since: when the task last changed column, or failed, or changed hands; t moves with every event of the task (its spend too) */
+        if ((ev.s && ev.s !== T.st) || !!ev.failed !== !!T.failed || (ev.owner || null) !== T.owner) T.since = ev.t;
         if (ev.s) { T.st = ev.s; T.t = ev.t; }
         /* a task resolved as no longer needed is done but merged nothing: the merge queue does not list it */
         if (ev.s === 'merged' && !/^unneeded/.test(ev.closure || '')) { if (!m.merged.includes(ev.id)) m.merged.push(ev.id); }
@@ -220,7 +222,7 @@
       }
       case 'queue': m.qHead = ev.head ? { task: ev.head, cmd: ev.cmd || '', step: ev.step || '', t0: (m.qHead && m.qHead.task === ev.head) ? m.qHead.t0 : ev.t, ms: ev.ms || 0 } : null; m.conflicts = ev.conflicts || 0; m.bounced = ev.bounced || 0; break;
       case 'merge': {
-        const T = m.tasks[ev.id]; if (!T) break; T.st = 'merged'; T.ms = ev.ms; T.t = ev.t; if (!m.merged.includes(ev.id)) m.merged.push(ev.id);
+        const T = m.tasks[ev.id]; if (!T) break; if (T.st !== 'merged') T.since = ev.t; T.st = 'merged'; T.ms = ev.ms; T.t = ev.t; if (!m.merged.includes(ev.id)) m.merged.push(ev.id);
         addMark(m, { t: ev.t, id: T.owner, g: 'merge' }); m.lastMerge = ev;
         push(m, 'mgr', { k: 'sys', glyph: '✓', text: ev.id + ' merged: rebase ✓ · ' + ev.cmd + ' ✓ ' + (ev.ms < 1000 ? ev.ms + 'ms' : (ev.ms / 1000).toFixed(1) + 's'), task: ev.id, ag: T.owner, t: ev.t }, ev);
         if (T.owner) push(m, chOf(T.owner), { k: 'note', ag: T.owner, g: 'done', text: ev.id + ' merged ✓ ' + ev.cmd + ' ' + (ev.ms / 1000).toFixed(1) + 's', task: ev.id, t: ev.t }, ev);
