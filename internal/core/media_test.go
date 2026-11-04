@@ -37,6 +37,7 @@ func TestImageURLRefusesWhatCannotBeSent(t *testing.T) {
 		"no resolver":   {core.Block{Kind: core.BlockImage, MediaType: "image/png", MediaRef: "abc"}, nil, "nothing resolves"},
 		"no media type": {core.Block{Kind: core.BlockImage, MediaRef: "abc"}, func(string, string) ([]byte, error) { return []byte("x"), nil }, "no media type"},
 		"missing blob":  {core.Block{Kind: core.BlockImage, MediaType: "image/png", MediaRef: "abc"}, func(string, string) ([]byte, error) { return nil, errors.New("gone") }, "gone"},
+		"not an image":  {core.Block{Kind: core.BlockImage, MediaType: "text/plain", MediaRef: "abc"}, func(string, string) ([]byte, error) { return []byte("x"), nil }, "not an image"},
 		"too large": {core.Block{Kind: core.BlockImage, MediaType: "image/png", MediaRef: "abc"}, func(string, string) ([]byte, error) {
 			return make([]byte, core.MaxInlineImageBytes+1), nil
 		}, "more than"},
@@ -45,5 +46,15 @@ func TestImageURLRefusesWhatCannotBeSent(t *testing.T) {
 		if _, err := core.ImageURL(c.b, c.media); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: err %v, want %q", name, err, c.want)
 		}
+	}
+}
+
+func TestImagingTextOnly(t *testing.T) {
+	img := core.Block{Kind: core.BlockImage, MediaRef: "data:image/png;base64,AAAA"}
+	if u, err := (core.Imaging{}).URL(img); err != nil || u != img.MediaRef {
+		t.Fatalf("%q %v", u, err)
+	}
+	if _, err := (core.Imaging{TextOnly: true}).URL(img); err != core.ErrTextOnly {
+		t.Fatalf("a text-only model was sent an image: %v", err)
 	}
 }

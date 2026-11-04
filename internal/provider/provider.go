@@ -50,6 +50,26 @@ type Profile struct {
 	// sampling logprobs (self-hosted vLLM/SGLang-style servers), which RL
 	// training needs at the LLM boundary.
 	CaptureTokens bool
+	// NoImages: the model takes text only (its catalogue says so). Every wire format sends a note in place of each image of
+	// the prompt, decided when the request is rendered, so that the conversation keeps its images for a model that sees them
+	// (after a model switch, or on a fallback that does).
+	NoImages bool
+}
+
+// MarkTextOnly sets NoImages in the profile of p: of its Primary when p is a Failover, and of p itself when it can take a new
+// profile. It reports whether a profile was changed.
+func MarkTextOnly(p Provider) bool {
+	if f, ok := p.(*Failover); ok {
+		return MarkTextOnly(f.Primary)
+	}
+	s, ok := p.(interface{ SetProfile(Profile) })
+	if !ok {
+		return false
+	}
+	prof := p.Profile()
+	prof.NoImages = true
+	s.SetProfile(prof)
+	return true
 }
 
 // KVCaps derives the renderer's view of the profile.

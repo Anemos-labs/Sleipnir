@@ -247,6 +247,7 @@ func (c *Client) optionsFor(req *provider.Request, prof provider.Profile) (Optio
 	o.NoThinkingReplay = o.NoThinkingReplay || !prof.ReplayThinking
 	o.NoZeroMaxTokens = o.NoZeroMaxTokens || !prof.PrewarmZeroTokens
 	o.Warm = req.Warm
+	o.NoImages = o.NoImages || prof.NoImages
 	o.BindingMode = ""
 	if req.BindingMode != "" {
 		if prof.BindingControls {

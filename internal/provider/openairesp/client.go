@@ -160,7 +160,9 @@ func (c *Client) Do(ctx context.Context, req *provider.Request, on func(provider
 		on(provider.Event{Kind: provider.EvUsage, Usage: &out.Usage})
 		return out, nil
 	}
-	body, err := Build(p, c.cfg.Options, req.Warm)
+	opts := c.cfg.Options
+	opts.NoImages = opts.NoImages || c.profile.NoImages
+	body, err := Build(p, opts, req.Warm)
 	if err != nil {
 		return nil, &provider.Error{Kind: provider.ErrBadRequest, Message: err.Error(), Err: err}
 	}

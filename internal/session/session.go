@@ -802,6 +802,7 @@ func (s *Session) buildFallback() error {
 	if err != nil {
 		return fmt.Errorf("fallback model %s: %w", ref, err)
 	}
+	s.markTextOnly(context.Background(), p, m) // the fallback renders its own requests: a text-only one gets notes in place of images
 	s.fallbackP, s.fallbackModel, s.fallbackRef, s.fallbackPrice, s.fallbackMaxOut = p, m.ID, mr.String(), m.Price, m.MaxOutput
 	return nil
 }

@@ -113,9 +113,7 @@ func (s *Session) describe(ctx context.Context, p provider.Provider, m cost.Mode
 				m.ContextTokens, m.WindowGuessed, win = e.Model.ContextTokens, false, sourceCatalogue
 			}
 		}
-		if !m.Plan && !takesImages(s.catalogue(ctx, base, m.ID), m.ID) {
-			m.NoImages = true // a catalogue that says the model takes text only: an image would be refused
-		}
+		s.markTextOnly(ctx, p, m)
 		if unknown && configured == 0 && win != sourceCatalogue && localBase(base) {
 			if n := s.servedWindow(ctx, base, m.ID); n > 0 {
 				m.ContextTokens, m.WindowGuessed, win = n, false, sourceServer
@@ -129,10 +127,28 @@ func (s *Session) describe(ctx context.Context, p provider.Provider, m cost.Mode
 	return m
 }
 
-// takesImages reports whether entries leave model id able to take images: false only when its entry says it takes text only.
+// takesImages reports whether entries leave model id able to take images: false only when the entry of that exact id says it
+// takes text only. A normalised match (findEntry) may be another vendor's model or another dated release, and calling a model
+// that sees images text-only would hide every screenshot from it, so it leaves the question open.
 func takesImages(entries []gateway.Entry, id string) bool {
-	e, ok := findEntry(entries, id)
-	return !ok || e.TakesImages()
+	for _, e := range entries {
+		if e.Model.ID == id {
+			return e.TakesImages()
+		}
+	}
+	return true
+}
+
+// markTextOnly marks p's profile text only (provider.MarkTextOnly) when its catalogue says model m takes text only: every wire
+// format then sends a note in place of each image, decided per request, so the conversation keeps its images. Nothing is asked
+// offline, and a model reached through a plan is never marked (a plan's model list says nothing of images).
+func (s *Session) markTextOnly(ctx context.Context, p provider.Provider, m cost.Model) {
+	if s.opts.Offline || m.Plan {
+		return
+	}
+	if !takesImages(s.catalogue(ctx, p.Profile().BaseURL, m.ID), m.ID) {
+		provider.MarkTextOnly(p)
+	}
 }
 
 // reportsWindow reports whether entries give model id a context window of their own.

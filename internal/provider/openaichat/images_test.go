@@ -63,3 +63,18 @@ func TestToolResultWithoutImagesIsUnchanged(t *testing.T) {
 		t.Fatalf("a user message was added: %s", body)
 	}
 }
+
+// A text-only model gets a note in place of each image, decided when the request is rendered: the conversation keeps the
+// image for a model that sees it (after a switch, or on a fallback).
+func TestTextOnlyModelGetsNotes(t *testing.T) {
+	media := func(ref, _ string) ([]byte, error) { return []byte("png"), nil }
+	p := &core.Prompt{Model: "m", Messages: []core.Message{
+		{Role: core.RoleAssistant, Blocks: []core.Block{{Kind: core.BlockToolUse, ToolID: "c1", ToolName: "read", Input: json.RawMessage(`{}`)}}},
+		{Role: core.RoleUser, Blocks: []core.Block{core.ToolResult("c1", false, core.Text("Image"), core.Block{Kind: core.BlockImage, MediaType: "image/png", MediaRef: "h1"}),
+			{Kind: core.BlockImage, MediaRef: "data:image/png;base64,AAAA"}}},
+	}}
+	body, err := openaichat.Build(p, openaichat.Options{Media: media, NoImages: true}, false)
+	if err != nil || strings.Contains(string(body), "image_url") || strings.Count(string(body), "takes text only") != 2 {
+		t.Fatalf("%v %s", err, body)
+	}
+}
