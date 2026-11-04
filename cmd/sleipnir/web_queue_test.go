@@ -164,3 +164,33 @@ func TestWebHostAMessageDuringTheGoalsTurnSteersIt(t *testing.T) {
 		t.Errorf("a message never reached the model: %q", m.seen)
 	}
 }
+
+// In a team, a message sent while the manager's turn runs on the person's own message steers that turn too: the manager runs for as
+// long as its members work, and a line queued behind it went unanswered for all of that. The manager reads it marked as the person's.
+func TestWebHostAMessageDuringATeamTurnSteersTheManager(t *testing.T) {
+	project := webWorld(t)
+	m, base := newWebModel(t, sayScript("working on it"))
+	r := newWebRig(t, teamDefaults(project), base)
+	tab := r.ready("")
+	if r.h.tab(tab.ID).session().Swarm == nil {
+		t.Fatal("the tab is not a team")
+	}
+	m.hold("build the thing")
+	r.json("POST", "/api/sessions/"+tab.ID+"/messages", wire.MessageRequest{Text: "build the thing"}, 200, nil)
+	r.waitEv(tab.ID, "turn", map[string]any{"s": "start"})
+	deadline := time.Now().Add(10 * time.Second)
+	for m.asked("build the thing") < 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond) // the manager has started and its request is held
+	}
+	var res wire.SendResult
+	r.json("POST", "/api/sessions/"+tab.ID+"/messages", wire.MessageRequest{Text: "call the binary tallyho"}, 200, &res)
+	if !res.Steered || res.Queued {
+		t.Fatalf("a message during the manager's turn = %+v, want steered", res)
+	}
+	r.waitEv(tab.ID, "steer", map[string]any{"text": "call the binary tallyho"})
+	m.release("build the thing")
+	r.waitEv(tab.ID, "turn", map[string]any{"s": "end"})
+	if m.asked("call the binary tallyho") < 0 || m.asked("The person you work for wrote the message below") < 0 {
+		t.Errorf("the manager did not read the message as the person's: %q", m.seen)
+	}
+}
