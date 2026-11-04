@@ -959,6 +959,15 @@
   },
   {
    "group": "the program (sleipnir ...)",
+   "name": "sleipnir council",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:council"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
    "name": "sleipnir daemon",
    "kind": "program",
    "live": true,
@@ -2678,7 +2687,8 @@
    "rl tasks stats",
    "rl tasks update-scorer",
    "rl tasks validate",
-   "rl verify"
+   "rl verify",
+   "council"
   ],
   "commands": {
    "chat": {
@@ -4257,6 +4267,28 @@
     ],
     "flags": [],
     "modeWith": {}
+   },
+   "council": {
+    "mode": "net",
+    "positionals": [
+     "SCREENSHOT"
+    ],
+    "flags": [
+     "beat-refs",
+     "categories",
+     "json",
+     "ledger",
+     "model",
+     "product",
+     "ref",
+     "staged",
+     "target",
+     "timeout",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
    }
   }
  },
