@@ -46,6 +46,8 @@ type Options struct {
 	// as a data URL (core.ImageURL). Without it an image that is a blob reference
 	// is sent as a note that it cannot be shown (core.ImageNotSent).
 	Media core.MediaFunc
+	// NoImages sends a note in place of every image (provider.Profile.NoImages).
+	NoImages bool
 }
 
 // defaults fills missing chat-wire role and token-limit field names without replacing explicit
@@ -168,7 +170,7 @@ func Build(p *core.Prompt, o Options, stream bool) ([]byte, error) {
 		req.Messages = append(req.Messages, renderSystem(p.System, o.SystemRole, bpAt))
 	}
 	for mi, m := range p.Messages {
-		msgs, err := renderMessage(mi, m, bpAt, o.Media)
+		msgs, err := renderMessage(mi, m, bpAt, core.Imaging{Media: o.Media, TextOnly: o.NoImages})
 		if err != nil {
 			return nil, err
 		}
@@ -236,7 +238,7 @@ func renderSystem(blocks []core.Block, role string, bpAt map[core.BlockRef]core.
 
 // renderMessage dispatches assistant and user/system messages to their wire renderers, rejecting
 // unsupported roles.
-func renderMessage(mi int, m core.Message, bpAt map[core.BlockRef]core.Breakpoint, media core.MediaFunc) ([]message, error) {
+func renderMessage(mi int, m core.Message, bpAt map[core.BlockRef]core.Breakpoint, media core.Imaging) ([]message, error) {
 	switch m.Role {
 	case core.RoleAssistant:
 		return renderAssistant(mi, m, bpAt)
@@ -307,7 +309,7 @@ func renderAssistant(mi int, m core.Message, bpAt map[core.BlockRef]core.Breakpo
 // each after a line naming the call it came from: dropped, the model would
 // read "Image shot.png (image/png, 40 KB)" and answer about a picture it
 // never saw.
-func renderUser(mi int, m core.Message, bpAt map[core.BlockRef]core.Breakpoint, media core.MediaFunc) ([]message, error) {
+func renderUser(mi int, m core.Message, bpAt map[core.BlockRef]core.Breakpoint, media core.Imaging) ([]message, error) {
 	var out []message
 	var shown, parts []part
 	for bi, b := range m.Blocks {
@@ -352,8 +354,8 @@ func renderUser(mi int, m core.Message, bpAt map[core.BlockRef]core.Breakpoint, 
 }
 
 // imagePart is an image block as a content part: its URL (core.ImageURL), or a note that it cannot be sent and why.
-func imagePart(b core.Block, media core.MediaFunc) part {
-	u, err := core.ImageURL(b, media)
+func imagePart(b core.Block, media core.Imaging) part {
+	u, err := media.URL(b)
 	if err != nil {
 		return part{Type: "text", Text: core.ImageNotSent(err)}
 	}

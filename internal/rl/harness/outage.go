@@ -111,3 +111,6 @@ func (p *watched) Do(ctx context.Context, req *provider.Request, on func(provide
 	}
 	return resp, err
 }
+
+// Unwrap is the client w watches.
+func (w *watched) Unwrap() provider.Provider { return w.Provider }

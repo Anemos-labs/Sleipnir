@@ -859,10 +859,6 @@ func TestBuildValidation(t *testing.T) {
 		{"thinking in a user message", &core.Prompt{Model: "m", Messages: []core.Message{user(core.Block{Kind: core.BlockThinking})}}},
 		{"tool_result in an assistant message", &core.Prompt{Model: "m", Messages: []core.Message{asst(core.ToolResult("a", false))}}},
 		{"tool_use without id", &core.Prompt{Model: "m", Messages: []core.Message{user(core.Text("x")), asst(core.ToolUse("", "n", nil))}}},
-		{"image without ref", &core.Prompt{Model: "m", Messages: []core.Message{user(core.Block{Kind: core.BlockImage})}}},
-		{"image blob without resolver", &core.Prompt{Model: "m", Messages: []core.Message{user(core.Block{Kind: core.BlockImage, MediaType: "image/png", MediaRef: "0123abcd"})}}},
-		{"data url that is not base64", &core.Prompt{Model: "m", Messages: []core.Message{user(core.Block{Kind: core.BlockImage, MediaRef: "data:image/png,rawbytes"})}}},
-		{"data url without media type", &core.Prompt{Model: "m", Messages: []core.Message{user(core.Block{Kind: core.BlockImage, MediaRef: "data:;base64,AAAA"})}}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -904,10 +900,30 @@ func TestBuildImages(t *testing.T) {
 			}
 		})
 	}
-	for _, ref := range []string{"hash-text", "hash-missing"} {
-		if _, err := anthropic.Build(img(ref, ""), anthropic.Options{Media: resolver}, false); err == nil {
-			t.Errorf("%s: want an error", ref)
+	// An image that cannot be sent is a note saying why, never a failed request: it stays in the history, and every later
+	// request would fail with it.
+	notSent := map[string]*core.Prompt{
+		"blob that is not an image":   img("hash-text", ""),
+		"missing blob":                img("hash-missing", ""),
+		"image without ref":           img("", ""),
+		"blob without resolver":       img("0123abcd", "image/png"),
+		"data url that is not base64": img("data:image/png,rawbytes", ""),
+		"data url without media type": img("data:;base64,AAAA", ""),
+	}
+	for name, p := range notSent {
+		media := resolver
+		if name == "blob without resolver" {
+			media = nil
 		}
+		b, err := anthropic.Build(p, anthropic.Options{Media: media}, false)
+		if err != nil || !strings.Contains(string(b), "an image is not shown") || strings.Contains(string(b), `"type":"image"`) {
+			t.Errorf("%s: %v %s", name, err, b)
+		}
+	}
+	// A text-only model gets the note for an image that could be sent.
+	b, err := anthropic.Build(img("hash-png", "image/png"), anthropic.Options{Media: resolver, NoImages: true}, false)
+	if err != nil || !strings.Contains(string(b), "takes text only") || strings.Contains(string(b), `"type":"image"`) {
+		t.Errorf("text only: %v %s", err, b)
 	}
 }
 

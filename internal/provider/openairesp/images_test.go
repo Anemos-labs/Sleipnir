@@ -32,3 +32,12 @@ func TestToolResultImagesReachTheModel(t *testing.T) {
 		t.Fatalf("an unresolvable image: %v %s", err, b2)
 	}
 }
+
+func TestTextOnlyModelGetsNotes(t *testing.T) {
+	p := basePrompt()
+	p.Messages[0].Blocks = append(p.Messages[0].Blocks, core.Block{Kind: core.BlockImage, MediaRef: "data:image/png;base64,AAAA"})
+	b, err := openairesp.Build(p, openairesp.Options{NoImages: true}, false)
+	if err != nil || strings.Contains(string(b), "input_image") || !strings.Contains(string(b), "takes text only") {
+		t.Fatalf("%v %s", err, b)
+	}
+}

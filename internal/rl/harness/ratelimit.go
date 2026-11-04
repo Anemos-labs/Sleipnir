@@ -67,3 +67,6 @@ func (p *paced) Do(ctx context.Context, req *provider.Request, on func(provider.
 	}
 	return p.Provider.Do(ctx, req, on)
 }
+
+// Unwrap is the client p paces.
+func (p *paced) Unwrap() provider.Provider { return p.Provider }
