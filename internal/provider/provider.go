@@ -56,13 +56,17 @@ type Profile struct {
 	NoImages bool
 }
 
-// MarkTextOnly sets NoImages in the profile of p: of its Primary when p is a Failover, and of p itself when it can take a new
-// profile. It reports whether a profile was changed.
+// MarkTextOnly sets NoImages in the profile of p: of its Primary when p is a Failover, of the provider it wraps when p has an
+// Unwrap() Provider method and cannot take a profile itself, and of p itself when it can take a new profile. It reports whether
+// a profile was changed.
 func MarkTextOnly(p Provider) bool {
 	if f, ok := p.(*Failover); ok {
 		return MarkTextOnly(f.Primary)
 	}
 	s, ok := p.(interface{ SetProfile(Profile) })
+	if w, wraps := p.(interface{ Unwrap() Provider }); !ok && wraps {
+		return MarkTextOnly(w.Unwrap())
+	}
 	if !ok {
 		return false
 	}

@@ -25,3 +25,19 @@ func TestMarkTextOnly(t *testing.T) {
 		t.Fatalf("primary %v secondary %v", primary.prof.NoImages, secondary.prof.NoImages)
 	}
 }
+
+type wrapper struct{ provider.Provider }
+
+func (w wrapper) Unwrap() provider.Provider { return w.Provider }
+
+// A wrapper that takes no profile of its own (a session's WrapProvider) is seen through: the client it wraps renders the
+// requests, so that is the one marked.
+func TestMarkTextOnlyThroughAWrapper(t *testing.T) {
+	inner := &profiled{}
+	if !provider.MarkTextOnly(wrapper{inner}) || !inner.prof.NoImages {
+		t.Fatalf("the wrapped client was not marked: %v", inner.prof.NoImages)
+	}
+	if provider.MarkTextOnly(struct{ provider.Provider }{inner}) {
+		t.Fatal("a wrapper that neither takes a profile nor unwraps was reported marked")
+	}
+}

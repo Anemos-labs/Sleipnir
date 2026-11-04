@@ -148,8 +148,8 @@ func (s *Session) markTextOnly(ctx context.Context, p provider.Provider, m cost.
 	if s.opts.Offline || m.Plan || takesImages(s.catalogue(ctx, p.Profile().BaseURL, m.ID), m.ID) {
 		return false
 	}
-	provider.MarkTextOnly(p)
-	return true
+	provider.MarkTextOnly(p) // a wrapper (Options.WrapProvider) is seen through when it has an Unwrap() Provider method
+	return true              // the catalogue's verdict: the agent retires images for this model (cost.Model.NoImages) whatever the wire does
 }
 
 // reportsWindow reports whether entries give model id a context window of their own.
