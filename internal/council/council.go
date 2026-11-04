@@ -312,7 +312,7 @@ func Run(ctx context.Context, b Brief, members []Member, o Options) (Round, erro
 	if len(members) == 0 {
 		return Round{}, errors.New("a council needs at least one member")
 	}
-	if o.Target < 1 || o.Target > 10 {
+	if !(o.Target >= 1 && o.Target <= 10) { // NaN fails too
 		return Round{}, fmt.Errorf("target %.1f is not between 1 and 10", o.Target)
 	}
 	if o.Now == nil {

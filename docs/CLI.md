@@ -1150,7 +1150,7 @@ flags:
 ### `sleipnir council`
 
 `sleipnir council --model M [--model M...] SCREENSHOT...` asks a council of models that see images to score screenshots of a
-user interface from 1 to 10 in each category (`--categories`; by default hierarchy, typography, colour and contrast, spacing and
+user interface from 1 to 10 in each category (`--categories`; by default hierarchy, typography, color and contrast, spacing and
 layout, consistency, iconography, clarity and polish), and to name what costs the most points and the change that fixes it.
 It passes when every member gives the candidate `--target` or more in every category, and, with `--beat-refs`, a higher mean
 than every reference. `--ref NAME=PATH[,PATH...]` adds a product scored beside the candidate on the same scale: a competitor,

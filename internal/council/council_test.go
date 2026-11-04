@@ -3,6 +3,7 @@ package council
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -222,5 +223,14 @@ func TestSilentMemberTimesOut(t *testing.T) {
 	})
 	if err != nil || r.Pass || !strings.Contains(r.Reviews[1].Error, "no answer within 50ms") || r.Reviews[0].Error != "" || len(got) != 2 {
 		t.Fatalf("%+v %v %v", r.Reviews, got, err)
+	}
+}
+
+func TestATargetOutsideTheScaleIsRefused(t *testing.T) {
+	for _, target := range []float64{0, 10.5, math.NaN()} {
+		f := &fake{cand: 9, ref: 8}
+		if _, err := Run(context.Background(), brief(), []Member{member("a", f)}, Options{Target: target, Round: 1}); err == nil {
+			t.Errorf("target %v accepted", target)
+		}
 	}
 }

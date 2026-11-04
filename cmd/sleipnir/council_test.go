@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/anemos-labs/sleipnir/internal/council"
 )
 
 func TestCouncilRefusesWhatItCannotJudge(t *testing.T) {
@@ -36,5 +38,15 @@ func TestCouncilRefusesWhatItCannotJudge(t *testing.T) {
 func TestMemberName(t *testing.T) {
 	if got := memberName("qwen/qwen3.8-flash"); got != "qwen3.8-flash" {
 		t.Fatal(got)
+	}
+}
+
+func TestARoundNoMemberScoredIsNotJudged(t *testing.T) {
+	failed := council.Round{Reviews: []council.Review{{Member: "a", Error: "401"}, {Member: "b", Skipped: "a before it fell short"}}}
+	if scored(failed) {
+		t.Fatal("a round of errors and skips counts as judged")
+	}
+	if !scored(council.Round{Reviews: []council.Review{{Member: "a", Error: "401"}, {Member: "b"}}}) {
+		t.Fatal("a round with one score counts as not judged")
 	}
 }

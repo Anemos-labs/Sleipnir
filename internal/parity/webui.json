@@ -2630,6 +2630,7 @@
    "doctor",
    "mock",
    "sim",
+   "council",
    "plugins",
    "plugins add",
    "plugins disable",
@@ -2687,8 +2688,7 @@
    "rl tasks stats",
    "rl tasks update-scorer",
    "rl tasks validate",
-   "rl verify",
-   "council"
+   "rl verify"
   ],
   "commands": {
    "chat": {
@@ -3129,6 +3129,28 @@
     ],
     "modeWith": {
      "mode": "priv"
+    }
+   },
+   "council": {
+    "mode": "net",
+    "positionals": [
+     "SCREENSHOT"
+    ],
+    "flags": [
+     "beat-refs",
+     "categories",
+     "json",
+     "ledger",
+     "model",
+     "product",
+     "ref",
+     "staged",
+     "target",
+     "timeout",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
     }
    },
    "plugins": {
@@ -4267,28 +4289,6 @@
     ],
     "flags": [],
     "modeWith": {}
-   },
-   "council": {
-    "mode": "net",
-    "positionals": [
-     "SCREENSHOT"
-    ],
-    "flags": [
-     "beat-refs",
-     "categories",
-     "json",
-     "ledger",
-     "model",
-     "product",
-     "ref",
-     "staged",
-     "target",
-     "timeout",
-     "trust-project"
-    ],
-    "modeWith": {
-     "trust-project": "priv"
-    }
    }
   }
  },

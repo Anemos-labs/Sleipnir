@@ -151,11 +151,25 @@ func cmdCouncil(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		fmt.Fprint(stdout, w.String())
 	}
 	if !r.Pass {
+		if !scored(r) {
+			// a round that no member scored says nothing about the design (a provider down, every answer unreadable): an error
+			return fmt.Errorf("council: round %d could not be judged: no member gave a score", r.N)
+		}
 		// exitUnfinished, not 1 (an error), so that a script or a goal's verify command can tell "not good enough yet" from
 		// "could not judge"; the report is already printed.
 		return &exitError{code: exitUnfinished, err: fmt.Errorf("council: round %d did not pass", r.N)}
 	}
 	return nil
+}
+
+// scored reports whether some member asked in round r gave a score.
+func scored(r council.Round) bool {
+	for _, rv := range r.Reviews {
+		if rv.Error == "" && rv.Skipped == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // memberName is how a member is shown: the model id without its vendor ("qwen/qwen3.8-flash" is "qwen3.8-flash").
