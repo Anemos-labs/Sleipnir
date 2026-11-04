@@ -154,7 +154,7 @@ func TestAParentWithNoFreeMemberIsQueuedAndStartedWhenOneIs(t *testing.T) {
 		}
 		return res.Text
 	}
-	if got := spawn(next.ID); !strings.Contains(got, next.ID+" is queued for the next free backend member ("+first.Owner+" leads "+first.ID+", "+members[1]+" holds "+child.ID+" (of "+first.ID+"))") || !strings.Contains(got, "do not spawn it on backend again") {
+	if got := spawn(next.ID); !strings.Contains(got, next.ID+" is queued for the next free backend member ("+first.Owner+" leads "+first.ID+", "+members[1]+" holds "+child.ID+" (of "+first.ID+"))") || !strings.Contains(got, "do not spawn it on backend or on another role") {
 		t.Fatalf("the first spawn: %q", got)
 	}
 	if got := spawn(next.ID); !strings.Contains(got, next.ID+" was already queued") {

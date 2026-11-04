@@ -116,9 +116,19 @@ func (e poolParentError) Error() string {
 
 // claimCheck combines scope enforcement with a limit on protected assignment data.
 // It guards both claims and spawns, including reuse with older blocked tasks.
-func (s *Swarm) claimCheck(agent string, readOnly bool) TaskCheck {
+func (s *Swarm) claimCheck(agent string, role Role) TaskCheck {
+	readOnly := role.ReadOnly
 	check := s.scopeCheck(readOnly)
 	return func(snap *Snapshot, t Task) error {
+		// a pool's own refusal (not a member of it) names the condition more exactly than the role does
+		candidate := t
+		candidate.Owner = agent
+		if err := poolAssignment(snap, candidate); err != nil {
+			return err
+		}
+		if err := s.roleMismatch(snap, t, agent, role.Name); err != nil {
+			return err
+		}
 		if s.cfg.PersistentPools && t.Parent == "" && t.Pool == nil && !t.Solo {
 			counts, _ := TeamCounts(s.cfg.Team)
 			if counts[t.Role] > 1 {
