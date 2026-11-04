@@ -199,6 +199,12 @@ func TestImagesSplitAcrossDescriptions(t *testing.T) {
 	if _, err := a.Run(context.Background(), "compare these "+strings.Join(toks, " ")); err != nil {
 		t.Fatal(err)
 	}
+	// The description of the picture the request carried is written in the background, for the messages after it: wait for it.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := agent.AwaitCompactionForTest(ctx, a); err != nil {
+		t.Fatal(err)
+	}
 	main, desc := p.split()
 	if len(main) != 1 {
 		t.Fatalf("conversation requests = %d, want 1", len(main))
