@@ -271,7 +271,7 @@ func describeUnit(turns []core.Turn, labels map[string]string) string {
 			}
 			for _, b := range tr.Blocks {
 				if IsSteer(b) {
-					parts = append(parts, "user steering: "+quote(b.Text, 60))
+					parts = append(parts, "user steering: "+quote(SteerText(b), 60))
 				}
 			}
 			if tr.Origin == core.OriginMail {
@@ -287,7 +287,7 @@ func userText(tr core.Turn) string {
 	var sb strings.Builder
 	for _, b := range tr.Blocks {
 		if b.Kind == core.BlockText && !IsNotice(b) {
-			sb.WriteString(b.Text)
+			sb.WriteString(SteerText(b))
 		}
 	}
 	return sb.String()

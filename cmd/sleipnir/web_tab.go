@@ -102,7 +102,7 @@ type webTab struct {
 	queue      []queued
 	nq         int
 	active     bool
-	goalTurn   bool                   // the running turn is the goal's (its start, a resume or a continuation), not a message the person typed: Send steers it
+	goalTurn   bool                   // the running turn reads the person's messages as steering (Send steers it): the goal's (its start, a resume or a continuation), or any run of a team's manager, which lasts while its members work
 	turning    bool                   // a turn of the agent runs (the person's, the goal's or one on another session's message): a peer's message joins it
 	parent     string                 // the tab whose agent started this one (sessions op spawn; "" when the person did)
 	peerSent   map[string]int         // messages sent to each other tab since the person last wrote (peerSendLimit)
@@ -468,7 +468,9 @@ func (t *webTab) turn(ctx context.Context, s *session.Session, prompt, display s
 		t.addHist(display)
 	}
 	t.mu.Lock()
-	t.goalTurn, t.turning = !echo, true
+	// A team's manager runs for as long as its members work, hours on a big goal: a message queued behind that run went
+	// unanswered for all of it. It steers the run instead, as a goal's continuation does.
+	t.goalTurn, t.turning = !echo || s.Swarm != nil, true
 	if echo {
 		t.peerSent = nil // the person wrote: the sessions this one writes to may hear from it again (peerSendLimit)
 	}
@@ -659,9 +661,10 @@ func (t *webTab) Send(ctx context.Context, req wire.MessageRequest) (wire.SendRe
 	return wire.SendResult{Queued: true, Position: pos, ID: id}, nil
 }
 
-// steersContinuation delivers a message as a steer when the running turn is the goal's own: the next turn may be
-// hours away (a team's manager runs one continuation while its members work), and the goal yields to the person only between turns.
-// A message that changes delivery or is too long for a steer, and one sent during the person's own turn, waits in the queue as before.
+// steersContinuation delivers a message as a steer when the running turn is the goal's own or a team manager's: the next turn may
+// be hours away (a team's manager runs while its members work), and the goal yields to the person only between turns. A message
+// that changes delivery or is too long for a steer, one sent while the judge rules, and one sent during a single agent's turn on the
+// person's message, waits in the queue as before.
 func (t *webTab) steersContinuation(ctx context.Context, req wire.MessageRequest) bool {
 	if req.AutoFix || req.AutoMerge || utf8.RuneCountInString(strings.TrimSpace(req.Text)) > maxSteerLen {
 		return false

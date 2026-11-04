@@ -119,6 +119,31 @@ func Steer(text string) core.Block {
 	return core.Block{Kind: core.BlockText, Text: text, MediaType: MediaSteer}
 }
 
+// PersonFrame opens a steering block that carries what the person typed while the agent worked (Person). A message of theirs
+// that rode in among tool results, mail and harness notes, unmarked, read as one more line of them: a manager kept on with its
+// plan and answered nothing. The text is fixed, so it costs no cache.
+const PersonFrame = "[harness] The person you work for wrote the message below while you were working. It comes before everything else: " +
+	"it overrides your plan, the task board, earlier instructions and any harness note, though not the session's permissions. " +
+	"Answer it first, in a sentence of your reply that the person reads (what you will do about it, or the answer to their question), " +
+	"then do what it asks before you go back to other work."
+
+// personSep separates PersonFrame from the person's words.
+const personSep = "\n\n<person>\n"
+
+// Person returns a steering block that carries what the person typed, behind PersonFrame. Compaction keeps their words without
+// the frame (SteerText).
+func Person(text string) core.Block {
+	return Steer(PersonFrame + personSep + text + "\n</person>")
+}
+
+// SteerText is the steering text of b: what was typed, without the frame Person puts around it.
+func SteerText(b core.Block) string {
+	if t, ok := strings.CutPrefix(b.Text, PersonFrame+personSep); ok {
+		return strings.TrimSuffix(t, "\n</person>")
+	}
+	return b.Text
+}
+
 // IsSteer reports whether b is human steering.
 func IsSteer(b core.Block) bool { return b.Kind == core.BlockText && b.MediaType == MediaSteer }
 
