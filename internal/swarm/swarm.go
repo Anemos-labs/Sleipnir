@@ -197,6 +197,8 @@ type Deps struct {
 	Compactor       provider.Provider
 	CompactorModel  cost.Model
 	CompactorHealth *agent.CompactorHealth
+	// Images is agent.Config.Images for every agent: how many images a request carries and who describes the rest.
+	Images agent.ImagePolicy
 	// Plans holds each agent's plan (internal/plan); nil: no plan tool.
 	Plans *plan.Store
 	// OutagePatience and WaitUnreachable are agent.Config's for every agent of the swarm.

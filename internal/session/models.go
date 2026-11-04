@@ -113,7 +113,9 @@ func (s *Session) describe(ctx context.Context, p provider.Provider, m cost.Mode
 				m.ContextTokens, m.WindowGuessed, win = e.Model.ContextTokens, false, sourceCatalogue
 			}
 		}
-		s.markTextOnly(ctx, p, m)
+		if s.markTextOnly(ctx, p, m) {
+			m.NoImages = true // the agent retires its images into descriptions (imageKeep) instead of attaching them
+		}
 		if unknown && configured == 0 && win != sourceCatalogue && localBase(base) {
 			if n := s.servedWindow(ctx, base, m.ID); n > 0 {
 				m.ContextTokens, m.WindowGuessed, win = n, false, sourceServer
@@ -139,16 +141,15 @@ func takesImages(entries []gateway.Entry, id string) bool {
 	return true
 }
 
-// markTextOnly marks p's profile text only (provider.MarkTextOnly) when its catalogue says model m takes text only: every wire
+// markTextOnly marks p's profile text only (provider.MarkTextOnly), and reports so, when its catalogue says model m takes text only: every wire
 // format then sends a note in place of each image, decided per request, so the conversation keeps its images. Nothing is asked
 // offline, and a model reached through a plan is never marked (a plan's model list says nothing of images).
-func (s *Session) markTextOnly(ctx context.Context, p provider.Provider, m cost.Model) {
-	if s.opts.Offline || m.Plan {
-		return
+func (s *Session) markTextOnly(ctx context.Context, p provider.Provider, m cost.Model) bool {
+	if s.opts.Offline || m.Plan || takesImages(s.catalogue(ctx, p.Profile().BaseURL, m.ID), m.ID) {
+		return false
 	}
-	if !takesImages(s.catalogue(ctx, p.Profile().BaseURL, m.ID), m.ID) {
-		provider.MarkTextOnly(p)
-	}
+	provider.MarkTextOnly(p)
+	return true
 }
 
 // reportsWindow reports whether entries give model id a context window of their own.

@@ -5,6 +5,10 @@
       "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
     },
     {
+      "item": "cache.attached_images",
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
+    },
+    {
       "item": "cache.compact_at_percent",
       "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
     },
@@ -14,6 +18,10 @@
     },
     {
       "item": "cache.compaction_mode",
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
+    },
+    {
+      "item": "cache.describe_images",
       "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
     },
     {
