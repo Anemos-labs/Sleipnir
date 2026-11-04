@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A resumed session keeps each agent's plan: the last plan its log says it
+  saved (a goal started after it clears the main agent's). Plans were kept
+  only in memory, so a resumed manager had none while the page still
+  showed it.
+
 - A goal's plan shows how much of the work is left, not how many steps are
   ticked. A plan step takes an `effort` estimate in hours (a number, or text
   such as "90m" or "2d") and the `milestone` it serves, and a plan holds 24
