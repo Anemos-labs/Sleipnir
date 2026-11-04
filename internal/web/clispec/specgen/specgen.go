@@ -220,7 +220,7 @@ const (
 
 // positionals are the positionals CLI.md states in prose, per command path.
 var positionals = map[string][]wire.CLIPositional{
-	"init": {}, "config": {}, "sessions": {}, "sessions prune": {}, "chat": {}, "web": {},
+	"init": {}, "config": {}, "sessions": {}, "sessions prune": {}, "storage": {}, "storage clean": {}, "chat": {}, "web": {},
 	"run":      {many("PROMPT", false, goalArg)},
 	"swarm":    {pos("N", true, "number of workers (8 or more, one of each role; the manager comes on top)"), many("GOAL", false, goalArg)},
 	"recon":    {pos("DIR", false, "project directory (default: the current one)")},
@@ -393,6 +393,9 @@ func privRules(md modeOf, flags []wire.CLIFlag) []wire.CLIModeRule {
 var modes = map[string]modeOf{
 	"config": {mode: ModeRun}, "sessions": {mode: ModeRun},
 	"sessions prune": {mode: ModeRun, why: "with --yes it deletes sessions: it asks for a confirmation first",
+		when: []wire.CLIModeRule{{Flag: "yes", Mode: ModePriv}}},
+	"storage": {mode: ModeRun},
+	"storage clean": {mode: ModeRun, why: "with --yes it deletes sessions and worktrees: it asks for a confirmation first",
 		when: []wire.CLIModeRule{{Flag: "yes", Mode: ModePriv}}},
 	"models fav list": {mode: ModeRun}, "recon": {mode: ModeRun},
 	"research": {mode: ModeRun, why: "with --export it writes the wiki into the project: it asks for a confirmation first",

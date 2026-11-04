@@ -27,6 +27,7 @@ remember the answer), `sleipnir trust add` says it without a session, and the an
 | `init` | write a starter `.sleipnir/config.json` and `AGENTS.md` (or, with `--user`, your `~/.sleipnir/config.json`) |
 | `config` | show the effective configuration and where each value came from |
 | `sessions` | list recorded sessions; `sessions prune` deletes the old ones |
+| `storage` | what the data directory holds, area by area; `storage clean` removes what is old |
 | `chat` | interactive session with slash commands |
 | `web` | the interface in a browser, on this machine: sessions, workspace and settings |
 | `run` | run one goal (a single agent, or a manager with workers) |
@@ -125,6 +126,59 @@ flags:
         delete sessions whose newest file is older than this (30d, 36h, 2w; 0 is any age) (default "30d")
   -yes
         delete them (without it, the sessions that would go are listed and nothing is deleted)
+```
+<!-- /flags -->
+
+### `sleipnir storage`
+
+Shows where the data directory is and the room each part of it takes. The state the harness keeps is in that one directory,
+`$SLEIPNIR_HOME`, else `~/.sleipnir` (`docs/STORAGE.md`): the recorded sessions, their scratch directories (each session's
+`$TMPDIR`), the worktrees of isolated teams, the RL work directories and the rest. Your settings, credentials, notes, teams and
+plugins are always read from `~/.sleipnir`, whatever `SLEIPNIR_HOME` says. The
+worktrees that earlier versions kept in the cache directory are listed too while any are left. It also says whether the automatic
+cleanup is on; that cleanup never deletes a session.
+
+<!-- flags: storage -->
+```text
+usage: sleipnir storage [clean [flags]]
+
+Shows where the harness keeps its data ($SLEIPNIR_HOME, else ~/.sleipnir) and the room each part of it takes: the recorded
+sessions, their scratch directories, the worktrees of isolated teams, the RL work directories and the rest. Settings, credentials,
+notes, teams and plugins are always in ~/.sleipnir. `storage clean` removes what is old; sleipnir web does that by itself once a day unless storage.clean is "off".
+```
+<!-- /flags -->
+
+#### `sleipnir storage clean`
+
+Reclaims room in the data directory, as `sleipnir web` does by itself once a day: the worktrees of sessions that no process holds
+and that have been stopped for `--idle` (`storage.worktree_idle`, 3 days), when they hold nothing of their own (a tree with
+uncommitted changes or unmerged commits is kept, and a resumed session makes the others again); the scratch directories of sessions
+nobody has written to for a day; and the worktrees of sessions that were deleted, whose edits are committed onto their Git branches
+first. No session is deleted unless `--sessions` asks for it: then the sessions older than `--older-than` past the newest `--keep`
+go as `sessions prune` deletes them. Without `--yes` nothing is removed: it lists what would go, with the size.
+
+<!-- flags: storage clean -->
+```text
+usage: sleipnir storage clean [flags]
+
+Reclaims room in the data directory, as sleipnir web does by itself once a day: the worktrees of sessions that no process holds and
+that have been stopped for --idle, when they hold nothing of their own (a tree with uncommitted changes or unmerged commits is kept,
+and a resumed session makes the others again), the scratch directories of sessions nobody has written to for a day, and the
+worktrees of sessions that were deleted. No session is deleted unless --sessions says so; then the sessions older than --older-than
+past the newest --keep go (never a pinned one, nor one a process holds), their worktrees' edits committed onto their Git branches
+first. Nothing is removed without --yes; without it what would go is listed, with its size.
+
+flags:
+  -idle string
+        reclaim the worktrees of sessions stopped this long (3d, 36h, 2w; at least 1h); unset, storage.worktree_idle (default "3d")
+  -keep int
+        with --sessions: never delete the newest N sessions, whatever their age (default 20)
+  -older-than string
+        with --sessions: delete sessions whose newest file is older than this (30d, 36h, 2w; 0 is any age) (default "30d")
+  -sessions
+        also delete the recorded sessions older than --older-than, past the newest --keep, with their history
+  -yes
+        clean (without it, what would go is listed and nothing is removed)
 ```
 <!-- /flags -->
 

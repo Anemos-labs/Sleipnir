@@ -66,6 +66,7 @@ func (c *Config) Validate() []Issue {
 	v.permissions(c.Permissions)
 	v.cache(c.Cache)
 	v.resources(c.Resources)
+	v.storage(c.Storage)
 	v.swarm(c.Swarm)
 	v.tools(c.Tools)
 	for _, k := range sortedKeys(c.Extra) {
@@ -309,6 +310,23 @@ func (v *validator) cache(c Cache) {
 	v.nonNegative(seg("cache", "affinity_shards"), c.AffinityShards)
 }
 
+// storage validates the housekeeping settings: a known mode and an age written as `sleipnir storage clean` takes one.
+func (v *validator) storage(s Storage) {
+	if m := strings.ToLower(strings.TrimSpace(s.Clean)); m != "" && m != StorageCleanAuto && m != StorageCleanOff {
+		v.err(seg("storage", "clean"), "must be \"auto\" or \"off\", got %q", s.Clean)
+	}
+	if a := strings.TrimSpace(s.WorktreeIdle); a != "" && !validAge(a) {
+		v.err(seg("storage", "worktree_idle"), "must be an age of an hour or more, such as 3d, 36h or 2w, got %q", s.WorktreeIdle)
+	}
+}
+
+// validAge reports whether s is an age of at least an hour: a number of days (3d) or weeks (2w), or a Go duration (36h). An
+// automatic cleanup that reclaims the trees of a session minutes after it stopped is a typo, not a policy.
+func validAge(s string) bool {
+	d, ok := ParseAge(s)
+	return ok && d >= time.Hour
+}
+
 // resources validates the machine share: counts are not negative and the priority is one of the two.
 func (v *validator) resources(r Resources) {
 	v.nonNegative(seg("resources", "cpus"), r.CPUs)
@@ -350,4 +368,27 @@ func (v *validator) tools(t Tools) {
 			v.warn(hs, "give the host name only (for example example.com), not a URL")
 		}
 	}
+}
+
+// ParseAge reads a duration the way a person writes one for a directory of old things: 36h, 90m, 30d, 2w, or 0. NaN, an
+// infinity, a negative number and a number of days past what a duration holds are refused (ok false).
+func ParseAge(s string) (d time.Duration, ok bool) {
+	s = strings.TrimSpace(s)
+	for _, u := range []struct {
+		suffix string
+		unit   time.Duration
+	}{{"d", 24 * time.Hour}, {"w", 7 * 24 * time.Hour}} {
+		if n, cut := strings.CutSuffix(s, u.suffix); cut {
+			v, err := strconv.ParseFloat(n, 64)
+			if err != nil || math.IsNaN(v) || v < 0 || v*float64(u.unit) >= math.MaxInt64 {
+				return 0, false
+			}
+			return time.Duration(v * float64(u.unit)), true
+		}
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil || d < 0 {
+		return 0, false
+	}
+	return d, true
 }

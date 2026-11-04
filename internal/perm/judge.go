@@ -793,7 +793,7 @@ func (ev *evaluator) restrictHit(rules []*crule, u *unit, all []access) (*crule,
 			}
 		case classWrite:
 			for i, a := range all {
-				if a.write && ruleHits(r, a, true) {
+				if a.write && !(r.outsideTrees && ev.rs.inTree(a)) && ruleHits(r, a, true) {
 					return r, &all[i]
 				}
 			}

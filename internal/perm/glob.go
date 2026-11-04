@@ -25,6 +25,8 @@ type resolver struct {
 	envFrag map[string]bool
 	// treeParents are the resolved tree parents (Config.TreeParents): each directory directly below one is an agent's tree.
 	treeParents []string
+	// treeParentsLex are the tree parents as given, cleaned (for the lexical form of an access).
+	treeParentsLex []string
 }
 
 type rootPair struct{ lex, real string }
@@ -57,7 +59,29 @@ func (rs *resolver) addTreeParents(parents []string) {
 			rs.treeBases = append(rs.treeBases, escapeGlob(d)+"/*")
 		}
 		rs.treeParents = append(rs.treeParents, realPath(l))
+		rs.treeParentsLex = append(rs.treeParentsLex, l)
 	}
+}
+
+// inTree reports whether an access lies inside an agent's tree, below a tree parent, in both its forms: the path it resolves to
+// and, when it was named, the path as named. An access that cannot be resolved, or that names the tree parent itself or something
+// above it, is not inside a tree; neither is one whose name is only known when the command runs (a "../" in it could lead out).
+func (rs *resolver) inTree(a access) bool {
+	if a.unresolved || a.dynamic || a.real == "" {
+		return false
+	}
+	below := func(parents []string, p string) bool {
+		for _, d := range parents {
+			if p != d && inside(d, p) {
+				return true
+			}
+		}
+		return false
+	}
+	if !below(rs.treeParents, a.real) {
+		return false
+	}
+	return a.lex == "" || below(rs.treeParentsLex, a.lex) || below(rs.treeParents, a.lex)
 }
 
 // isRoot reports whether real (resolved) is a workspace root itself rather than a directory of one: the project, an extra root,

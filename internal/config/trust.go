@@ -79,11 +79,13 @@ var userOnlyPaths = [][]string{
 	{"resources", "memory_reserve_mb"},
 	{"resources", "priority"},
 	{"resources", "unlimited"},
+	{"storage", "clean"},
+	{"storage", "worktree_idle"},
 }
 
 // userOnlySections are the sections made only of user-only settings: a project file cannot replace one as a whole either.
 // (A provider entry is not one: a trusted project may remove a provider, and its allow_hosts goes with it.)
-var userOnlySections = [][]string{{"resources"}}
+var userOnlySections = [][]string{{"resources"}, {"storage"}}
 
 // matchPath reports whether segs is exactly one of the patterns ("*" matches any
 // one segment).
