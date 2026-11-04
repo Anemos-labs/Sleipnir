@@ -1121,3 +1121,28 @@ func TestAgingNeverAdmitsACancelledWaiter(t *testing.T) {
 		t.Fatalf("aging picked %+v, want the live waiter of the lower class", w)
 	}
 }
+
+// A manager asleep in wait wakes at once for what the person typed, and is told it is the person's, not mail: told "mail
+// arrived", a manager read the person's words as a peer's and went back to waiting.
+func TestWaitWakesForThePersonAndSaysSo(t *testing.T) {
+	r := newRVRig(t, Config{}, func(ctx context.Context, c *rvCall) rvReply {
+		if c.Role == "manager" && c.Assistants == 0 {
+			return rvReply{Tools: []rvToolCall{{"task", map[string]any{"action": "list"}}}}
+		}
+		return rvReply{Text: "ok"}
+	})
+	r.sw.StartManager()
+	if _, err := r.sw.RunManager(context.Background(), "go"); err != nil {
+		t.Fatal(err)
+	}
+	m := r.sw.get("mgr")
+	m.a.Steer("rename the binary to tallyho")
+	start := time.Now()
+	res := r.callTool(context.Background(), "wait", "mgr", "manager", map[string]any{"timeout_sec": 5})
+	if d := time.Since(start); d > 3*time.Second || !strings.Contains(res.Text, "the person wrote to you") || strings.Contains(res.Text, "mail arrived") {
+		t.Fatalf("wait slept %v: %q", d.Round(time.Millisecond), res.Text)
+	}
+	if !m.a.PendingPerson() {
+		t.Fatal("the person's message must stay in the inbox for the next step")
+	}
+}
