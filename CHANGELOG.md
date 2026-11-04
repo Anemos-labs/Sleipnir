@@ -43,6 +43,10 @@ they do not indicate whether a change has been released.
   shows a mail whole. Prompt-cache change: the `mail` tool's description and
   schema change bytes, so a prefix cached before the upgrade no longer
   matches the tool layer.
+- New command `sleipnir council`: a council of models that see images scores
+  screenshots of a user interface in each design category, beside reference
+  products, and keeps every round in a ledger so that a design can be
+  hill-climbed to a target (docs/CLI.md). No prompt of an agent changes.
 
 - Images a tool returns (a screenshot the read tool opens, an MCP tool's
   picture) reach the model on every wire format. Chat Completions and the
