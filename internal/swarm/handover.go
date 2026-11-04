@@ -57,7 +57,7 @@ type handoffRec struct {
 }
 
 // maxHandoverSummary bounds the caller's summary in the successor's recap.
-const maxHandoverSummary = 1500
+const maxHandoverSummary = 6000
 
 // handoverStopWait bounds how long a manager's handover waits for the predecessor's
 // run to end after asking it to stop.
@@ -99,7 +99,7 @@ func (s *Swarm) Handover(ctx context.Context, req HandoverReq) (HandoverResult, 
 	if req.By != t.Owner && !isMgr {
 		return HandoverResult{}, fmt.Errorf("only %s's owner (%s) or the manager can hand it over", t.ID, safeToken(t.Owner, 24))
 	}
-	summary := cleanBlock(req.Summary, maxHandoverSummary)
+	summary := cleanBlockLines(req.Summary, maxHandoverSummary, 0)
 	if req.By == t.Owner && strings.TrimSpace(summary) == "" {
 		return HandoverResult{}, fmt.Errorf("handover needs text = a short summary for your successor: what is done, what is left, and what you learned")
 	}

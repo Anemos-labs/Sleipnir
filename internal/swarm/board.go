@@ -22,6 +22,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
 )
@@ -45,13 +46,13 @@ const (
 // rendering of the board, so what one agent can add is what every agent pays for.
 const (
 	maxTitleRunes  = 160
-	maxDescRunes   = 2000
+	maxDescRunes   = 12000 // a description is shown to its owner and read with task get, not on every agent's board
 	maxRoleRunes   = 32
 	maxTaskDeps    = 16
 	maxLineRunes   = 140
 	maxResultRunes = 160
 	maxEvidRunes   = 320
-	maxReportRunes = 4000
+	maxReportRunes = 16000
 	maxAssumptions = 8   // assumptions one submission may list
 	maxAssumeRunes = 200 // runes in one assumption
 	maxNoteRunes   = 300
@@ -538,6 +539,10 @@ func (b *Board) createLocked(d *draft, spec TaskSpec) (Task, error) {
 	if title == "" {
 		return Task{}, fmt.Errorf(`task needs a title: pass it in the "title" field`)
 	}
+	spec.Desc = spillTitle(spec.Title, spec.Desc)
+	if err := descFits(spec.Desc); err != nil {
+		return Task{}, err
+	}
 	if dup, ok := openTwin(d.Snapshot, spec.Parent, title); ok {
 		where := "under " + dup.Parent
 		if dup.Parent == "" {
@@ -572,7 +577,7 @@ func (b *Board) createLocked(d *draft, spec TaskSpec) (Task, error) {
 		return Task{}, err
 	}
 	b.next++
-	t := Task{ID: "T" + strconv.Itoa(b.next), Title: title, Desc: cleanBlock(spec.Desc, maxDescRunes), Status: StatusTodo,
+	t := Task{ID: "T" + strconv.Itoa(b.next), Title: title, Desc: cleanDesc(spec.Desc), Status: StatusTodo,
 		Role: cleanText(spec.Role, maxRoleRunes), Kind: spec.Kind, Deps: deps, Files: files, Parent: spec.Parent, Solo: spec.Solo}
 	if t.Solo && t.Parent != "" {
 		b.next--
@@ -979,7 +984,7 @@ func (b *Board) submitReportAt(agent, id string, rev uint64, sub submission, che
 		t.Status, t.Line = StatusReview, ""
 		t.VerificationFailures = 0
 		t.Result, t.Evidence = cleanText(result, maxResultRunes), cleanText(evidence, maxEvidRunes)
-		t.Report = truncRunes(strings.TrimSpace(cleanBlock(report, 0)), maxReportRunes)
+		t.Report = truncRunes(strings.TrimSpace(cleanBlockLines(report, 0, 0)), maxReportRunes)
 		t.Agreement = agreement
 		t.Assumptions = cleanAssumptions(sub.assumptions)
 		return d.put(i, t)
@@ -1552,6 +1557,10 @@ func (b *Board) RestoreKeeping(prev *Snapshot, owners map[string]string, keep ma
 // pending, and the buffer keeps only the newest: what one agent can add is what
 // every agent's prompt carries.
 func (b *Board) AddNote(from, scope, role, text string) (int, error) {
+	if n := utf8.RuneCountInString(strings.Join(strings.Fields(text), " ")); n > maxNoteRunes {
+		// Refused, not cut: a fact cut short is a wrong fact on every agent's board.
+		return 0, fmt.Errorf("note too long: %d characters, %d over the %d-character limit. A note is one durable fact; put the detail in a mail, a task description or a file, and note where it is", n, n-maxNoteRunes, maxNoteRunes)
+	}
 	text = cleanText(text, maxNoteRunes)
 	if text == "" {
 		return 0, fmt.Errorf("empty note")
@@ -1770,4 +1779,28 @@ func (b *Board) Wait(after uint64, timeout time.Duration) *Snapshot {
 			return b.Snapshot()
 		}
 	}
+}
+
+// cleanDesc is a task description as the board keeps it: every line, defused, within maxDescRunes.
+func cleanDesc(desc string) string { return cleanBlockLines(desc, maxDescRunes, 0) }
+
+// descFits refuses a description over maxDescRunes, which would otherwise lose its end, with the size to aim for.
+func descFits(desc string) error {
+	if n := utf8.RuneCountInString(strings.TrimSpace(desc)); n > maxDescRunes {
+		return fmt.Errorf("description too long: %d characters, %d over the %d-character limit. Split the work into several tasks, or put the detail in a file in the task's scope and name it in the description", n, n-maxDescRunes, maxDescRunes)
+	}
+	return nil
+}
+
+// spillTitle keeps a title too long for the board whole: the board shows its first maxTitleRunes characters, and the
+// whole title opens the description, so the worker reads what the creator wrote.
+func spillTitle(title, desc string) string {
+	t := strings.Join(strings.Fields(title), " ")
+	if utf8.RuneCountInString(t) <= maxTitleRunes {
+		return desc
+	}
+	if strings.TrimSpace(desc) == "" {
+		return t
+	}
+	return t + "\n\n" + desc
 }

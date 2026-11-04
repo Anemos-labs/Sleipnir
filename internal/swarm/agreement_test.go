@@ -99,7 +99,7 @@ func TestAgreementRejectsTruncationAndWrongOwnerWithoutChangingState(t *testing.
 		t.Fatal(err)
 	}
 	before := b.Snapshot()
-	for _, text := range []string{strings.Repeat("a", 6001), strings.Repeat("line\n", 40) + "last", strings.Repeat("<", 3000)} {
+	for _, text := range []string{strings.Repeat("a", maxAgreementBytes+1), strings.Repeat("line\n", maxAgreementLines) + "last", strings.Repeat("<", 6000)} {
 		if err := b.submitAgreementAt("sc-1", plan.ID, 0, "done", "", text); err == nil {
 			t.Fatal("oversized agreement was silently cut")
 		}
@@ -122,9 +122,9 @@ func TestAgreementRejectsTruncationAndWrongOwnerWithoutChangingState(t *testing.
 func TestAgreementRejectsOversizedInheritedContextAtomically(t *testing.T) {
 	b := NewBoard(nil)
 	var deps []string
-	for range 3 {
+	for range 4 {
 		p := agreementTask(t, b, "A contract")
-		acceptAgreement(t, b, p, "sc-1", strings.Repeat("a", 5000))
+		acceptAgreement(t, b, p, "sc-1", strings.Repeat("a", 15000))
 		deps = append(deps, p.ID)
 	}
 	task := agreementTask(t, b, "Consumer", deps...)
@@ -243,9 +243,9 @@ func TestAgreementReuseKeepsBlockedContractsAndRejectsExcessContext(t *testing.T
 	})
 	var id string
 	var contracts []string
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 9; i++ {
 		plan := agreementTask(t, r.sw.Board, fmt.Sprintf("Plan %d", i))
-		contract := strings.TrimSpace(fmt.Sprintf("CONTRACT-%d: ", i) + strings.Repeat("shared interfaces; ", 280))
+		contract := strings.TrimSpace(fmt.Sprintf("CONTRACT-%d: ", i) + strings.Repeat("shared interfaces; ", 800))
 		acceptAgreement(t, r.sw.Board, plan, "sc-planner", contract)
 		current = agreementTask(t, r.sw.Board, fmt.Sprintf("Work %d", i), plan.ID)
 		before := r.sw.Board.Snapshot()

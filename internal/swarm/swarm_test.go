@@ -128,9 +128,11 @@ func TestNotesDedupeAndTake(t *testing.T) {
 	}
 }
 
-func newRouter(t *testing.T) (*Router, *[]Message) {
+func newRouter(t *testing.T) (*Router, *[]Message) { return newRouterCfg(t, DefaultRouterConfig()) }
+
+func newRouterCfg(t *testing.T, cfg RouterConfig) (*Router, *[]Message) {
 	var got []Message
-	r := NewRouter(DefaultRouterConfig(), nil,
+	r := NewRouter(cfg, nil,
 		func() []string { return []string{"mgr", "be-1", "fe-1"} },
 		func() string { return "mgr" },
 		func(m Message) { got = append(got, m) })
@@ -163,7 +165,7 @@ func TestRouterRules(t *testing.T) {
 	if _, err := r.Send("be-1", "fe-1", "", "fact 4"); err == nil || !strings.Contains(err.Error(), "several times") {
 		t.Fatalf("pair limit: %v", err)
 	}
-	if _, err := r.Send("be-1", "fe-1", "request", strings.Repeat("x", 601)); err == nil || !strings.Contains(err.Error(), "message too long") {
+	if _, err := r.Send("be-1", "fe-1", "request", strings.Repeat("x", 24001)); err == nil || !strings.Contains(err.Error(), "message too long") {
 		t.Fatalf("length cap: %v", err)
 	}
 	if _, err := r.Send("be-1", "mgr", "shout", "hi"); err == nil {
@@ -178,11 +180,14 @@ func TestRouterRules(t *testing.T) {
 }
 
 // A request or a blocker asks for something and is held to 600 characters; info, an
-// answer or a contract carries content and may have 1,200. A message over its kind's
-// limit is refused with what its sender needs to fix it in one try: its length, how far
-// over it is, a target with some margin, and where long content lasts instead.
+// answer or a contract carries content and may have 1,200. Where a router does not spill
+// long mail (MaxBodyChars unset), a message over its kind's limit is refused with what its
+// sender needs to fix it in one try: its length, how far over it is, a target with some
+// margin, and where long content lasts instead.
 func TestMailLengthLimitIsByKindAndItsRefusalSaysHowToFixIt(t *testing.T) {
-	r, got := newRouter(t)
+	cfg := DefaultRouterConfig()
+	cfg.MaxBodyChars = 0
+	r, got := newRouterCfg(t, cfg)
 	_, err := r.Send("be-1", "mgr", "request", strings.Repeat("x", 855))
 	if err == nil {
 		t.Fatal("an 855-character request was accepted")

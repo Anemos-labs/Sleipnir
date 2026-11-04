@@ -947,7 +947,7 @@ func taskCard(t Task, agentID string, pin bool) string {
 	if pin {
 		var sb strings.Builder
 		fmt.Fprintf(&sb, "You are %s. Your assignment is task %s: %s\n", agentID, t.ID, title)
-		if d := cleanBlock(t.Desc, maxDescRunes); d != "" {
+		if d := cleanDesc(t.Desc); d != "" {
 			sb.WriteString(d + "\n")
 		}
 		if len(t.Files) > 0 {
