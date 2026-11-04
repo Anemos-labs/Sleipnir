@@ -18,6 +18,8 @@ they do not indicate whether a change has been released.
   have no step, which done steps the judge has not confirmed, and which
   steps lack an estimate or are too big, and ask for a step for each item
   the judge found missing. The `plan` web event carries `eff` and `mile`.
+  A manager's `task accept` result reminds it to mark the plan step the
+  task finishes done while its plan has open steps.
   Prompt-cache change: the `plan` tool's description and schema, and a
   goal's first message, change bytes.
 

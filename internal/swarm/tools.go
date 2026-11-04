@@ -609,9 +609,9 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 		s.wakeBlockedOn(in.ID)
 		s.flushLearned(task)
 		if last := s.reviewPending(); last != "" && s.roleOf(task.Owner) != ReviewerRole {
-			return text("%s accepted. The merged result is not reviewed yet: a reviewer task is due before the goal is reported met", in.ID)
+			return text("%s accepted. The merged result is not reviewed yet: a reviewer task is due before the goal is reported met%s", in.ID, s.planNudge(me))
 		}
-		return text("%s accepted", in.ID)
+		return text("%s accepted%s", in.ID, s.planNudge(me))
 	case "reject", "reopen":
 		if task.Status == StatusFailed || (in.Action == "reopen" && task.Status == StatusDone) {
 			if err := s.Board.Reopen(me, in.ID); err != nil {
@@ -1382,4 +1382,13 @@ func waitReport(s *Snapshot, digest []string, why string) string {
 		sb.WriteString(": " + strings.Join(busy, ", "))
 	}
 	return sb.String()
+}
+
+// planNudge is what an accepted task reminds the agent that accepted it of when it keeps a plan with open steps: the plan is how the
+// person sees how far the goal is, and a manager that delegates a step and never comes back to it shows the work as not started.
+func (s *Swarm) planNudge(agentID string) string {
+	if s.deps.Plans == nil || s.deps.Plans.Open(agentID) == 0 {
+		return ""
+	}
+	return ". If this finishes a step of your plan, mark it done with the plan tool; if it shows work the plan lacks, add a step"
 }
