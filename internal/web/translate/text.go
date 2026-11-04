@@ -22,7 +22,7 @@ const (
 	capOut     = 200   // tool.out
 	capReason  = 300   // tool.reason, refuse.reason, sys.text
 	capDoing   = 120   // state.doing
-	capMail    = 400   // mail.text
+	capMail    = 32768 // mail.text, in bytes: a mail is shown whole (lists cut it to one line on the page)
 	capNote    = 160   // note.text, verdict left items
 	capWhy     = 200   // break.why, stall.text, handover.error
 	capPlan    = 160   // a plan step

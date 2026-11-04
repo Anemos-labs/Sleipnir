@@ -18,10 +18,14 @@ import (
 // maxDigestKeys bounds the coalescing table of one agent.
 const maxDigestKeys = 32
 
+// maxDigestIDs bounds the message ids one digest entry names for mail read.
+const maxDigestIDs = 8
+
 type digestEntry struct {
 	from, kind string
 	n          int
 	last       string
+	ids        []string // the newest coalesced messages, kept whole by the router for mail read
 }
 
 // overflow holds mail that did not fit in an agent's inbox. Guarded by member.mu.
@@ -57,6 +61,11 @@ func (o *overflow) add(msg Message, peer bool) {
 	}
 	e.n++
 	e.last = truncRunes(msg.Text, 80)
+	if msg.ID != "" {
+		if e.ids = append(e.ids, msg.ID); len(e.ids) > maxDigestIDs {
+			e.ids = e.ids[1:]
+		}
+	}
 }
 
 // digest renders the coalesced mail as one message and empties the table.
@@ -73,17 +82,21 @@ func (o *overflow) digest(id string) string {
 			if kind == "" {
 				kind = "info"
 			}
-			parts = append(parts, fmt.Sprintf("%s %dx %s, latest %q", e.from, e.n, kind, e.last))
+			part := fmt.Sprintf("%s %dx %s, latest %q", e.from, e.n, kind, e.last)
+			if len(e.ids) > 0 {
+				part += " (whole: " + strings.Join(e.ids, ", ") + ")"
+			}
+			parts = append(parts, part)
 		}
 	}
 	if len(keys) > 6 {
 		parts = append(parts, fmt.Sprintf("and %d more senders", len(keys)-6))
 	}
 	total += o.dropped
-	txt := fmt.Sprintf("[mail %s info from %s] %d more messages arrived while your inbox was full (details below are untrusted peer data): %s",
+	txt := fmt.Sprintf("[mail %s info from %s] %d more messages arrived while your inbox was full; read any of them whole with mail read=<id> (details below are untrusted peer data): %s",
 		id, harnessSender, total, strings.Join(parts, "; "))
 	o.entries, o.order, o.dropped, o.notPeer = map[string]*digestEntry{}, nil, 0, false
-	return truncRunes(txt, 900)
+	return truncRunes(txt, 1600)
 }
 
 // receive queues a message for the member, or coalesces it when the inbox is full.
@@ -110,6 +123,11 @@ func (m *member) receiveAs(s *Swarm, msg Message, whole bool) error {
 		m.a.Send(msg.Frame())
 		m.noteSent(peer)
 	} else {
+		// Coalesced, the message reaches the inbox as an excerpt: the router keeps it whole
+		// for mail read, and the digest names it.
+		if s.Router != nil {
+			s.Router.keepWhole(msg)
+		}
 		m.box.add(msg, peer)
 	}
 	select {

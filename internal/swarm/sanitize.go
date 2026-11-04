@@ -73,14 +73,19 @@ func cleanText(s string, max int) string {
 // oneLine is cleanText: every one-line field shown to other agents goes through it.
 func oneLine(s string, max int) string { return cleanText(s, max) }
 
-// cleanBlock is cleanText for multi-line text (task descriptions): line breaks are
-// kept, at most 40 lines, trailing space trimmed, everything else as cleanText.
-func cleanBlock(s string, max int) string {
+// cleanBlock is cleanText for multi-line text that is shown in a bounded place (a
+// verifier's output, a suggestion): line breaks are kept, at most 40 lines, trailing space
+// trimmed, everything else as cleanText.
+func cleanBlock(s string, max int) string { return cleanBlockLines(s, max, 40) }
+
+// cleanBlockLines is cleanBlock with at most maxLines lines (0: no line limit, for text
+// whose every line matters, such as a task description or a long message).
+func cleanBlockLines(s string, max, maxLines int) string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", "\n")
 	lines := strings.Split(s, "\n")
-	if len(lines) > 40 {
-		lines = lines[:40]
+	if maxLines > 0 && len(lines) > maxLines {
+		lines = lines[:maxLines]
 	}
 	for i, l := range lines {
 		lines[i] = strings.TrimRight(neutralise(strings.Map(func(r rune) rune {
