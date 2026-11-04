@@ -55,6 +55,8 @@ type Task struct {
 	Commit               string    `json:"commit,omitempty"` // the integration commit, 12 characters
 	Seq                  uint64    `json:"seq,omitempty"`    // the seq of the board.op that last changed it
 	Updated              time.Time `json:"updated,omitzero"`
+	// Since is when the task entered its column, or changed hands: what its time in the column counts from.
+	Since time.Time `json:"since,omitzero"`
 	// CostUSD, ListUSD and Plan are what the responses of the agents that held the task came to while they held it, every attempt
 	// and owner together, as an agent's are (Spend); Requests counts its main requests. They say where a team's money and turns went.
 	CostUSD  float64 `json:"cost_usd,omitempty"`

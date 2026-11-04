@@ -375,6 +375,10 @@ type Session struct {
 	effort provider.EffortSetting
 	// objective is the standing goal's objective as last saved or loaded (goal.go), under mu.
 	objective string
+	// goalMarks are the standing goal's milestones as last saved (goal.go), under mu, and goalOn whether a goal is set: the plan
+	// tool holds the main agent's plan to them (planCheck).
+	goalMarks []plan.Mark
+	goalOn    bool
 	started   bool
 	closed    bool
 	// endReason is why the session ended (SetEndReason), for the SessionEnd hooks.
@@ -1105,7 +1109,7 @@ func (s *Session) build(ctx context.Context) error {
 			}))
 			return nil
 		},
-		plugin.PlanTool: func(*plugin.Scope) error { reg.Register(plantool.New(plans)); return nil },
+		plugin.PlanTool: func(*plugin.Scope) error { reg.Register(plantool.New(plans).WithCheck(s.planCheck)); return nil },
 		plugin.Harness:  func(*plugin.Scope) error { reg.Register(harnessTool{s}); return nil },
 		// MCP servers add their tools here, before the list is frozen: every agent of
 		// the session then sends the same tools array, byte for byte.

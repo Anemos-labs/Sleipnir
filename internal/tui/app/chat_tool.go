@@ -10,6 +10,7 @@ import (
 	"unicode"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/plan"
 	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 	"github.com/anemos-labs/sleipnir/internal/tui/widget"
 )
@@ -150,16 +151,28 @@ func planSummary(in map[string]any) string {
 		return ""
 	}
 	done, doing := 0, ""
+	var weighed []plan.Item
 	for _, it := range items {
 		m, _ := it.(map[string]any)
+		pi := plan.Item{}
 		switch st, _ := m["status"].(string); strings.ToLower(st) {
 		case "done", "completed", "complete", "finished":
 			done++
+			pi.Status = plan.Done
 		case "doing", "in_progress", "in-progress", "active":
 			doing, _ = m["step"].(string)
 		}
+		if e, ok := m["effort"]; ok {
+			if b, err := json.Marshal(e); err == nil {
+				_ = json.Unmarshal(b, &pi.Effort)
+			}
+		}
+		weighed = append(weighed, pi)
 	}
 	out := fmt.Sprintf("%d of %d done", done, len(items))
+	if w := plan.Progress(weighed, nil); w.Hours {
+		out += fmt.Sprintf(", about %d%% of %s", w.Pct(), plan.FormatHours(w.Total))
+	}
 	if strings.TrimSpace(doing) != "" {
 		out += " · now: " + doing
 	}

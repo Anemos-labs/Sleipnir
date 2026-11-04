@@ -197,7 +197,7 @@ func JudgePrompt(g *State, steps []plan.Item, answer string, evidence []string) 
 	if len(steps) > 0 {
 		b.WriteString("THE AGENT'S PLAN:\n")
 		for _, s := range steps {
-			fmt.Fprintf(&b, "- [%s] %s\n", s.Status, s.Step)
+			fmt.Fprintf(&b, "- [%s] %s%s\n", s.Status, s.Step, plan.Tag(s))
 		}
 		b.WriteString("\n")
 	}
@@ -219,8 +219,9 @@ func JudgePrompt(g *State, steps []plan.Item, answer string, evidence []string) 
 func Start(g *State) string {
 	var b strings.Builder
 	b.WriteString(g.Objective + "\n\n[standing goal: before you begin, write what it requires as steps with the plan tool, and keep them current. The harness checks the goal against evidence after each turn and sends you on with what is missing until it is met.")
+	b.WriteString(" The plan is how the person sees how much is left, weighed by your estimates: cover all of the goal's work, not its first part, give each step an effort estimate in hours, split a step of more than a few hours, add steps for work you discover, and mark a step done only when its work is finished and checked (merged and verified, for work you hand to a team), never when it is handed out.")
 	if n := len(g.Milestones); n > 0 {
-		fmt.Fprintf(&b, " It has %d milestones (%s to %s) that the judge rules on one by one; the goal is met only when each has evidence. Make each one a step of your plan.", n, g.Milestones[0].ID, g.Milestones[n-1].ID)
+		fmt.Fprintf(&b, " It has %d milestones (%s to %s) that the judge rules on one by one; the goal is met only when each has evidence. Give every milestone at least one step that names it (the milestone field), and a large one several.", n, g.Milestones[0].ID, g.Milestones[n-1].ID)
 		b.WriteString(" A milestone a user reaches through parts that talk to each other (a user interface and its API, a client and a service) needs an end-to-end run of the assembled program after its last change: unit tests of each side alone do not count.")
 	}
 	if g.RubricText != "" {
@@ -254,6 +255,15 @@ func Continuation(g *State, steps []plan.Item, v Verdict) string {
 	}
 	if len(open) > 0 {
 		b.WriteString("Open steps of your plan: " + strings.Join(open, "; ") + "\n")
+	}
+	if len(steps) > 0 {
+		b.WriteString("Your plan: " + plan.Summary(steps, g.Marks()) + ".\n")
+		if a := PlanAdvice(steps, g.Marks()); a != "" {
+			b.WriteString(a + "\n")
+		}
+		if len(v.Left) > 0 {
+			b.WriteString("Add a step to your plan for each missing item it does not cover yet.\n")
+		}
 	}
 	if len(g.Milestones) > 0 {
 		var met []string

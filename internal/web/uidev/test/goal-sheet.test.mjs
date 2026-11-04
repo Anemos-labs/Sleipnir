@@ -67,3 +67,30 @@ test('the Goal sheet lists the milestones the judge rules on', async () => {
   assert.match(sheet.textContent, /1\/2 milestones/);
   assert.match(L.doc.querySelector('#planBox').textContent, /1\/2 milestones/);
 });
+
+// The goal plan shows how much of the work is done, weighed by the estimates, not how many steps are: two short steps of a long plan
+// done are a small share of it. A step marked done whose milestone the judge has ruled unmet is not counted, and a milestone no step
+// names holds a share of its own, so a plan that leaves work out does not look nearly finished.
+test('the goal plan weighs its steps by their estimates and holds them to the milestones', async () => {
+  const L = await boot();
+  await L.event('goal', { s: 'active', objective: 'Ship it', turns: 1, max: 20,
+    milestones: [{ id: 'M1', text: 'api', met: true, evidence: 'record 4' }, { id: 'M2', text: 'ui' }, { id: 'M3', text: 'the docs site' }] });
+  await L.event('verdict', { text: 'the ui is missing', kind: 'continue' });
+  await L.event('plan', { steps: ['api', 'ui shell', 'ui flows', 'release'], st: ['done', 'done', 'pending', 'pending'], eff: [2, 2, 12, 0], mile: ['M1', 'M2', 'M2', ''] });
+  await L.step(5);
+  const box = L.doc.querySelector('#planBox');
+  // done: the api's 2h; ui shell is claimed (M2 ruled unmet); total 16h + the mean 16/3 for release + 16/3 for M3 = 26.7h
+  assert.match(box.querySelector('.ppct').textContent, /^7% · 24\.7h left$/);
+  assert.doesNotMatch(box.textContent, /2\/4/, 'no step count that reads as half done');
+  const segs = Array.from(box.querySelectorAll('.pprog i'));
+  assert.deepEqual(segs.map(i => i.className), ['done', 'claimed', '', '', 'miss']);
+  assert.match(segs[2].getAttribute('style'), /flex-grow:12\.000/);
+  box.querySelector('#planTgl').click(); await L.settle();
+  const rows = Array.from(box.querySelectorAll('.plist li'));
+  assert.equal(rows.length, 5);
+  assert.equal(rows[1].className, 'claimed'); assert.match(rows[1].textContent, /ui shell M2 · 2h.*not met yet/);
+  assert.equal(rows[4].className, 'miss'); assert.match(rows[4].textContent, /M3 the docs site.*no step yet/);
+  L.SL.ui.sheets.goal(); await L.settle();
+  assert.match(L.doc.querySelector('.sheet').textContent, /2\/4 steps · about 7% of the work \(2h of 26\.7h estimated\)/);
+  assert.deepEqual(L.errors, []);
+});
