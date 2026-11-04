@@ -219,6 +219,7 @@ func (s *State) taskOp(e events.Event, t time.Time, p *boardWire) {
 					s.touchAgent(ts.Owner)
 					s.setStatus(ts, "todo", t, e.Seq)
 					ts.Owner, ts.Line = clip(p.Owners[tid], textID), clean(p.Line, textShort)
+					ts.Since = t
 					ts.Rev = p.Version
 				}
 			}
@@ -231,7 +232,7 @@ func (s *State) taskOp(e events.Event, t time.Time, p *boardWire) {
 	if ts == nil {
 		return
 	}
-	prev, prevOwner := ts.Status, ts.Owner
+	prev, prevOwner, prevCol := ts.Status, ts.Owner, deriveTask(ts)
 	full := p.Rev != nil
 	if p.Title != "" {
 		ts.Title = clean(p.Title, textLine)
@@ -288,6 +289,9 @@ func (s *State) taskOp(e events.Event, t time.Time, p *boardWire) {
 		}
 	}
 	ts.Seq, ts.Updated = e.Seq, t
+	if ts.Since.IsZero() || deriveTask(ts) != prevCol || ts.Owner != prevOwner {
+		ts.Since = t
+	}
 	s.touchAgent(prevOwner) // the scope of the one who held it, and of the one who holds it, may have changed
 	s.touchAgent(ts.Owner)
 	if ts.Status == "done" && prev != "done" {

@@ -197,6 +197,8 @@ type Deps struct {
 	Compactor       provider.Provider
 	CompactorModel  cost.Model
 	CompactorHealth *agent.CompactorHealth
+	// Images is agent.Config.Images for every agent: how many images a request carries and who describes the rest.
+	Images agent.ImagePolicy
 	// Plans holds each agent's plan (internal/plan); nil: no plan tool.
 	Plans *plan.Store
 	// OutagePatience and WaitUnreachable are agent.Config's for every agent of the swarm.
@@ -511,11 +513,13 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	s.Leases = NewLeases(cfg.LeaseTTL, s.Board)
 	s.Leases.SetEmitter(deps.Events)
 	s.Leases.SetRoots(s.roots()...)
+	s.Leases.SetScratch(deps.Tmp)
 	if deps.Owners != nil {
 		s.Leases.SetOwners(deps.Owners, s.roleOf)
 	}
 	if s.isolated() {
 		s.Leases.Isolate()
+		s.Leases.SetTreeParent(deps.Isolation.Manager.Dir)
 	}
 	s.Gov = NewGovernor(GovernorConfig{RPM: cfg.RPM, MaxConcurrent: cfg.MaxConcurrent, Admit: s.budgetErr,
 		OnEvent: func(action string, data map[string]any) {
@@ -943,7 +947,7 @@ func taskCard(t Task, agentID string, pin bool) string {
 	if pin {
 		var sb strings.Builder
 		fmt.Fprintf(&sb, "You are %s. Your assignment is task %s: %s\n", agentID, t.ID, title)
-		if d := cleanBlock(t.Desc, maxDescRunes); d != "" {
+		if d := cleanDesc(t.Desc); d != "" {
 			sb.WriteString(d + "\n")
 		}
 		if len(t.Files) > 0 {
@@ -1013,6 +1017,9 @@ func (r roleRequester) Check(ctx context.Context, req perm.Request) perm.Decisio
 	req.Role = r.role.Name
 	if r.swarm != nil {
 		if d, handled := r.swarm.poolPermission(ctx, r.agent, r.inner, req); handled {
+			return d
+		}
+		if d, handled := r.swarm.planPermission(ctx, r.agent, r.inner, req); handled {
 			return d
 		}
 	}

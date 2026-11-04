@@ -405,7 +405,7 @@ func TestAutoDocsStartsBesideADirectoryWriter(t *testing.T) {
 		if _, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: c.scope, Role: "backend", Files: []string{c.scope}}); err != nil {
 			t.Fatal(err)
 		}
-		if err := r.sw.Board.claim("be-2", c.id, r.sw.claimCheck("be-2", false)); err != nil {
+		if err := r.sw.Board.claim("be-2", c.id, r.sw.claimCheck("be-2", r.sw.roles["backend"])); err != nil {
 			t.Errorf("a task on %s beside the docs pass: %v", c.scope, err)
 		}
 		if err := r.sw.Board.resolve("mgr", c.id, "not needed"); err != nil {

@@ -959,6 +959,15 @@
   },
   {
    "group": "the program (sleipnir ...)",
+   "name": "sleipnir council",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:council"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
    "name": "sleipnir daemon",
    "kind": "program",
    "live": true,
@@ -1621,6 +1630,15 @@
    "live": true,
    "effects": [
     "runner:swarm"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir tooleval",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:tooleval"
    ]
   },
   {
@@ -2621,6 +2639,8 @@
    "doctor",
    "mock",
    "sim",
+   "council",
+   "tooleval",
    "plugins",
    "plugins add",
    "plugins disable",
@@ -3119,6 +3139,51 @@
     ],
     "modeWith": {
      "mode": "priv"
+    }
+   },
+   "council": {
+    "mode": "net",
+    "positionals": [
+     "SCREENSHOT"
+    ],
+    "flags": [
+     "beat-refs",
+     "categories",
+     "json",
+     "ledger",
+     "model",
+     "product",
+     "ref",
+     "staged",
+     "target",
+     "timeout",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "tooleval": {
+    "mode": "net",
+    "positionals": [],
+    "flags": [
+     "case",
+     "cases",
+     "harvest",
+     "json",
+     "max-tokens",
+     "min-pass",
+     "model",
+     "out",
+     "parallel",
+     "samples",
+     "sizes",
+     "timeout",
+     "trust-project",
+     "variants"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
     }
    },
    "plugins": {

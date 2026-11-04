@@ -126,6 +126,8 @@ func usedBy(tc *tabCtx) map[string]string {
 			who = "the lesson memory's embeddings"
 		case session.RerankerRole:
 			who = "the lesson memory's reranker"
+		case session.VisionRole:
+			who = "the image describer"
 		}
 		item := who + " (" + rm.Model + ")"
 		if strings.Contains(out[prov], item) {

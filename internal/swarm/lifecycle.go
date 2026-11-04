@@ -76,6 +76,7 @@ type member struct {
 	ev       *Evidence
 	manager  bool
 	readOnly bool
+	reports  bool // the role's deliverable is a report (Role.Reports)
 	// service marks an agent of the harness itself (the mailman): it is not a worker,
 	// holds no task, and never counts as unfinished work.
 	service bool
@@ -240,7 +241,7 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 		}
 	}
 	// A member is made idle, and has been since it was made (idle_capacity counts a pool member that has not run yet).
-	m := &member{id: id, role: r.Name, ev: ev, state: "idle", manager: isMgr, readOnly: r.ReadOnly, service: isSvc, sink: sink, notify: make(chan struct{}, 1),
+	m := &member{id: id, role: r.Name, ev: ev, state: "idle", manager: isMgr, readOnly: r.ReadOnly, reports: r.Reports(), service: isSvc, sink: sink, notify: make(chan struct{}, 1),
 		tree: tree, dir: workdir, slot: -1, idleAt: s.deps.Now()}
 	if ev != nil {
 		ev.bind(func(path string) string { return s.editTask(id, path) }, func(task string) bool {
@@ -287,7 +288,7 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 	}
 	cfg := agent.Config{
 		SnapshotEachStep: s.cfg.PersistentPools || s.isolated() && s.deps.Isolation.Resumable,
-		ID:               id, Role: r.Name, Model: model, Provider: prov, Compactor: d.Compactor, CompactorModel: d.CompactorModel, CompactorHealth: d.CompactorHealth, Tools: d.Registry, ToolSpecs: d.ToolSpecs,
+		ID:               id, Role: r.Name, Model: model, Provider: prov, Compactor: d.Compactor, CompactorModel: d.CompactorModel, CompactorHealth: d.CompactorHealth, Images: d.Images, Tools: d.Registry, ToolSpecs: d.ToolSpecs,
 		CaptureTokens: d.CaptureTokens, TrainingLogs: d.TrainingLogs,
 		Const: d.Const, Shared: s.currentShared(), RoleL: s.roleLay[r.Name], Notes: notes,
 		Params: params, Effort: d.Effort, OutagePatience: d.OutagePatience, WaitUnreachable: d.WaitUnreachable,
@@ -420,8 +421,8 @@ func (s *Swarm) activeWriters() int {
 	s.mu.Unlock()
 	n := 0
 	for _, m := range ms {
-		if m.manager || m.readOnly {
-			continue
+		if m.manager || m.readOnly || s.onPlan(m) {
+			continue // a planning task writes nothing (planPermission)
 		}
 		m.mu.Lock()
 		if m.life == lifeRunning {
@@ -1156,7 +1157,7 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 		if res != nil {
 			summary = strings.TrimSpace(res.Text)
 		}
-		if summary == "" && m.readOnly && ctx.Err() == nil && s.askForReport(m, t) {
+		if summary == "" && m.reports && ctx.Err() == nil && s.askForReport(m, t) {
 			continue
 		}
 		vr, gdir := s.gateFor(ctx, t, m, m.dir)

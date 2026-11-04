@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 	"github.com/anemos-labs/sleipnir/internal/tui/state"
@@ -136,6 +137,9 @@ func taskTable(s Scene, w, limit int) []cell.Line {
 		if sp := t.Spend(); sp.Shown() > 0 { // what the agents that held it spent on it
 			tail = strings.TrimPrefix(tail+" · "+widget.Spend(sp.Shown(), sp.Plan), " · ")
 		}
+		if a := taskAge(t, s.Snap.Now); a != "" { // its time in its column, as the web board's card says it
+			tail = strings.TrimPrefix(tail+" · "+a, " · ")
+		}
 		title := clean(t.Title)
 		if t.Parent != "" {
 			title = "↳ " + clean(t.Parent) + " · " + title
@@ -162,6 +166,22 @@ func taskTable(s Scene, w, limit int) []cell.Line {
 		out = append(out, cell.Styled(st.dim, fmt.Sprintf("… and %d more", more)))
 	}
 	return out
+}
+
+// taskAge is an unfinished task's time in its column at now, short enough for a row (45s, 12m, 3h 05m), or "" for a merged or
+// failed task, or when the time is not known. The web board's cards say the same figure.
+func taskAge(t state.Task, now time.Time) string {
+	if t.Since.IsZero() || now.IsZero() || t.State == state.TaskMerged || t.State == state.TaskFailed {
+		return ""
+	}
+	d := max(0, now.Sub(t.Since))
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d/time.Second))
+	case d < 90*time.Minute:
+		return fmt.Sprintf("%dm", int(d/time.Minute))
+	}
+	return fmt.Sprintf("%dh %02dm", int(d/time.Hour), int(d/time.Minute)%60)
 }
 
 // padTo pads or fits a string to the requested terminal-cell width.

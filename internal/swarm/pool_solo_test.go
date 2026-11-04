@@ -117,7 +117,7 @@ func TestSoloTaskStaysSoloWhenStartedAgain(t *testing.T) {
 	}
 
 	// claimCheck: a solo task may be claimed; an ordinary parent of the role may not.
-	check := r.sw.claimCheck("be-2", false)
+	check := r.sw.claimCheck("be-2", r.sw.roles["backend"])
 	if err := check(r.sw.Board.Snapshot(), Task{ID: "T9", Role: "backend", Solo: true}); err != nil {
 		t.Fatalf("claim of a solo task: %v", err)
 	}

@@ -54,8 +54,8 @@ project" below).
   rules, shell-syntax analysis that judges every simple command including those in substitutions, hard denies that no
   mode lifts (`~/.ssh` keys, `~/.aws`, `~/.gnupg`, `/proc/*/environ`, `.git` writes, system directories), guarded paths
   (`.env`), role profiles that can only tighten, and no prompter means deny. Every file, web and shell tool asks the engine
-  before it acts; background-job tools ask before touching another agent's job, and a read-only role (reviewer, scout) is
-  denied them by name. A question in `chat` takes only a line typed after it was shown (`cmd/sleipnir/chat_input.go`): text
+  before it acts; background-job tools ask before touching another agent's job, and a read-only role (one a project
+  defines with `readonly: true`) is denied them by name. A question in `chat` takes only a line typed after it was shown (`cmd/sleipnir/chat_input.go`): text
   pasted or typed while a turn runs waits for the next prompt, so a `y` that arrived earlier cannot approve an action it was
   not typed for, and a question that Ctrl-C cancels takes nothing.
 * *Tool output is data.* It arrives as `role:tool`, never as an instruction. Pins and notes are user-role context, mail is typed,
@@ -400,7 +400,7 @@ Python virtual environment of the workspace (`Bash(python:venv)`, `internal/perm
 `virtualenv DIR`, `uv venv [DIR]`), installing packages into it with its own pip (`DIR/bin/pip install`, `DIR/bin/python -m pip install`,
 `uv pip install --python DIR/bin/python`), and running the tests with it (`DIR/bin/python -m pytest`, `DIR/bin/pytest`). In `default` mode
 these are routine questions, which the manager of a team may answer. It is the one place where an allowed or routine command reaches
-beyond this machine: the package index pip or uv is configured with. The read-only roles (reviewer, scout, architect) hold only the run
+beyond this machine: the package index pip or uv is configured with. Read-only roles (those a project defines with `readonly: true`) hold only the run
 part (`Bash(python:venv-tests)`): they run the tests and checks with an environment the writers made, and never create one or install into it.
 
 What an install does is run code from the internet with the user's rights: a source distribution's build code runs during the install,

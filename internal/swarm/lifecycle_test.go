@@ -674,6 +674,7 @@ func TestRefusedSpawnLeavesNothingBehind(t *testing.T) {
 		time.Sleep(300 * time.Millisecond) // keep the first worker busy
 		return rvReply{Text: "ok"}
 	})
+	r.readOnly("reviewer")
 	r.sw.StartManager()
 	for i := 0; i < 3; i++ {
 		if _, err := r.sw.Spawn(SpawnReq{Role: "nonesuch", Title: "will be refused", By: "mgr"}); err == nil {
@@ -797,7 +798,7 @@ func TestWorkerPanicIsContained(t *testing.T) {
 		t.Fatal("the panic was not logged")
 	}
 	// The pool works: the task can be given to another worker.
-	if _, err := r.sw.Spawn(SpawnReq{Role: "reviewer", TaskID: "T1", By: "mgr"}); err != nil {
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: "T1", By: "mgr"}); err != nil {
 		t.Fatalf("respawn on the requeued task: %v", err)
 	}
 }

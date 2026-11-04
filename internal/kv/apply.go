@@ -100,7 +100,7 @@ func DefaultApplyPolicy() ApplyPolicy {
 		UserInstructionKey:       "instructions",
 		UserInstructionMaxTokens: 2000,
 		TaskMaxTokens:            8000,
-		MaxAssignmentBytes:       32000,
+		MaxAssignmentBytes:       100000, // above the swarm's bound on one claimed assignment (96000), so a contract it accepted is never cut
 		MaxInstructionTokens:     12000,
 		MaxSpineTokens:           3000,
 		MaxNoteOps:               64,

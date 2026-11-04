@@ -454,7 +454,14 @@ func TestBoardBoundsTaskFields(t *testing.T) {
 	if _, err := b.CreateTask("be-9", TaskSpec{Title: "t", Files: make([]string, 50_000)}); err == nil {
 		t.Fatal("a 50k-entry scope was accepted")
 	}
-	tk, err := b.CreateTask("be-9", TaskSpec{Title: huge, Desc: huge, Files: []string{"api/**"}})
+	// A description (or a title spilled into it) over its limit is refused, not cut.
+	if _, err := b.CreateTask("be-9", TaskSpec{Title: "t", Desc: huge}); err == nil || !strings.Contains(err.Error(), "description too long") {
+		t.Fatalf("a 1M-character description: %v", err)
+	}
+	if _, err := b.CreateTask("be-9", TaskSpec{Title: huge}); err == nil || !strings.Contains(err.Error(), "description too long") {
+		t.Fatalf("a 1M-character title: %v", err)
+	}
+	tk, err := b.CreateTask("be-9", TaskSpec{Title: huge[:maxDescRunes/2], Desc: huge[:maxDescRunes/2-10], Files: []string{"api/**"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -464,7 +471,7 @@ func TestBoardBoundsTaskFields(t *testing.T) {
 	if n := len([]rune(tk.Desc)); n > maxDescRunes {
 		t.Fatalf("description kept %d runes", n)
 	}
-	if card := taskCard(tk, "be-1", true) + taskCard(tk, "be-1", false); len(card) > 8000 {
+	if card := taskCard(tk, "be-1", true) + taskCard(tk, "be-1", false); len(card) > maxDescRunes+4000 {
 		t.Fatalf("the cards of a maximal task are %d bytes", len(card))
 	}
 	b.SetLimits(BoardLimits{MaxTasks: 3})

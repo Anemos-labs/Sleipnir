@@ -69,7 +69,7 @@ func (t *Translator) syncTask(id string, ts float64, force bool) {
 	}
 	ev := &TaskX{Task: wire.Task{ID: id, Parent: tk.Parent, PoolPhase: tk.PoolPhase, PoolMembers: tk.PoolMembers, Title: line(tk.Title, capArg), Owner: uiID(tk.Owner), Deps: tk.Deps, Scope: line(scope, capPath), S: col,
 		Closure: line(closure, capID)}, Failed: tk.State == state.TaskFailed, Attempts: tk.Attempts, Blocked: tk.Status == "blocked",
-		Cost: tk.Spend().Shown(), Plan: tk.Plan, Reqs: tk.Requests}
+		Cost: tk.Spend().Shown(), Plan: tk.Plan, Reqs: tk.Requests, Since: t.sessT(tk.Since)}
 	if len(ev.Deps) == 0 {
 		ev.Deps = nil
 	}
@@ -98,7 +98,7 @@ func (t *Translator) syncTask(id string, ts float64, force bool) {
 // sameTask reports whether two task events say the same thing.
 func sameTask(a, b *TaskX) bool {
 	return a.ID == b.ID && a.Title == b.Title && a.Owner == b.Owner && a.Scope == b.Scope && a.S == b.S && a.Closure == b.Closure &&
-		a.Failed == b.Failed && a.Attempts == b.Attempts && a.Blocked == b.Blocked && a.Cost == b.Cost && a.Plan == b.Plan && a.Reqs == b.Reqs && reflect.DeepEqual(a.Deps, b.Deps) && a.Parent == b.Parent && a.PoolPhase == b.PoolPhase && reflect.DeepEqual(a.PoolMembers, b.PoolMembers)
+		a.Failed == b.Failed && a.Attempts == b.Attempts && a.Blocked == b.Blocked && a.Cost == b.Cost && a.Plan == b.Plan && a.Reqs == b.Reqs && a.Since == b.Since && reflect.DeepEqual(a.Deps, b.Deps) && a.Parent == b.Parent && a.PoolPhase == b.PoolPhase && reflect.DeepEqual(a.PoolMembers, b.PoolMembers)
 }
 
 // closureKind is the kind of a closure written as kind or kind(target).
@@ -541,6 +541,7 @@ func (t *Translator) mail(e events.Event, ts float64, at int64) {
 			From    string   `json:"from"`
 			To      string   `json:"to"`
 			Text    string   `json:"text"`
+			Full    string   `json:"full"` // the whole of a message whose opening alone reached the recipient's thread
 			Via     string   `json:"via"`
 			Origins []string `json:"origins"`
 		}
@@ -561,7 +562,7 @@ func (t *Translator) mail(e events.Event, ts float64, at int64) {
 		if t.agentOutOf(uiID(from)).service {
 			break
 		}
-		t.put(&MailX{Mail: wire.Mail{From: uiID(from), To: uiID(p.To), Text: line(p.Text, capMail)}, Tok: estTokens(len(p.Text))}, ts, at, nil)
+		t.put(&MailX{Mail: wire.Mail{From: uiID(from), To: uiID(p.To), Text: text(firstNonEmpty(p.Full, p.Text), capMail)}, Tok: estTokens(len(p.Text))}, ts, at, nil)
 	case events.TypeMailDigest:
 		var p struct {
 			ID      string   `json:"id"`
@@ -580,7 +581,7 @@ func (t *Translator) mail(e events.Event, ts float64, at int64) {
 		delete(t.d.digests, p.ID)
 		from := firstNonEmpty(first(p.Senders), first(d.origins), p.Mailman, d.from)
 		n := max(len(p.Parcels), 1)
-		t.put(&MailX{Mail: wire.Mail{From: uiID(from), To: uiID(firstNonEmpty(p.To, d.to)), Text: line(fmt.Sprintf("digest of %d: %s", n, d.text), capMail)},
+		t.put(&MailX{Mail: wire.Mail{From: uiID(from), To: uiID(firstNonEmpty(p.To, d.to)), Text: text(fmt.Sprintf("digest of %d: %s", n, d.text), capMail)},
 			Tok: estTokens(len(d.text)), Digest: n}, ts, at, nil)
 	case "mail.drop":
 		var p struct {

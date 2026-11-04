@@ -42,6 +42,9 @@
     host.innerHTML = COLS.map(([k, n]) => '<div class="bcol" data-col="' + k + '"><h4>' + n + '<b class="cnt">0</b></h4><div class="cl"></div></div>').join('');
     const B = { host, big, nodes: {}, cols: {}, scope, open: new Map(), isOpen: () => false };
     COLS.forEach(([k]) => { B.cols[k] = $('[data-col="' + k + '"] .cl', host); });
+    /* the ages on the cards move with the clock, not only when an event redraws the board */
+    let lastAge = -1;
+    if (scope.frame) scope.frame((dt, vt) => { const sec = Math.floor(vt || 0); if (sec !== lastAge && B.model) { lastAge = sec; ages(B, B.model); } });
     scope.listen(host, 'click', e => {
       const toggle = e.target.closest('[data-pool-toggle]');
       if (toggle) { const id = toggle.dataset.poolToggle; B.open.set(id, !B.isOpen(id)); if (B.model) update(B, B.model, B.S); return; }
@@ -128,5 +131,23 @@
     if (vis && !ui.still() && !(S && S.replay && !S.replay.playing)) moved.forEach(id => { const n = B.nodes[id], a = before[id]; if (!n || !n.isConnected) return; const b = n.getBoundingClientRect(), dx = a.left - b.left, dy = a.top - b.top; if (Math.abs(dx) + Math.abs(dy) > 2) B.scope.animate(n, [{ transform: 'translate(' + dx + 'px,' + dy + 'px)', background: 'var(--warm-b)' }, { transform: 'none', background: 'var(--panel)' }], { duration: 620, easing: 'cubic-bezier(.2,.7,.2,1)' }); });
     return counts;
   }
-  ui.board = { make, update, layout, COLS, COMPACT_AT, idCmp, newestMerged, resolved };
+  /** A time in a column, short enough for a card: 45s, 12m, 3h 05m. */
+  const ageShort = s => s < 60 ? Math.max(0, Math.floor(s)) + 's' : s < 5400 ? Math.floor(s / 60) + 'm' : Math.floor(s / 3600) + 'h ' + String(Math.floor(s / 60) % 60).padStart(2, '0') + 'm';
+  /** What a column's age says on a card's tooltip. */
+  const AGE_WORD = { todo: 'waiting', running: 'running', verify: 'in verification' };
+  /** Each unfinished card's time in its column (since it last changed column, failed or changed hands), at the view clock: a task that
+   *  has been running for an hour among tasks of minutes is where the team is stuck. Merged and failed cards have none. */
+  function ages(B, m) {
+    const S = B.S || (SL.sessions && SL.sessions.active), vt = S && typeof S.vt === 'number' ? S.vt : null;
+    Object.keys(B.nodes).forEach(id => {
+      const n = B.nodes[id], t = m.tasks[id]; if (!n || !t) return;
+      const tow = n.querySelector('.tcr .tow'), word = !t.failed && AGE_WORD[t.st], since = typeof t.since === 'number' ? t.since : t.t;
+      let a = n.querySelector('.amark');
+      if (!word || vt == null || typeof since !== 'number' || !tow || n.classList.contains('trow')) { if (a) a.remove(); return; }
+      const s = Math.max(0, vt - since), text = ageShort(s);
+      if (!a) { a = document.createElement('time'); a.className = 'dim amark'; tow.appendChild(a); }
+      if (a.textContent !== text) { a.textContent = text; a.title = word + ' for ' + U.dur(s) + (t.owner && t.st !== 'todo' ? ', held by ' + t.owner : ''); }
+    });
+  }
+  ui.board = { make, update, layout, ages, ageShort, COLS, COMPACT_AT, idCmp, newestMerged, resolved };
 })(SL);

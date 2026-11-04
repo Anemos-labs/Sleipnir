@@ -163,6 +163,7 @@ func TestSpawnRefusesOverlapBetweenSpellingVariantsAndReadersMayShare(t *testing
 		time.Sleep(200 * time.Millisecond)
 		return rvReply{Text: "ok"}
 	})
+	r.readOnly("reviewer")
 	r.sw.StartManager()
 	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "API", Files: []string{"./src//api/"}, By: "mgr"}); err != nil {
 		t.Fatal(err)

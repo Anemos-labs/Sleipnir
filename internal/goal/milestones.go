@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/anemos-labs/sleipnir/internal/plan"
 	"github.com/anemos-labs/sleipnir/internal/skills/mdfile"
 )
 
@@ -472,4 +473,70 @@ func milestonesForJudge(g *State) string {
 	}
 	b.WriteString(`With milestones, the final verdict carries a ruling for each one: {"verdict":"...","reason":"...","left":[...],"milestones":[{"id":"M1","met":true,"evidence":"records 12, 40: go test ./... passed after the last change"},{"id":"M2","met":false,"evidence":""}]}. "met" needs evidence you inspected, cited by record number; a milestone met last time is re-checked against newer changes. A milestone whose criteria a user reaches through a user interface over an API, or a client over a service, needs an end-to-end run of the assembled program newer than its last change; tests of each side alone leave it unmet. "done" requires every milestone met.` + "\n\n")
 	return b.String()
+}
+
+// Marks are the goal's milestones as a plan's progress weighs them (plan.Progress): Ruled once the judge has ruled on the goal.
+func (g *State) Marks() []plan.Mark {
+	if g == nil || len(g.Milestones) == 0 {
+		return nil
+	}
+	ruled := len(g.Verdicts) > 0 || g.MetCount() > 0
+	out := make([]plan.Mark, len(g.Milestones))
+	for i, m := range g.Milestones {
+		out[i] = plan.Mark{ID: m.ID, Met: m.Met, Ruled: ruled}
+	}
+	return out
+}
+
+// BigStep is the estimate (hours) above which PlanAdvice asks for a step to be split.
+const BigStep = 8
+
+// PlanAdvice is what the harness tells an agent about the plan of its goal, "" when it has nothing to say: the milestones that no
+// step names, the steps marked done whose milestone the judge has ruled unmet, the steps without an estimate, and the steps too big
+// to show progress. The goal's progress is weighed from the plan (plan.Progress), so a plan that leaves work out, or marks it done
+// before it is, shows the goal nearer its end than it is.
+func PlanAdvice(items []plan.Item, marks []plan.Mark) string {
+	if len(items) == 0 {
+		return ""
+	}
+	var notes []string
+	w := plan.Progress(items, marks)
+	if len(w.Missing) > 0 {
+		notes = append(notes, "No step of your plan names milestone "+strings.Join(w.Missing, ", ")+": add steps for each (the milestone field), so that the plan covers all of the goal's work.")
+	}
+	met := map[string]bool{}
+	for _, m := range marks {
+		met[m.ID] = m.Met || !m.Ruled
+	}
+	var claimed, bare, big []string
+	seen := map[string]bool{}
+	for i, it := range items {
+		if it.Status == plan.Done && it.Milestone != "" && !seen[it.Milestone] {
+			if ok, known := met[it.Milestone]; known && !ok {
+				claimed, seen[it.Milestone] = append(claimed, it.Milestone), true
+			}
+		}
+		switch {
+		case it.Effort <= 0 && it.Status != plan.Done:
+			bare = append(bare, fmt.Sprint(i+1))
+		case float64(it.Effort) > BigStep && it.Status != plan.Done:
+			big = append(big, fmt.Sprint(i+1))
+		}
+	}
+	if len(claimed) > 0 {
+		notes = append(notes, "Steps of milestone "+strings.Join(claimed, ", ")+" are marked done, but the judge has not found it met: mark them pending again, and add steps for what it still lacks.")
+	}
+	switch {
+	case len(bare) > 0 && len(bare) == plan.Open(items):
+		notes = append(notes, "No open step has an effort estimate: give each step one in hours (the effort field).")
+	case len(bare) > 0:
+		notes = append(notes, "Step "+strings.Join(bare, ", ")+" has no effort estimate: give each step one in hours (the effort field).")
+	}
+	if len(big) > 0 {
+		notes = append(notes, fmt.Sprintf("Step %s is estimated at more than %d hours: split it into steps you can finish and check one by one.", strings.Join(big, ", "), BigStep))
+	}
+	if len(notes) == 0 {
+		return ""
+	}
+	return "About this plan: " + strings.Join(notes, " ")
 }

@@ -38,6 +38,16 @@
 .tcard.blocked{border-style:dashed;border-top-style:solid;border-color:var(--warm-b)}
 .tcard .ask{color:var(--warm);font:700 11px var(--f-num)}
 .tcard.hot{background:var(--raise);border-color:var(--c)}
+/* a card's state at a glance (83-ui-cockpit.js ui.boardMarks): its owner is working on it now (a pulsing dot and the owner's colour
+   around it), the stall detector raised something about it (amber), it failed (red); its time in its column at the end of its owner line */
+.tcard.live{border-color:color-mix(in srgb,var(--c) 55%,transparent);box-shadow:0 0 10px color-mix(in srgb,var(--c) 22%,transparent)}
+.tcard.live .tid::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--c);margin:0 5px 1px 0;vertical-align:middle;animation:tlive 1.6s ease-in-out infinite}
+@keyframes tlive{50%{opacity:.25}}
+body.still .tcard.live .tid::before{animation:none}
+.tcard.stalled{border-color:var(--warm-b);box-shadow:0 0 0 1px var(--warm-b)}
+.tcard.failed{border-color:var(--err-b);border-top-color:var(--err)}
+.tcard .twhy{display:block;margin-top:3px;font:500 10.5px var(--f-num);overflow-wrap:anywhere}
+.tcard .amark{order:9;margin-left:auto;font:500 10px var(--f-num);white-space:nowrap}
 .bempty{font:italic 11px var(--f-ui);color:var(--faint);padding:2px 2px}
 .dep{font:500 10.5px var(--f-num);color:var(--dim)}
 .bcols .dep{color:var(--warm);opacity:.85;white-space:nowrap}

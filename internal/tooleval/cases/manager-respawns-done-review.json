@@ -1,0 +1,57 @@
+{
+  "id": "manager-respawns-done-review",
+  "source": "runs/2026-10-26-ravenwatch-small, friction 19",
+  "failure": "After the review task T20 was accepted, the manager spawned it again instead of reporting the goal met.",
+  "goal": "Build ledgerly, a small command-line ledger in Go: add, list and report subcommands over a JSON file. Keep it small.",
+  "board": "<live board=\"v40\">\nyou: mgr (manager)\nboard: 0 open, 20 done\nteam (4 others: 0 running, 4 idle)\nteam: architect 0/1 · backend 0/3 · tester 0/1 · reviewer 0/1\n</live>",
+  "turns": [
+    {
+      "user": "<notice>T20 (reviewer) is in review: \"Review the merged result\". Result: no defects; go vet and go test ./... pass on the merged tree (31 tests); the README's commands match the binary.</notice>"
+    },
+    {
+      "calls": [
+        {
+          "tool": "task",
+          "args": {
+            "action": "accept",
+            "id": "T20"
+          }
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "text": "T20 accepted. Every task is done; the goal's review gate is met."
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "none": [
+      {
+        "tool": "spawn",
+        "args": {
+          "task": "^T20$"
+        },
+        "why": "T20 is done: a task is not started again"
+      },
+      {
+        "tool": "task",
+        "args": {
+          "action": "^reopen$",
+          "id": "^T20$"
+        },
+        "why": "the review found nothing to reopen it for"
+      },
+      {
+        "tool": "task",
+        "args": {
+          "action": "^create$",
+          "title": "(?i)review"
+        },
+        "why": "the review after the last merge is accepted: another is busywork"
+      }
+    ]
+  }
+}

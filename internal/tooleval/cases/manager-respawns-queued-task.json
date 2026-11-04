@@ -1,0 +1,47 @@
+{
+  "id": "manager-respawns-queued-task",
+  "source": "runs/2026-10-18-ravenwatch, friction 23",
+  "failure": "The manager spawned T23 ten times after the harness said it was queued for the next free backend member and to use wait.",
+  "team": [
+    "architect",
+    "backend",
+    "backend",
+    "frontend",
+    "tester",
+    "reviewer"
+  ],
+  "goal": "Build the alerting service the README describes.",
+  "board": "<live board=\"v14\">\nyou: mgr (manager)\ntasks:\n  T21 doing be-1 \"Store alert rules in SQLite\" — migrations written, tests running\n  T22 doing be-2 \"Evaluate rules every 10 s\" — evaluator loop in place\n  T23 todo \"Send notifications by webhook\"\n  T24 doing fe-1 \"Alert rules page\" — form validates\nboard: 4 open, 3 done\nteam (6 others: 3 running, 3 idle):\n  be-1 backend running T21 — go test ./internal/rules/...\n  be-2 backend running T22 — editing internal/eval/loop.go\n  fe-1 frontend running T24 — editing web/app/rules/page.tsx\nteam: architect 1/1 · backend 2/2 · frontend 1/1 · tester 1/1 · reviewer 1/1\nT23 is queued for the next free backend member\n</live>",
+  "turns": [
+    {
+      "calls": [
+        {
+          "tool": "spawn",
+          "args": {
+            "role": "backend",
+            "task": "T23"
+          }
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "text": "T23 is queued for the next free backend member (be-1 on T21, be-2 on T22). The harness starts it then and tells you: do not spawn it on backend or on another role; use wait."
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "none": [
+      {
+        "tool": "spawn",
+        "args": {
+          "task": "^T23$"
+        },
+        "why": "T23 is queued already: the harness starts it when a backend member is free"
+      }
+    ],
+    "min_calls": 1
+  }
+}

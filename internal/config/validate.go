@@ -302,6 +302,9 @@ func (v *validator) cache(c Cache) {
 	if c.CompactionMode != "" && c.CompactionMode != "background" && c.CompactionMode != "blocking" {
 		v.err(seg("cache", "compaction_mode"), "must be \"background\" or \"blocking\", got %q", c.CompactionMode)
 	}
+	if n := c.AttachedImages; n < -1 || n > 20 {
+		v.err(seg("cache", "attached_images"), "must be between -1 (no image attached, each described) and 20, got %d", n)
+	}
 	v.nonNegative(seg("cache", "hot_max_tokens"), c.HotMaxTokens)
 	v.nonNegative(seg("cache", "affinity_shards"), c.AffinityShards)
 }

@@ -94,6 +94,8 @@ type Options struct {
 	// Media resolves a Block.MediaRef that is not already a data URL, http(s)
 	// URL or file id (kv stores images in a blob store by hash).
 	Media func(ref, mediaType string) ([]byte, error)
+	// NoImages sends a note in place of every image (provider.Profile.NoImages).
+	NoImages bool
 	// ExtraBody is merged into the top level, keys sorted. It may not override a
 	// member the adapter owns.
 	ExtraBody map[string]any
@@ -361,7 +363,10 @@ func (b *builder) userMessage(mi int, m core.Message) error {
 		case core.BlockImage:
 			j, err := b.imageJSON(blk)
 			if err != nil {
-				return fmt.Errorf("anthropic: %s: %w", label, err)
+				// A note, never a failed request: the image stays in the history and every later request would fail with it.
+				rb = textBlock(core.ImageNotSent(err), label)
+				seenOther = true
+				break
 			}
 			rb = rblock{prefix: j[:len(j)-1], members: true, eligible: true, label: label}
 			seenOther = true
@@ -618,7 +623,11 @@ func (b *builder) toolResult(blk core.Block, label string) (rblock, error) {
 		case core.BlockImage:
 			j, err := b.imageJSON(c)
 			if err != nil {
-				return rblock{}, fmt.Errorf("anthropic: %s: %w", clabel, err)
+				var w jw
+				w.lit(`{"type":"text","text":`)
+				w.str(core.ImageNotSent(err))
+				w.putc('}')
+				j = w.bytes()
 			}
 			content = appendElem(content, j, n)
 		default:
@@ -658,6 +667,9 @@ func appendElem(dst, elem []byte, n int) []byte {
 // http(s) URL or file id needs Options.Media to turn it back into bytes.
 func (b *builder) imageJSON(blk core.Block) ([]byte, error) {
 	ref := blk.MediaRef
+	if b.o.NoImages {
+		return nil, core.ErrTextOnly
+	}
 	if ref == "" {
 		return nil, errors.New("image block has no media reference")
 	}

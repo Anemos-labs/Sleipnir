@@ -84,7 +84,7 @@ func TestRigorRefusals(t *testing.T) {
 		t.Fatalf("prerequisite twin left %d tasks", n)
 	}
 	b := newRVRigWith(t, Config{MaxWorkers: 8, Team: []string{"backend", "reviewer"}}, func(context.Context, *rvCall) rvReply { return rvReply{Text: "ok"} }, nil)
-	if res := rigorCreate(b, map[string]any{"title": "y", "role": "backend", "rigor": "plan"}); !res.IsError || !strings.Contains(res.Text, "read-only role to plan") {
+	if res := rigorCreate(b, map[string]any{"title": "y", "role": "backend", "rigor": "plan"}); !res.IsError || !strings.Contains(res.Text, "needs a role to plan") {
 		t.Fatalf("no planner: %+v", res)
 	}
 }

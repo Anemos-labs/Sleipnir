@@ -324,11 +324,15 @@ func TestSecSound_RouterBoundaries(t *testing.T) {
 		t.Error("unknown kind accepted")
 	}
 	def := DefaultRouterConfig()
-	if _, err := r.Send("be-1", "be-2", "info", strings.Repeat("x", def.MaxContentChars+1)); err == nil {
+	if _, err := r.Send("be-1", "be-2", "info", strings.Repeat("x", def.MaxBodyChars+1)); err == nil {
 		t.Error("oversized mail accepted")
 	}
-	if _, err := r.Send("be-1", "be-2", "request", strings.Repeat("x", def.MaxChars+1)); err == nil {
+	if _, err := r.Send("be-1", "be-2", "request", strings.Repeat("y", def.MaxBodyChars+1)); err == nil {
 		t.Error("oversized request accepted")
+	}
+	// Over the inline limit but within the body limit: only the opening reaches the recipient's thread.
+	if m, err := r.Send("be-1", "be-2", "request", strings.Repeat("z", def.MaxChars+1)); err != nil || len([]rune(m.Text)) > def.MaxChars || m.Full == "" {
+		t.Errorf("long request: %v, inline %d", err, len([]rune(m.Text)))
 	}
 	if _, err := r.Send("be-1", "be-2", "info", "hi"); err != nil {
 		t.Fatal(err)

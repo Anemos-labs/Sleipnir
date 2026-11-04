@@ -154,6 +154,10 @@ type Model struct {
 	// ListPrice is the API list price of a Plan model; see Plan. It is zero for
 	// every other model, whose Price already is what its usage is shown at.
 	ListPrice Price
+	// NoImages says the model takes text only (its provider's catalogue says
+	// so): an image sent to it is refused, so the images a tool returns reach it
+	// as a note that it cannot see them. Unknown counts as able to see.
+	NoImages bool `json:",omitempty"`
 }
 
 // OnPlan returns m as reached through a subscription plan: Plan set, the

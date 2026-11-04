@@ -390,6 +390,22 @@ type MessageRequest struct {
 	ClientID  string `json:"clientId,omitempty"`
 }
 
+// ImageUpload is the body of POST /api/sessions/{id}/images: a picture to attach to a message, in base64, with the name it
+// is shown and mentioned by.
+type ImageUpload struct {
+	Name string `json:"name,omitempty"`
+	Data string `json:"data"`
+}
+
+// ImageStored is the answer to an ImageUpload: the blob the picture is stored under, its type and size, and the token a
+// message carries to attach it ([[image:REF|name]]). The page shows the picture from GET /api/sessions/{id}/images/{ref}.
+type ImageStored struct {
+	Ref   string `json:"ref"`
+	Type  string `json:"type"`
+	Bytes int    `json:"bytes"`
+	Token string `json:"token"`
+}
+
 // SendResult says whether a message was delivered now or queued behind the running turn. Steered is a message sent while the goal's
 // own turn runs: it went to that turn as a steer, and nothing waits (ID is empty).
 type SendResult struct {

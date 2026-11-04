@@ -33,6 +33,8 @@ remember the answer), `sleipnir trust add` says it without a session, and the an
 | `swarm` | shorthand for `run --swarm` |
 | `recon` | print the project survey that seeds the shared prompt layer |
 | `inspect` | the cache inspector: a read-only dashboard over a recorded session |
+| `council` | score screenshots with a council of vision models against references, round after round |
+| `tooleval` | measure how models use the tools in situations models got wrong in real runs, under variants of the tool descriptions |
 | `doctor` | probe an endpoint: streaming, tools, prefix-cache behaviour, warm-up needs |
 | `models` | list models and prices from a marketplace catalogue |
 | `demo` | a scripted team on a mock endpoint, no key needed |
@@ -342,7 +344,7 @@ Usage of chat:
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
-        role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… adds search by meaning to the lesson memory, reranker=… orders what it finds, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
+        role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… adds search by meaning to the lesson memory, reranker=… orders what it finds, vision=… describes the images a request no longer carries, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
   -sandbox string
         run every shell command of the session inside a container of its own: docker (an image for the project's language: golang for a go.mod, rust, node, python, ruby, a JDK, else buildpack-deps:bookworm; a Go module's dependencies are fetched before the network goes off) or docker=IMAGE. The project is mounted at its own path, the network is off, capabilities are dropped and the harness, its keys and the rest of the machine stay outside; edits are still made by the agents' file tools
   -sandbox-network
@@ -501,7 +503,7 @@ flags:
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
-        for new sessions: role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… adds search by meaning to the lesson memory, reranker=… orders what it finds, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
+        for new sessions: role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… adds search by meaning to the lesson memory, reranker=… orders what it finds, vision=… describes the images a request no longer carries, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
   -swarm int
         new sessions are a team of a manager and N workers (config swarm.max_workers is the ceiling); the default is 8 workers (a --team brings its own), --swarm 0 is a single agent
   -team NAME
@@ -614,7 +616,7 @@ flags:
   -resume string
         continue an earlier session, of one agent or of a team (its manager and its board): its id, its directory, or 'latest' (this project's newest)
   -role-model value
-        role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… adds search by meaning to the lesson memory, reranker=… orders what it finds, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
+        role=model, repeatable: the model a role runs on (manager=heimdallm/x, mailman=heimdallm/small, compactor=…, judge=…, embedder=… adds search by meaning to the lesson memory, reranker=… orders what it finds, vision=… describes the images a request no longer carries, fallback=… takes the requests of a model whose endpoint has been out for a minute). Give a worker role more than once, or alone, and the values are the team instead: one worker slot each, e.g. --role-model backend --role-model backend=heimdallm/x --role-model tester … (at least 8; the default team is one worker of each role)
   -sandbox string
         run every shell command of the session inside a container of its own: docker (an image for the project's language: golang for a go.mod, rust, node, python, ruby, a JDK, else buildpack-deps:bookworm; a Go module's dependencies are fetched before the network goes off) or docker=IMAGE. The project is mounted at its own path, the network is off, capabilities are dropped and the harness, its keys and the rest of the machine stay outside; edits are still made by the agents' file tools
   -sandbox-network
@@ -1143,6 +1145,132 @@ flags:
         cache model: anthropic (explicit breakpoints, 5m TTL, 1.25x writes) | marketplace (automatic prefix cache, no write premium) (default "anthropic")
   -seed int
         workload seed (default 1)
+```
+<!-- /flags -->
+
+### `sleipnir council`
+
+`sleipnir council --model M [--model M...] SCREENSHOT...` asks a council of models that see images to score screenshots of a
+user interface from 1 to 10 in each category (`--categories`; by default hierarchy, typography, color and contrast, spacing and
+layout, consistency, iconography, clarity and polish), and to name what costs the most points and the change that fixes it.
+It passes when every member gives the candidate `--target` or more in every category, and, with `--beat-refs`, a higher mean
+than every reference. `--ref NAME=PATH[,PATH...]` adds a product scored beside the candidate on the same scale: a competitor,
+or the previous version of the same screen. Scores taken without a reference drift high, because a design seen alone looks
+fine.
+
+Members are not told the target or the names of the products. Each product is shown under a letter, in an order that changes
+every round. With `--staged`, members are asked in the order given, and each only once every member before it gave the target
+in every category, so that a fast model does the early rounds. Each round is appended to `--ledger`
+(`.sleipnir/council/rounds.jsonl`), and the report starts with the climb so far. The exit status is 0 when the round passed,
+3 when it did not, and 1 when it could not be judged. A goal's `--verify` command can therefore hill-climb on it.
+
+<!-- flags: council -->
+```text
+usage: sleipnir council [flags] SCREENSHOT...
+
+Scores screenshots of a user interface with a council of models that see images, one round per call, and says whether every
+member rates the candidate at --target or more in every category. Each round is appended to --ledger, and the report shows the
+climb across rounds, the scores by category and each member's findings with the change that fixes them. Members are told neither
+the target nor which product is which. Exit status 0 means the council passed, 3 that it did not yet (a verify command can
+hill-climb on it), 1 an error.
+
+  sleipnir council --model heimdallm/qwen/qwen3.8-flash-next-abliterated --model heimdallm/z-ai/glm-5.3-flash \
+      --product "a diagram editor for engineers" --ref rival=shots/rival-*.png --staged shots/app-*.png
+
+flags:
+  -beat-refs
+        also require every member to rate the candidate above every reference on average
+  -categories string
+        the categories every member scores from 1 to 10, comma-separated (default "hierarchy,typography,color and contrast,spacing and layout,consistency,iconography,clarity,polish")
+  -json
+        print the round as JSON
+  -ledger string
+        the file each round is appended to, and the climb is read from (default ".sleipnir/council/rounds.jsonl")
+  -model value
+        a council member, provider/model of a model that sees images (repeat, or separate with commas; with --staged, in the order they are asked)
+  -product string
+        what the product is and who uses it: what good design means depends on it
+  -ref value
+        a reference scored beside the candidate on the same scale, NAME=PATH[,PATH...]: a competitor, or the previous version (repeat)
+  -staged
+        ask each member only once every member before it rated the candidate at the target in every category
+  -target float
+        the score every member must give the candidate in every category (default 9)
+  -timeout duration
+        how long one member may take to answer; one that has not is a missing vote (default 5m0s)
+  -trust-project
+        read the project's own config file, including its provider settings
+```
+<!-- /flags -->
+
+### `sleipnir tooleval`
+
+`sleipnir tooleval --model M [--model M...]` measures how well models use the harness's tools in situations where models went
+wrong before. A case starts from the actual first prompt of a role in a team session of this build (its system text, every tool
+spec and the team card, with the case's goal and live board in place), plays what had happened (the agent's calls, what the
+tools answered, the harness's notices), and states what the next response must do: a call it must make (`any`, `all`) or must
+not make (`none`), matched by tool and by regular expressions over the arguments. A call to a tool the prompt does not have, or
+with arguments its schema refuses, fails a case whatever its rules say. The suite shipped with the build holds failures of real
+runs, each naming the run it came from; `--cases` runs others instead, and `--case` picks some.
+
+Each case is asked `--samples` times of each model under each variant of the tool descriptions. `--variants` names a JSON file
+of variants, `{"name": {"tool": "description"}}`, tried beside the build's own (`current`), and the report gives each variant's
+pass rate beside the bytes its tools add to every prompt (`--sizes` prints them tool by tool): a description can be rewritten or
+cut, and the change kept when the pass rate holds. A sample whose answer does not come within `--timeout` is counted apart,
+with how much reasoning had streamed. The exit status is 0 when every model passed at `--min-pass` or more under the build's
+descriptions, 3 when one did not, and 1 on an error.
+
+`--harvest DIR` reads a session kept with `--training-logs` and writes each failed tool call as a case (JSON lines, to `--out`)
+that replays the exact prompt of the request that made it: a refused call is expected to be made properly, any other failed
+call not to be repeated as it was. These expectations are a draft, to sharpen with the call that was right.
+
+<!-- flags: tooleval -->
+```text
+usage: sleipnir tooleval [flags]
+
+Measures how well models use the harness's tools in situations where models went wrong in real runs. Each case is the actual
+first prompt of a role in a team session of this build (its system text and every tool spec), then what had happened, and a rule
+for the next response: the call it must make, or must not. Every case is asked --samples times of each --model under each
+variant of the tool descriptions (--variants), and the report gives each variant's pass rate beside the size of its
+descriptions, so a description can be rewritten or cut and the change kept when the pass rate holds. Without --cases it runs the
+suite shipped with this build, whose cases name the run they came from. Exit status 0 means every model passed at --min-pass or
+more under the build's descriptions, 3 that one did not, 1 an error.
+
+--harvest DIR turns the failed tool calls of a session kept with --training-logs into cases that replay its exact prompts, and
+writes them (JSON lines) to --out instead of running anything.
+
+  sleipnir tooleval --model heimdallm/z-ai/glm-5.3-flash --variants shorter.json --sizes
+  sleipnir tooleval --harvest ~/.sleipnir/sessions/20261104-101500-ab12cd --out cases/harvested.jsonl
+
+flags:
+  -case value
+        run only this case, or the cases whose id starts with it and a dash (repeat)
+  -cases string
+        a case file (JSON, a JSON array, or JSON lines) or a directory of them, in place of the shipped suite
+  -harvest value
+        a session directory kept with --training-logs: write its failed calls as cases to --out (repeat)
+  -json
+        print the report as JSON
+  -max-tokens int
+        the longest answer, in tokens (default 8192)
+  -min-pass float
+        the pass rate, from 0 to 1, each model must reach under the build's descriptions (exit 3 below it)
+  -model value
+        a model to ask, provider/model (repeat, or separate with commas)
+  -out string
+        with --harvest: the file the cases are written to (default: standard output)
+  -parallel int
+        how many requests are in flight at once (default 4)
+  -samples int
+        how many times each case is asked of each model under each variant (default 3)
+  -sizes
+        also print the size of each tool's name, description and schema under each variant
+  -timeout duration
+        how long one answer may take; one that has not come counts as no answer (default 5m0s)
+  -trust-project
+        read the project's own config file, including its provider settings
+  -variants string
+        a JSON file of variants to try beside the build's descriptions: {"name": {"tool": "description"}}
 ```
 <!-- /flags -->
 

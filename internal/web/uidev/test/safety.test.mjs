@@ -379,3 +379,15 @@ test('a question closed without an answer (canceled, timed out) is closed quietl
   S.wm.qs[0].answered = null; const r = SL.act.answerQuestion('q_1', 1, undefined, 'a'); await r.done; await tick(5);
   assert.ok(!toasts.some(t => t[1] === 'err'), JSON.stringify(toasts));
 });
+
+test('an image a person attached is drawn from the session as a picture with its name, and a hostile name stays text', () => {
+  const { SL } = boot(), chip = SL.ui.imageChips, ref = 'a'.repeat(64), S = { id: 't1' };
+  const html = chip('look at this [[image:' + ref + '|shot.png]] and [pasted text #1 +9 lines]', S);
+  assert.match(html, new RegExp('<img src="/api/sessions/t1/images/' + ref + '" alt="shot.png"'));
+  assert.match(html, /<span class="pastechip">image: shot.png<\/span>/);
+  assert.match(html, /<span class="pastechip">\[pasted text #1 \+9 lines\]<\/span>/);
+  const bad = chip('[[image:' + ref + '|' + IMG.replace(/\]/g, '') + ']]', S);
+  assert.equal(broken(bad.replace(/<img src="[^"]*" alt="[^"]*" loading="lazy" decoding="async">/g, '')), false, bad);
+  assert.doesNotMatch(chip('[[image:' + ref + ']]', { placeholder: true, id: 'x' }), /<img/);
+  assert.equal(chip('[[image:short]]', S), '[[image:short]]');
+});

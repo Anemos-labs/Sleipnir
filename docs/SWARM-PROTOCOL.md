@@ -25,7 +25,10 @@ cache side of the design (why a worker costs a cache read, not a briefing) is in
 ## 2. Roles and tools
 
 Roles are pins (G2) plus runtime restrictions. Built-ins: `manager` (plans, delegates substantial work, reviews and handles direct requests),
-`backend`, `frontend`, `devops`, `tester`, `docs` (writers), `architect`, `reviewer`, `scout` (read-only). The legacy executable `fullstack` role is unavailable. Users add roles
+`backend`, `frontend`, `devops`, `tester`, `docs`, `architect`, `reviewer`, `scout`. Every built-in role can write files and run
+programs on a work task; the reviewer and the scout report (their `task done` text is kept whole as the report the manager reads,
+and their tasks are not counted as implementation), and a planning task holds whoever owns it to reading while it plans (below).
+A project role can still be read-only (`readonly: true`). The legacy executable `fullstack` role is unavailable. Users add roles
 with markdown files (`.sleipnir/agents/*.md`).
 
 **The team.** A session's team is a list of worker slots, one role each (`swarm.Config.Team`). The chat, run and web
@@ -50,11 +53,17 @@ members are all busy spares none. A `spawn` of an existing task by the manager i
 queued: the answer names what holds the members (`be-1 leads T2, be-2 leads T3`), and the
 harness starts the task on the first member of the role that is free, on the supervisor's
 pass, and tells the manager; a queued task that is assigned, revised or closed meanwhile is
-dropped from the queue, and a resumed session starts with none. When other roles that write code
-(not a read-only role, docs or the tester) have a slot or an idle member free, the answer and the live view's queued line
-name them (`free now: frontend, devops: one of them can take T2 at once if it needs nothing only backend knows (spawn
-role=frontend task=T2)`); a spawn of the task on one of them starts it there. Any other caller is refused
+dropped from the queue, and a resumed session starts with none. Any other caller is refused
 with what to do (wait, or have the busy parent's leader take the work as a child).
+
+A task goes to a member of its own role. Roles exist to run each kind of work on the model and instructions chosen for it
+(`--role-model frontend=<model>`), so a task whose `role` names a role the team can staff is refused to every agent of
+another role: a `spawn` with another `role`, a `spawn agent=` naming a member of another role, that member's own `task
+claim` and a handover. The refusal names the task's role and its members, and says how to go on: `spawn task=<id>` without
+`agent=` starts it on the first free member of its role or queues it, and `task revise id=<id> role=<role>` moves a
+top-level task outside any pool to another role when the work really is that role's. Neither the queued answer nor the live
+view offers a queued task to a member of another role that happens to be free. A task that names no role, or a role the team
+has no slot for, can go to any role; an agent continuing a task it already owns is not refused.
 The first configured member leads, including after resume. `pool propose` records a
 shared agreement covering conventions, interfaces, work division and acceptance.
 Every member calls `pool agree` with its current revision before `pool execute` can
@@ -514,7 +523,10 @@ can never turn a failing test into a passing one. Dependencies are enforced on c
 
 Agents share project context, not conversation histories. For parallel work that
 depends on common decisions, the manager creates a task with `kind="plan"` and
-assigns a scout, reviewer, or custom read-only role. Its owner
+assigns it to the role it names: the architect, else a scout or a reviewer. While a planning task is its owner's current
+task, the owner changes no file (it keeps a read-only role's reading, research and checks): the agreement is the
+deliverable and the harness merges nothing from it, so a file the plan needs (a contract, a schema, shared types) is a work
+task of its own, which the architect can take. A planning task holds no writer slot and takes part in no scope overlap. Its owner
 gathers input from affected roles and submits a concise contract through
 `task(action="done", id="T1", text="contract ready", agreement="...")`.
 The contract names interfaces, shared components or abstractions, conventions,
@@ -534,12 +546,12 @@ context for new, reused, and claiming workers. They survive private compaction
 and event-log recovery; they do not depend on the live note buffer. Task data
 cannot grant permissions or override user instructions.
 
-Each agreement is limited to 6,000 UTF-8 bytes and 40 lines. Combined inherited
-agreements are limited to 12,000 bytes including labels; excessive submissions
+Each agreement is limited to 16,000 UTF-8 bytes and 400 lines. Combined inherited
+agreements are limited to 48,000 bytes including labels; excessive submissions
 or assignments are rejected with guidance instead of silently truncating a
 contract. Tasks assigned to one worker, including blocked work and worktree
-instructions, must fit 24,000 bytes of assignment text. Compaction preserves
-harness assignments up to a fixed 32,000-byte bound, independently of token
+instructions, must fit 96,000 bytes of assignment text. Compaction preserves
+harness assignments up to a fixed 100,000-byte bound, independently of token
 estimator calibration. Human instruction token limits remain separate.
 
 Accepted contracts are immutable within an assignment revision. A changed design uses
@@ -557,7 +569,7 @@ planning in one word instead of building the chain by hand:
 | `rigor` | Tasks the harness creates | The work task |
 |---|---|---|
 | (none) | the work task | as before |
-| `plan` | `Plan: <title>` (kind plan) for the architect, else the scout, else another read-only role the team can staff | depends on the plan and inherits its agreement |
+| `plan` | `Plan: <title>` (kind plan) for the architect, else the scout, else a read-only role the team can staff | depends on the plan and inherits its agreement |
 | `reviewed` | the plan, then `Review plan: <title>` (kind plan) for the reviewer, which depends on the plan | depends on both; the review's agreement is the verdict and the amendments, which the work follows as acceptance criteria |
 
 The work task's description starts with a line that says which plan to follow
@@ -574,12 +586,17 @@ ephemeral: delivered into the recipient's next turn, cached for a few turns, com
 
 * **Typed**: `info` (no reply expected), `request`, `blocker`, `answer`, `contract` (an interface changed).
 * **No broadcast, no self-mail, known recipients only** (`to: manager` resolves to the manager).
-* **Bounded**: 600 characters for mail that asks for something (`request`, `blocker`) and 1,200 for mail that carries
-  content (`info`, `answer`, `contract`), 8 messages per minute per sender, 3 per minute per sender->recipient pair,
-  identical text to one recipient deduplicated for 5 minutes; over-limit errors are written for the sending model and say
-  what to do instead (use `note`, wait, or fold messages). A message over its kind's limit is refused with its length,
-  how far over it is, a target below the limit, and where long content lasts: a file in the sender's task scope, or the
-  agreement submitted with `task done` (at most 6000 bytes, read with `task get`, inherited by dependent tasks). The
+* **Bounded inline, kept whole**: 600 characters of mail that asks for something (`request`, `blocker`) and 1,200 of
+  mail that carries content (`info`, `answer`, `contract`) reach the recipient's thread. A longer message, up to 24,000
+  characters, is not refused or cut: its opening is delivered with a harness note of how much follows, and the sender or
+  the recipient reads the whole, line breaks kept, with `mail read=<id>`. Mail coalesced while an inbox was full, and
+  parcels a mailman digested from their opening, are kept whole as well, and the digest names their ids. The router keeps
+  these messages within 8 MiB, forgetting the oldest first. 8 messages per minute per sender, 3 per minute per
+  sender->recipient pair, identical text to one recipient deduplicated for 5 minutes; over-limit errors are written for
+  the sending model and say what to do instead (use `note`, wait, or fold messages). A message over 24,000 characters is
+  refused with its length, how far over it is, a target below the limit, and where long content lasts: a file in the
+  sender's task scope, or the agreement submitted with `task done` (at most 16,000 bytes, read with `task get`,
+  inherited by dependent tasks). The
   router's bookkeeping is swept, so it does not grow with the number of agents or messages that ever existed.
 * **Framed by the harness.** A delivered message is one line: a harness-written header (`[mail <id> <kind> from
   <agent>]`), the text reduced to one printable line in which harness-looking markers (`[mail`, `[end`, `[system`, ...),
@@ -734,6 +751,9 @@ Layered, cheapest first:
    (repository paths only, sanitised; one alert per agent, the newest refusal), so the manager can widen the scope
    without first asking which file it was. A worker cannot widen its own scope (only the manager can,
    through `task update files`; a pool's leader can set the scope of a child of its pool nobody has claimed). An agent with no task, or whose task declares no scope, is not restricted.
+   A write to the session's scratch directory (`$TMPDIR`), or to the system's temporary directory (`/tmp`) outside the
+   workspace, is no edit of the project: no scope, ownership or tree check refuses it and it takes no lease; the permission
+   engine judges it by the session's mode. An isolated writer without a tree (a read-only role) still writes nothing.
 2. **Write leases** with a TTL and conflict alerts (visible in the hot view of the agents involved; the alert names the
    agents, never a file name, and goes away when the lease is released or expires).
 3. **Content-hash staleness** on every edit: an edit is accepted only if the file is what the agent last read, whichever
@@ -894,7 +914,7 @@ same findings; `idle_capacity`, `review_overrun` and `task_overrun` alone also r
 | `blocked_cycle` | blocked tasks' `blocked_on` targets lead back to themselves; one finding per cycle, named by its lowest task id | the manager |
 | `review_starved` | a task has waited in review for `StallTurns` manager turns, or for 5 minutes, without the manager naming it in a task call | the manager |
 | `review_overrun` | a running reviewer's task (not a planning task) has run, since its assignment began, longer than the work it reviews took to build: the longest of the merges no accepted review covers yet (each from the first run that held its task to its submission: the wait for the manager's decision is not build time), and at least 10 minutes. The bound follows the work, so a review of a day's work may take hours and a review of a fix may not | the reviewer (write the report with what it has: findings so far, what was checked and found fine, what was not reached) |
-| `task_overrun` | a running worker that is not a reviewer has held its current assignment (a doing task that is not a pool's) for longer than `TaskTimeout` (default 90 minutes), from when the assignment began, whatever it does meanwhile: a worker that keeps editing or re-running tests on a task it will not finish is busy by every other measure | the worker (finish with what works and name what is left, hand the task over, or block it on what it waits for) |
+| `task_overrun` | a running worker that is not a reviewer has held its current assignment (a doing task that is not a pool's) for longer than `TaskTimeout` (default 90 minutes), from when the assignment began and not counting the time the task waited blocked (from its block to its resume) nor, across a resume, the time the team was not running (from the previous run's last board op), whatever it does meanwhile: a worker that keeps editing or re-running tests on a task it will not finish is busy by every other measure | the worker (finish with what works and name what is left, hand the task over, or block it on what it waits for) |
 | `idle_capacity` | in a configured team, the manager waits while at least one worker runs, a task is still open, and at least half of the workers, and two or more, have been idle for 15 minutes owning no open task (none reserved, in progress, blocked or in review), and the workers at work are not all read-only roles, on docs tasks, or finishing a turn with no open task (then the team waits for a verdict on finished work, and idle writers are expected); once raised it holds while that is so, whether or not the manager is still waiting | the manager (who is free, once; it decides whether the objective needs more than the open tasks) |
 
 `StallTurns` is `swarm.Config.StallTurns` (default 12; negative turns the two turn-based kinds off). A finding is

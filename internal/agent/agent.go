@@ -197,6 +197,8 @@ type Config struct {
 	Limiter Limiter
 	Gate    Gate
 	Sink    Sink
+	// Images says how many images a request carries and who describes the ones it does not (images.go).
+	Images ImagePolicy
 	// Hooks runs user-configured commands around tool calls and before the agent
 	// stops (nil: none).
 	Hooks Hooks
@@ -420,6 +422,7 @@ type Agent struct {
 	pending     *pendingBatch // a batch that cannot write, running (Config.Barrier; see Recoverable)
 
 	comp compactionState
+	imgs imageState // images attached, described and retired (images.go)
 
 	// life is the agent's lifetime: compaction jobs run on it, and Close ends it.
 	// jobs counts the jobs in flight so that Close (and a swarm's Shutdown) can wait
@@ -701,6 +704,7 @@ func (a *Agent) push(t core.Turn) core.Turn {
 	t = a.thread.Append(t)
 	_ = a.cfg.Archive.Put(a.cfg.ID, t)
 	a.emit(events.TypeTurnAppend, t)
+	a.noteImages(t)
 	return t
 }
 
@@ -736,7 +740,8 @@ func (a *Agent) emit(typ string, data any) {
 func (a *Agent) Run(ctx context.Context, input string) (*Result, error) {
 	var blocks []core.Block
 	if input != "" {
-		blocks = []core.Block{core.Text(input)}
+		text, imgs := a.attachImages(input)
+		blocks = append([]core.Block{core.Text(text)}, imgs...)
 	}
 	return a.run(ctx, core.OriginUser, blocks)
 }
@@ -785,6 +790,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 	planNudges := 0   // times a finished answer was sent back because the plan still had open steps
 	verifyNudges := 0 // times a finished answer was sent back because code was changed and no test ran since
 	leakNudges := 0   // times an answer was sent back because it held the markup of a tool call and no call
+	a.beginImageRun()
 	if len(input) > 0 {
 		a.pushUser(origin, input)
 		a.emit(events.TypeUserInput, inputEvent(origin, input))
@@ -851,6 +857,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 			}
 		}
 
+		a.retireImages(ctx)
 		phase = "model"
 		resp, epoch, err := a.request(ctx)
 		if errors.Is(err, ErrRepeatedCalls) && repeats < maxRepeatRounds {
@@ -1004,16 +1011,21 @@ func (a *Agent) toolBatch(ctx context.Context, calls []core.Block, left int) (st
 // reads (text), and, for a task the harness handed over, who it speaks for (origin) and
 // the assignment it carries. A person's input keeps the plain {"text": …} shape.
 func inputEvent(origin core.Origin, blocks []core.Block) map[string]any {
-	var text, card []string
+	var text, card, imgs []string
 	for _, b := range blocks {
 		switch {
 		case kv.IsTask(b):
 			card = append(card, b.Text)
 		case b.Kind == core.BlockText:
 			text = append(text, b.Text)
+		case b.Kind == core.BlockImage:
+			imgs = append(imgs, b.MediaRef)
 		}
 	}
 	m := map[string]any{"text": strings.Join(text, "\n")}
+	if len(imgs) > 0 {
+		m["images"] = imgs // the blobs of the pictures the person attached, in the order the text numbers them
+	}
 	if origin != core.OriginUser {
 		m["origin"] = string(origin)
 	}
@@ -1124,7 +1136,7 @@ func (a *Agent) drainInbox(resuming bool) {
 		origin := core.OriginMail
 		steerOnly := true
 		for _, b := range blocks {
-			if !kv.IsSteer(b) {
+			if !kv.IsSteer(b) && b.Kind != core.BlockImage { // the pictures a person attached to their steer are theirs too
 				steerOnly = false
 			}
 		}
@@ -1161,7 +1173,9 @@ func (a *Agent) takeInbox() []core.Block {
 	a.inbox = nil
 	var blocks []core.Block
 	if len(steer) > 0 {
-		blocks = append(blocks, kv.Steer(strings.Join(steer, "\n\n")))
+		text, imgs := a.attachImages(strings.Join(steer, "\n\n"))
+		blocks = append(blocks, kv.Steer(text))
+		blocks = append(blocks, imgs...)
 	}
 	if len(mail) > 0 {
 		blocks = append(blocks, core.Text(strings.Join(mail, "\n")))

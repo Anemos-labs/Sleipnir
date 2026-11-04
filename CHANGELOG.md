@@ -24,6 +24,104 @@ they do not indicate whether a change has been released.
   bytes: about 150 tokens more in the manager's role pin; a steer carries
   about 110 tokens of frame in the turn it rides with, outside the cached
   layers. No tool spec changed.
+- A goal's plan shows how much of the work is left, not how many steps are
+  ticked. A plan step takes an `effort` estimate in hours (a number, or text
+  such as "90m" or "2d") and the `milestone` it serves, and a plan holds 24
+  steps (it held 12). The Goal plan box, the Goal sheet, `/goal` and the
+  plan tool's result weigh progress by the estimates; a step marked done
+  whose milestone the judge has ruled unmet is shown as claimed and counted
+  open; a milestone no step names holds a share of its own. The plan tool,
+  for the main agent of a goal, and each continuation say which milestones
+  have no step, which done steps the judge has not confirmed, and which
+  steps lack an estimate or are too big, and ask for a step for each item
+  the judge found missing. The `plan` web event carries `eff` and `mile`.
+  A manager's `task accept` result reminds it to mark the plan step the
+  task finishes done while its plan has open steps.
+  Prompt-cache change: the `plan` tool's description and schema, and a
+  goal's first message, change bytes.
+
+- Every built-in role writes. The architect, the scout and the reviewer are no
+  longer read-only: on a work task they write files and run programs like any
+  worker (the architect a contract file or a scaffold, the reviewer a failing
+  test that proves a finding). The reviewer and the scout still report: their
+  `task done` text is kept whole as the report. A planning task (`kind=plan`)
+  can go to any role and holds its owner to reading while it plans, since its
+  agreement is the deliverable and nothing written meanwhile is merged; it
+  holds no writer slot. A project role can still be `readonly: true`.
+  Prompt-cache change: the manager, architect, scout and reviewer pins and the
+  `task` tool's description change bytes.
+
+- A task goes to a member of its own role. `spawn` with another role, `spawn
+  agent=` naming a member of another role, a self-claim and a handover of a
+  task whose role the team can staff are refused, naming the task's role and
+  its members. A queued task no longer names other roles' free slots as a place
+  to start it. `task revise` takes `role=` to move a top-level task outside any
+  pool to another role on purpose. Prompt-cache change: the manager's role pin
+  and the `task` tool's description change bytes.
+- Team mail, task text and contracts are no longer cut short. Mail over its
+  kind's inline limit (600 characters for a request or blocker, 1,200 for
+  info, answer and contract) is accepted up to 24,000 characters: its opening
+  is delivered with a note of how much follows, and the sender or recipient
+  reads the whole, line breaks kept, with the new `mail read=<id>`. Mail
+  coalesced while an inbox was full, and parcels a mailman digested, are kept
+  whole too and named in the digest. A task description holds 12,000
+  characters with every line (it held 2,000 and its first 40 lines) and is
+  refused, not cut, beyond that; a title too long for the board opens the
+  description. Agreements hold 16,000 bytes and 400 lines (6,000 and 40),
+  inherited agreements 48,000 bytes, a claimed assignment 96,000 (the
+  compaction bound on an assignment is now 100,000 bytes, so it never cuts
+  one the swarm accepted), reports 16,000 characters, handover summaries
+  6,000, a manager's rejection feedback reaches a pool whole, and a note over
+  300 characters is refused with its size instead of cut. The web interface
+  shows a mail whole. Prompt-cache change: the `mail` tool's description and
+  schema change bytes, so a prefix cached before the upgrade no longer
+  matches the tool layer.
+- New command `sleipnir council`: a council of models that see images scores
+  screenshots of a user interface in each design category, beside reference
+  products, and keeps every round in a ledger so that a design can be
+  hill-climbed to a target (docs/CLI.md). No prompt of an agent changes.
+- New command `sleipnir tooleval`: measures how well models use the harness's
+  tools in situations where models went wrong in real team runs. Each case is
+  played on the actual first prompt of its role in this build, so a rewritten
+  or shortened tool description is measured by its pass rate beside its size
+  (`--variants`, `--sizes`). `--harvest` turns the failed calls of a session
+  kept with `--training-logs` into cases that replay its exact prompts. No
+  prompt of an agent changes.
+
+- Images a tool returns (a screenshot the read tool opens, an MCP tool's
+  picture) reach the model on every wire format. Chat Completions and the
+  Responses API carry a tool's output as text, so its images follow in the
+  user message after it, each after a line naming the call. Blob references
+  are sent inline: as data URLs on those two, as base64 sources on the
+  Messages API. On all three, an image that cannot be sent (no blob, not an
+  image) is a note saying so instead of a failed request, and a model whose
+  catalogue entry says it takes text only gets that note in place of every
+  image, decided per request, so the conversation keeps its images for a
+  model that sees them. Prompt-cache change: only requests that carry an
+  image change bytes.
+
+- Images no longer pile up in a conversation. A request carries at most
+  `cache.attached_images` images (default 1), the newest of the current run;
+  every other image (earlier runs, extra pictures of one message, older
+  screenshots of a tool loop) is replaced in the thread by a description
+  written for it in a side request that carries only that image (the `vision`
+  role's model, else the agent's), so a message with many images is split into
+  one description request per extra image and the person still sees them all.
+  A model whose catalogue says it takes text only gets every image as its
+  description when a `vision` model is set. An endpoint that refuses images, or
+  does not answer a request with images, is asked again with every image
+  described. Images are scaled down past 1568 pixels or about 3.7 MB before they
+  are sent. The web composer attaches pictures (paste, drop, or the image
+  button) and the transcript shows them. Prompt-cache change: retiring an image
+  rewrites the thread from that image on as a declared rebase, so the cache
+  misses once from there (docs/CACHE-DESIGN.md, Images).
+
+- A team's write guard no longer refuses the file tools' writes to the
+  session's scratch directory (`$TMPDIR`) or to the system's `/tmp` outside
+  the workspace: they are no edit of the project, so no task scope, path owner
+  or isolated tree applies, and the permission engine alone judges them by the
+  session's mode. Other paths outside the project are refused as before, and a
+  refusal of one names `$TMPDIR` for scratch files.
 
 - The `sleipnir` tool has a `sessions` action: the agent the person talks to
   in a tab of `sleipnir web` lists the server's other sessions, reads what one
