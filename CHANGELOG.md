@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Images a tool returns (a screenshot the read tool opens, an MCP tool's
+  picture) reach the model on every wire format. Chat Completions and the
+  Responses API carry a tool's output as text, so its images follow in the
+  user message after it, each after a line naming the call; blob references
+  are sent as data URLs on all three formats. An image that cannot be resolved
+  is sent as a note saying so. A model whose catalogue says it takes text only
+  gets that note in place of the image. Prompt-cache change: only requests
+  that carry an image change bytes.
+
 - The `sleipnir` tool has a `sessions` action: the agent the person talks to
   in a tab of `sleipnir web` lists the server's other sessions, reads what one
   said, sends one a message (read as mail, and answered back as mail), waits

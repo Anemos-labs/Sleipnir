@@ -289,6 +289,23 @@ func (a *Agent) toolContext(ctx context.Context) (context.Context, context.Cance
 	return ctx, func() {}
 }
 
+// seeable is the blocks of a tool result as the agent's model can take them: a model that takes text only (cost.Model.NoImages)
+// gets a note in place of each image, which its endpoint would refuse, so that it knows a picture was there and that it did
+// not see it rather than answer about it.
+func (a *Agent) seeable(blocks []core.Block) []core.Block {
+	if !a.cfg.Model.NoImages {
+		return blocks
+	}
+	out := make([]core.Block, 0, len(blocks))
+	for _, b := range blocks {
+		if b.Kind == core.BlockImage {
+			b = core.Text(fmt.Sprintf("[an image (%s) is not shown: model %s takes text only. Ask a model that sees images to look at it, or read what produced it.]", b.MediaType, a.cfg.Model.ID))
+		}
+		out = append(out, b)
+	}
+	return out
+}
+
 // perTurnResultCap bounds a single result even if a tool forgot to truncate.
 const perResultCap = 60_000
 
@@ -304,7 +321,7 @@ func (a *Agent) finishResult(call core.Block, res *tools.Result, took time.Durat
 		text = "(no output)"
 	}
 	content := []core.Block{core.Text(text)}
-	content = append(content, res.Blocks...)
+	content = append(content, a.seeable(res.Blocks)...)
 	if res.IsError {
 		if _, ok := res.Meta["error_kind"]; !ok {
 			res.Meta = withErrorKind(res.Meta, classifyToolError(res.Text))
