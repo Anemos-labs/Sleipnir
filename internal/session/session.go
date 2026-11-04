@@ -1051,6 +1051,9 @@ func (s *Session) build(ctx context.Context) error {
 	s.archive = archive
 	plans := plan.NewStore() // each agent's plan: the plan tool sets it, the hot tail shows it back (internal/plan)
 	s.plans = plans
+	if s.opts.Resume != "" {
+		restorePlans(filepath.Join(s.Dir, "events.jsonl"), plans) // a resumed agent keeps the plan it had
+	}
 	// Each tool plugin registers its tools through the plugin kernel, in the set's order. A plugin that is off adds
 	// nothing, for every agent alike: the tool list never depends on the project or the role (docs/CACHE-DESIGN.md).
 	s.kernel = plugin.NewKernel(map[string]plugin.Activator{
