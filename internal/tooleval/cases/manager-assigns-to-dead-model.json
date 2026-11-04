@@ -14,7 +14,22 @@
   "board": "<live board=\"v30\">\nyou: mgr (manager)\n! be-1's model endpoint is failing: 503 Service Unavailable on its last 3 requests\ntasks:\n  T40 todo \"Rate-limit webhook notifications\"\nboard: 1 open, 12 done\nteam (5 others: 0 running, 5 idle):\n  be-1 backend failed — 503 Service Unavailable (3 tries)\n  be-2 backend idle\nteam: architect 0/1 · backend 2/2 · frontend 0/1 · tester 0/1 · reviewer 0/1\n</live>",
   "turns": [
     {
-      "user": "<notice>T40 was handed back: be-1's run ended on an outage of its model's endpoint.</notice>"
+      "assistant": "Waiting for the team.",
+      "calls": [
+        {
+          "tool": "wait",
+          "args": {
+            "timeout_sec": 300
+          }
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "text": "Woke after 41s: T40 was handed back to the board (be-1's run ended on an outage of its model's endpoint)."
+        }
+      ]
     }
   ],
   "expect": {

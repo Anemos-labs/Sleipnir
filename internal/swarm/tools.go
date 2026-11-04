@@ -51,7 +51,7 @@ func decode(in json.RawMessage, v any) *tools.Result {
 // of one id as the id itself. A value of another type is the decoding error a list would give.
 type idList []string
 
-// UnmarshalJSON decodes a JSON array of strings, or one string split at commas and white space.
+// UnmarshalJSON decodes a JSON array of strings, or one string, each split at commas and white space.
 func (l *idList) UnmarshalJSON(b []byte) error {
 	var one string
 	if err := json.Unmarshal(b, &one); err == nil {
@@ -62,7 +62,10 @@ func (l *idList) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &many); err != nil {
 		return err
 	}
-	*l = many
+	*l = nil
+	for _, s := range many { // an element may hold several ids too: a string made into a list of one (tools.CoerceLists)
+		*l = append(*l, strings.FieldsFunc(s, func(r rune) bool { return r == ',' || unicode.IsSpace(r) })...)
+	}
 	return nil
 }
 

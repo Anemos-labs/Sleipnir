@@ -37,6 +37,7 @@ func TestCheck(t *testing.T) {
 		{"missing required", []core.Block{call("spawn", `{"solo":true}`)}, Expect{MinCalls: 1}, false, `spawn: no "task" argument`},
 		{"wrong type", []core.Block{call("spawn", `{"task":"T1","solo":"yes"}`)}, Expect{MinCalls: 1}, false, "spawn: solo is not a boolean"},
 		{"not an integer", []core.Block{call("wait", `{"timeout_sec":1.5}`)}, Expect{MinCalls: 1}, false, "wait: timeout_sec is not an integer"},
+		{"a list sent as one string", []core.Block{call("spawn", `{"task":"T1","files":"a.go"}`)}, Expect{All: []Rule{{Tool: "spawn", Args: map[string]any{"files": []any{"^a\\.go$"}}}}}, true, ""},
 		{"enum", []core.Block{call("task", `{"action":"approve"}`)}, Expect{MinCalls: 1}, false, `task: action is "approve", not one of [create accept]`},
 		{"array items", []core.Block{call("spawn", `{"task":"T1","files":["a",2]}`)}, Expect{MinCalls: 1}, false, "spawn: files[1] is not a string"},
 		{"empty input is an object", []core.Block{core.ToolUse("c", "wait", nil)}, Expect{MinCalls: 1}, true, ""},
