@@ -225,6 +225,7 @@ do what the person would do with slash commands, the Plugins page and the schedu
 | `schedule` | `list`, `add` (cron, goal, and optionally model, mode, budget and folder), `pause`, `resume`, `remove`: the jobs of `sleipnir schedule` |
 | `plugins` | `list`, `check`, `install` (a directory or git URL; `replace` installs a new version over the old), `enable`, `disable`, `reset`, `remove` |
 | `reload` | the session starts again when the turn ends, with its conversation, so plugin and configuration changes apply |
+| `sessions` | the other sessions running beside this one (the tabs of `sleipnir web`): `list`, `read` (`id`, `n` rows), `send` (`id`, `text`), `wait` (`id`, `timeout_sec`), `spawn` (`text` and/or `goal`, and `dir`, `name`, `model`, `workers`) |
 
 The built-in skill `sleipnir-plugin` gives the agent the loop: write the plugin in its own directory, check it, install it,
 reload, try it. On the web page and in the terminal chat the reload starts the session again and sends the agent on, naming any
@@ -233,6 +234,38 @@ engine: it asks in the default mode, passes in bypass and yolo, and is refused i
 models and roles, the team's shape, the budget, sign-in, project trust and starting the conversation over stay the person's. A
 scheduled job the tool adds runs in `default`, `accept-edits` or `plan` mode, never bypass or yolo. A headless run has no chat,
 so `run` and `reload` are refused there.
+
+### Sessions that talk to each other
+
+The sessions of one `sleipnir web` server see each other through the `sessions` action, each through the agent the person talks
+to in it (a single agent, or a team's manager), so the managers of several teams can coordinate.
+
+- `list` names every session of the server with its folder, model, mode, team size, state (`starting`, `working`, `waiting` on
+  a question for the person, `idle`, `failed`), its standing goal, the session that started it, and the start of what it said
+  last. `read` returns the newest rows of a session's transcript: the person's messages and steers, its agent's answers, the
+  messages of other sessions and the host's status lines.
+- `send` delivers a message to a session. Its agent reads it as mail from a peer (it starts with `[mail from session `), never
+  as the person's words: it is not kept as the person's instructions through a compaction, runs no prompt hook, does not lift a
+  stop the person asked for, and words that would stop a team when the person writes them stop nothing. The receiver's page shows
+  it as a `✉` row. A session that is idle runs a turn on the message, and the final answer of that turn goes back to the sender
+  as mail; an answer asks for none, so two sessions cannot keep each other busy by answering answers. A session that is working
+  reads the message with its next step, and answers with `send` if it does. A session writes to one other session at most 25
+  times between two messages of its person. The receiver is told that the message is a colleague's request: it answers what is
+  asked, and does work the message asks for only when that work is part of what its own person asked of it; otherwise it says in
+  its answer what the work would take, for its person to decide.
+- `wait` is for an agent that cannot go on without the answer: one call that returns the answer of the session it wrote to when
+  it comes (at most `timeout_sec`, default 300 and at most 600 seconds), or says that none came and what that session is doing.
+  An answer a wait returns starts no turn of its own. An agent that can go on does not wait: the answer reaches it with its next
+  step, or starts a turn of its own after its turn has ended.
+- `spawn` opens a new tab and sends it a first message (whose answer comes back the same way) or a standing goal. The new
+  session has the spawning session's permission mode and allow rules and its model unless `model` names another, and is a team
+  of as many workers unless `workers` says otherwise (a team in a repository works in trees of its own, as the New session
+  dialog's). It works in the spawning session's project or a folder in it, or in another of the server's projects; it trusts
+  the project's own files only in the folder where the spawning session does. A new session that would need more than that is
+  refused: the person starts it from the New session dialog.
+
+`send` and `spawn` are changes of state to the permission engine, as the other actions' changes are; `list` and `read` only
+look. The terminal chat runs one session, so the action says there that sessions that talk run in the web interface.
 
 Built-in plugins are Go: a manifest in `internal/plugin/builtin.go` and an activator registered with the kernel
 (`plugin.NewKernel`), which adds what the plugin contributes and registers, with `Scope.OnDispose`, how to undo it.

@@ -256,13 +256,8 @@ func (s *Session) promptHook(ctx context.Context, first bool, goal string) (stri
 	}
 	var extra []string
 	if first {
-		source := "startup"
-		if s.Resumed() {
-			source = "resume"
-		}
-		res := s.hookAdapter.fire(ctx, hooks.Event{Name: hooks.SessionStart, Agent: s.mainAgent(), Extra: map[string]any{"source": source}})
-		if res.AdditionalContext != "" {
-			extra = append(extra, res.AdditionalContext)
+		if c := s.sessionStartHook(ctx); c != "" {
+			extra = append(extra, c)
 		}
 	}
 	res := s.hookAdapter.fire(ctx, hooks.Event{Name: hooks.UserPromptSubmit, Agent: s.mainAgent(), Extra: map[string]any{"prompt": goal}})
@@ -276,6 +271,18 @@ func (s *Session) promptHook(ctx context.Context, first bool, goal string) (stri
 		return goal, nil
 	}
 	return goal + "\n\n[context from your hooks]\n" + strings.Join(extra, "\n"), nil
+}
+
+// sessionStartHook runs the SessionStart hooks and returns the context they add ("" for none).
+func (s *Session) sessionStartHook(ctx context.Context) string {
+	if s.hooks == nil {
+		return ""
+	}
+	source := "startup"
+	if s.Resumed() {
+		source = "resume"
+	}
+	return s.hookAdapter.fire(ctx, hooks.Event{Name: hooks.SessionStart, Agent: s.mainAgent(), Extra: map[string]any{"source": source}}).AdditionalContext
 }
 
 // agentHooks is the hook adapter as an agent.Hooks, or a true nil when no hooks

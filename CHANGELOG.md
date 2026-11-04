@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The `sleipnir` tool has a `sessions` action: the agent the person talks to
+  in a tab of `sleipnir web` lists the server's other sessions, reads what one
+  said, sends one a message (read as mail, and answered back as mail), waits
+  for an answer and starts new ones (docs/PLUGINS.md). The terminal chat refuses it, as it runs
+  one session. Prompt-cache change: the `sleipnir` tool's description and
+  schema change bytes, so a prefix cached before the upgrade no longer matches
+  the tool layer.
+
 - `sleipnir mcp serve` starts each run with the new `sleipnir run --delegated`.
   A call's `verify` is judged as the run's own shell tool would judge it, so a
   job whose command the run may not execute ends at once with the reason; in
