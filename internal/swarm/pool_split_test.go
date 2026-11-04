@@ -347,10 +347,12 @@ func TestATasklessRunSlowToEndIsAnnouncedOnce(t *testing.T) {
 		r.sw.queueTick(now.Add(tasklessGrace + time.Duration(i)*time.Second))
 	}
 	close(release)
+	// Once the taskless run ends, the queued task may start on the member at once (the pool has one slot), so the member can be
+	// running again before it is seen idle: a run on the queued task shows the taskless run ended as well.
 	rvWait(t, "the taskless run to end", func() bool {
 		be.mu.Lock()
 		defer be.mu.Unlock()
-		return be.life == lifeIdle
+		return be.life == lifeIdle || be.task == next.ID
 	})
 	rvWait(t, "the manager to be told", func() bool { return mailSent(r, be.id+"'s run had no task while "+next.ID+" waited") >= 1 })
 	if n := mailSent(r, be.id+"'s run had no task while "+next.ID+" waited"); n != 1 {
