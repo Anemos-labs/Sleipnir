@@ -24,7 +24,7 @@
   const MARK_CAP = 800, SEG_CAP = 1200;
   /* every list a long stream grows is bounded: the ratios of an agent's requests (the count stays in nreq), the streamed messages still
      open, the answered questions, the anomalies and the compactions (their counts stay in nanom, nloud and ncompactions) */
-  const RATIO_CAP = 400, MID_CAP = 1000, QS_CAP = 300, ANOM_CAP = 500, COMPACT_CAP = 500;
+  const HIST_CAP = 12, RATIO_CAP = 400, MID_CAP = 1000, QS_CAP = 300, ANOM_CAP = 500, COMPACT_CAP = 500;
   /** Push a mark of the gantt (the cap holds for every kind). */
   const addMark = (m, x) => { m.marks.push(x); if (m.marks.length > MARK_CAP) m.marks.splice(0, m.marks.length - MARK_CAP); };
   const capList = (l, n) => { if (l.length > n) l.splice(0, l.length - n); };
@@ -159,7 +159,9 @@
         T.parent = ev.parent || ''; T.poolPhase = ev.poolPhase || ''; T.poolMembers = Array.isArray(ev.poolMembers) ? ev.poolMembers.slice() : []; T.owner = ev.owner || null;   /* a handover moves the card's owner; a released task has none */
         if (ev.title) T.title = ev.title; T.deps = Array.isArray(ev.deps) ? ev.deps.slice() : []; T.scope = ev.scope || '';
         T.closure = ev.closure || ''; T.failed = !!ev.failed; T.attempts = typeof ev.attempts === 'number' ? ev.attempts : 0;
-        T.cost = typeof ev.cost === 'number' && isFinite(ev.cost) && ev.cost > 0 ? ev.cost : 0; T.onPlan = !!ev.plan; T.reqs = typeof ev.reqs === 'number' ? ev.reqs : 0;   /* what the agents that held it spent on it */
+        T.cost = typeof ev.cost === 'number' && isFinite(ev.cost) && ev.cost > 0 ? ev.cost : 0; T.onPlan = !!ev.plan; T.reqs = typeof ev.reqs === 'number' ? ev.reqs : 0;
+        /* its life as stretches (column, owner, from when), oldest first: the card's history strip */
+        T.hist = Array.isArray(ev.hist) ? ev.hist.slice(-HIST_CAP).filter(x => x && typeof x.t === 'number' && typeof x.s === 'string').map(x => ({ t: x.t, s: x.s, owner: typeof x.owner === 'string' ? x.owner : '' })) : [];   /* what the agents that held it spent on it */
         break;
       }
       case 'plan': {

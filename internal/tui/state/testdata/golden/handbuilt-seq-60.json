@@ -310,6 +310,10 @@
         "seq": 16,
         "updated": "2026-01-02T03:04:07Z",
         "since": "2026-01-02T03:04:07Z",
+        "history": [
+          {"at": "2026-01-02T03:04:06.605Z", "state": "todo"},
+          {"at": "2026-01-02T03:04:07Z", "state": "running", "owner": "be-1"}
+        ],
         "cost_usd": 0.024,
         "requests": 2
       },
@@ -325,6 +329,10 @@
         "seq": 19,
         "updated": "2026-01-02T03:04:07.01Z",
         "since": "2026-01-02T03:04:07.01Z",
+        "history": [
+          {"at": "2026-01-02T03:04:06.615Z", "state": "todo"},
+          {"at": "2026-01-02T03:04:07.01Z", "state": "running", "owner": "fe-1"}
+        ],
         "cost_usd": 0.004,
         "requests": 1
       },
@@ -339,6 +347,10 @@
         "seq": 22,
         "updated": "2026-01-02T03:04:07.02Z",
         "since": "2026-01-02T03:04:07.02Z",
+        "history": [
+          {"at": "2026-01-02T03:04:06.625Z", "state": "todo"},
+          {"at": "2026-01-02T03:04:07.02Z", "state": "running", "owner": "sc-1"}
+        ],
         "cost_usd": 0.004,
         "requests": 1
       }

@@ -225,9 +225,12 @@ such as compaction included; `≈` marks usage a subscription plan covered) and 
 Board view ends each task's row with the same figure. A task that cost far more than its neighbours is where the team struggled. An unfinished card ends its owner line with its time in its column (`12m`; since it last changed column, failed or changed
 hands, at the view clock, so a replay shows the age it had then), and a card says its state at a glance: a running task whose owner is
 thinking, calling a tool or editing right now has a pulsing dot in its owner's colour and a glow around it, a task the stall detector
-raised something about has an amber ring, and a failed task a red one. On the Board view, under its title, a failed card says why in
+raised something about has a dashed amber edge and a `⚠` (dashed, since an owner whose colour is amber glows amber), and a failed task a red edge. On the Board view, under its title, a failed card says why in
 words (`✗ verification kept failing`, `✗ replaced by T7`, `✗ out of attempts (4): its workers kept stopping`) and a stalled one what
-the detector said (`⚠ no edit in 10 minutes`). Past eight merged tasks, the merged column is one line per task (id, owner, title, time of the merge), the newest merge
+the detector said (`⚠ no edit in 10 minutes`). On the Board view a task that has moved also has a history strip under its title: one segment per stretch of its
+life (a column and who held it), as wide as it lasted, a running stretch in its owner's colour and a failed one red, each naming its
+column, owner and time on hover, then `↩ 2` when its work was sent back to an earlier column twice. The server keeps the newest twelve
+stretches of each task, so a reload or a replay draws the same strip; the terminal's Board view ends the task's row with the same `↩2`. Past eight merged tasks, the merged column is one line per task (id, owner, title, time of the merge), the newest merge
 first, and an empty column is drawn narrower. The Cockpit's merge queue names the twelve newest merges and counts the earlier ones.
 The Board view's dependency graph draws every task when they fit its panel; otherwise the merged tasks that no unfinished task waits
 on are one node (`✓ 118 merged`), a column taller than the panel is wrapped into several, and a graph that still does not fit is

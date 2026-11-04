@@ -58,7 +58,9 @@ const (
 	MaxNotes  = 256
 	// MaxFiles bounds the files named on one task, merge entry or scope; MaxDeps the dependencies of a task.
 	MaxFiles = 16
-	MaxDeps  = 16
+	// MaxStretches is how many stretches of its life a task keeps (Task.History): the newest.
+	MaxStretches = 12
+	MaxDeps      = 16
 	// MaxUnknownTypes bounds the event types counted by name in Stats.Unknown.
 	MaxUnknownTypes = 64
 )
