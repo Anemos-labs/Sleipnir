@@ -39,6 +39,19 @@
   {"name":"json","arg":"bool","default":null,"repeatable":false,"desc":"print the effective configuration as JSON"},
   {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"apply security-sensitive settings from project files"}
  ]},
+{"path":["council"],"usage":"sleipnir council [flags] SCREENSHOT...","summary":"sleipnir council --model M [--model M...] SCREENSHOT... asks a council of models that see images to score screenshots of a user interface from 1 to 10 in each category (--categories; by default hierarchy, typography,...","positional":[{"name":"SCREENSHOT","required":true,"desc":"the screenshots of the candidate (PNG, JPEG, WebP or GIF)","variadic":true}],"source":"docs/CLI.md § sleipnir council","mode":"net","when":[{"flag":"trust-project","mode":"priv"}],"flags":[
+  {"name":"beat-refs","arg":"bool","default":null,"repeatable":false,"desc":"also require every member to rate the candidate above every reference on average"},
+  {"name":"categories","arg":"string","default":"hierarchy,typography,color and contrast,spacing and layout,consistency,iconography,clarity,polish","repeatable":false,"desc":"the categories every member scores from 1 to 10, comma-separated"},
+  {"name":"json","arg":"bool","default":null,"repeatable":false,"desc":"print the round as JSON"},
+  {"name":"ledger","arg":"string","default":".sleipnir/council/rounds.jsonl","repeatable":false,"desc":"the file each round is appended to, and the climb is read from"},
+  {"name":"model","arg":"string","default":null,"repeatable":true,"desc":"a council member, provider/model of a model that sees images (repeat, or separate with commas; with --staged, in the order they are asked)"},
+  {"name":"product","arg":"string","default":null,"repeatable":false,"desc":"what the product is and who uses it: what good design means depends on it"},
+  {"name":"ref","arg":"string","default":null,"repeatable":true,"desc":"a reference scored beside the candidate on the same scale, NAME=PATH[,PATH...]: a competitor, or the previous version (repeat)"},
+  {"name":"staged","arg":"bool","default":null,"repeatable":false,"desc":"ask each member only once every member before it rated the candidate at the target in every category"},
+  {"name":"target","arg":"float","default":9,"repeatable":false,"desc":"the score every member must give the candidate in every category"},
+  {"name":"timeout","arg":"duration","default":"5m0s","repeatable":false,"desc":"how long one member may take to answer; one that has not is a missing vote"},
+  {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"read the project's own config file, including its provider settings"}
+ ]},
 {"path":["daemon"],"usage":"sleipnir daemon [flags]","summary":"Starts the scheduled goals that are due, one at a time, looking every half minute; --once starts what is due now and exits.","positional":[],"source":"docs/CLI.md § sleipnir daemon","mode":"server","why":"it runs until it is stopped; the Schedule view starts and stops the daemon of this page","flags":[
   {"name":"every","arg":"duration","default":"30s","repeatable":false,"desc":"how often to look for due jobs"},
   {"name":"once","arg":"bool","default":null,"repeatable":false,"desc":"start what is due now, wait for it, and exit (for cron or a systemd timer)"}
