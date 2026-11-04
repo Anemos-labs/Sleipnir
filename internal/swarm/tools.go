@@ -319,9 +319,9 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			s.review.noteResumed(rt.ID, rt.Rev, s.deps.Now())
 		}
 		if !isMgr {
-			// A task blocked in an earlier run is not among this run's assignments: resuming it makes it one, as a claim does, so
-			// that a stop of the run (the person's, or the harness's on this very task) returns it too.
-			s.trackClaim(me, in.ID)
+			// A task blocked in an earlier run is not among this run's assignments: resuming it makes it one, so that a stop of
+			// the run (the person's, or the harness's on this very task) returns it too.
+			s.trackResumed(me, in.ID)
 		}
 		if s.isolated() {
 			return text("%s resumed%s", in.ID, s.afterResume(ctx, me, isMgr, in.ID)), nil

@@ -294,3 +294,37 @@ func TestAStopReturnsATaskResumedDuringTheRun(t *testing.T) {
 		}
 	}
 }
+
+// Resuming the task the worker already holds keeps that assignment as it is: the count of runs peer mail started for it is
+// not reset, so a worker that blocks and resumes its task cannot get past the bound on mail wakes.
+func TestResumingTheHeldTaskKeepsItsMailWakeCount(t *testing.T) {
+	cfg := stallCfg()
+	cfg.StallTurns = 100
+	r := newRVRigWith(t, cfg, gatedWorkers(nil), nil)
+	r.sw.StartManager()
+	id, task := spawnWorker(t, r, "write the README", 1)
+	m := r.sw.get(id)
+	m.mu.Lock()
+	m.mailWakes, m.wakeLimited = 1, true
+	m.mu.Unlock()
+	if err := r.sw.Board.BlockOn(id, task.ID, "", "waits for the features"); err != nil {
+		t.Fatal(err)
+	}
+	tool := secRevTool(t, r.sw, "task")
+	if res := secRevCall(t, tool, id, "backend", map[string]any{"action": "resume", "id": task.ID}); res.IsError {
+		t.Fatal(res.Text)
+	}
+	m.mu.Lock()
+	wakes, limited := m.mailWakes, m.wakeLimited
+	m.mu.Unlock()
+	if wakes != 1 || !limited {
+		t.Fatalf("after the resume the mail wake count is %d (limited %v), want 1 (limited true)", wakes, limited)
+	}
+	if _, err := r.sw.StopAgent(id); err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, id+" to stop", func() bool { return r.idle(id) })
+	if got, _ := r.sw.Board.Snapshot().Task(task.ID); got.Status != StatusTodo || got.Owner != "" {
+		t.Errorf("after the stop %s is %s, owned by %q", task.ID, got.Status, got.Owner)
+	}
+}
