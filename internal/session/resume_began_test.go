@@ -48,3 +48,21 @@ func TestTrackBeganLeavesOutTheTimeATaskWaitedBlocked(t *testing.T) {
 		t.Fatalf("a block before a requeue moved the new start: %v, want %v", got, at(57))
 	}
 }
+
+// A task still blocked when the team stopped waits until the resume puts it back on the board: a later restart does not count
+// that wait as work.
+func TestTrackBeganEndsABlockAtTheResumeOfTheRun(t *testing.T) {
+	at := func(m int) time.Time { return time.Date(2026, 11, 3, 21, m, 0, 0, time.UTC) }
+	began, blocked := map[string]time.Time{}, map[string]time.Time{}
+	trackBegan(began, blocked, "assign", "T6", "doing", "", nil, at(0))
+	trackBegan(began, blocked, "block", "T6", "blocked", "waits for T5", nil, at(10))
+	trackBegan(began, blocked, "requeue", "", "", swarm.ResumedLine, []string{"T6"}, at(40))
+	trackBegan(began, blocked, "assign", "T6", "doing", "", nil, at(41))
+	trackBegan(began, blocked, "requeue", "", "", swarm.ResumedLine, []string{"T6"}, at(50))
+	if got := began["T6"]; !got.Equal(at(30)) {
+		t.Fatalf("T6 began at %v, want %v: the 30 minute wait before the first resume counted as work", got, at(30))
+	}
+	if _, ok := blocked["T6"]; ok {
+		t.Fatal("the block outlived the resume")
+	}
+}

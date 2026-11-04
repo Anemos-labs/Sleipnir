@@ -475,17 +475,26 @@ func (s *Session) CheckResume(spec string) error {
 // trackBegan keeps, from one board op of the log (logged at ts), when each task's current assignment was first started. A requeue
 // puts work back on the board, so the next assignment starts afresh: one task's, or a worker's tasks released together
 // (RequeueOwned). A resume's own requeue (swarm.ResumedLine) is not one: the work it puts back is the work in flight, which keeps
-// its start. The time a task waited blocked is not the work's: its resume moves the start on by it, as the review gate does.
+// its start. The time a task waited blocked is not the work's: its resume, or a resume of the run that puts it back on the board,
+// moves the start on by it, as the review gate does.
 func trackBegan(began, blocked map[string]time.Time, op, task, status, line string, tasks []string, ts time.Time) {
 	if op == "requeue" {
 		if task != "" {
 			delete(began, task)
 			delete(blocked, task)
 		}
-		if line != swarm.ResumedLine {
-			for _, id := range tasks {
+		for _, id := range tasks {
+			if line != swarm.ResumedLine {
 				delete(began, id)
 				delete(blocked, id)
+				continue
+			}
+			// The resume puts a blocked task back on the board: its wait ended there, and the work keeps its start.
+			if since, ok := blocked[id]; ok {
+				delete(blocked, id)
+				if b, ok := began[id]; ok && ts.After(since) {
+					began[id] = b.Add(ts.Sub(since))
+				}
 			}
 		}
 	}
