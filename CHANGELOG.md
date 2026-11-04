@@ -7,6 +7,19 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Images reach every dialect: an image stored in the blob store (the read tool,
+  an MCP result, a picture attached in the web composer) is sent as a data URL,
+  scaled down past 1568 pixels or about 3.7 MB, and on Chat Completions and
+  Responses the image a tool returned follows its results in the turn's user
+  message. A request carries at most `cache.attached_images` images (default 1),
+  the newest of the current run; every other image is replaced in the thread by
+  a description written for it in a side request of its own (the `vision` role's
+  model, else the agent's), so a message with many images is split into one
+  description request per extra image. An endpoint that refuses images gets the
+  request again with every image described. Prompt-cache change: retiring an
+  image rewrites the thread from that image on as a declared rebase, so the
+  cache misses once from there (docs/CACHE-DESIGN.md, Images).
+
 - The `sleipnir` tool has a `sessions` action: the agent the person talks to
   in a tab of `sleipnir web` lists the server's other sessions, reads what one
   said, sends one a message (read as mail, and answered back as mail), waits

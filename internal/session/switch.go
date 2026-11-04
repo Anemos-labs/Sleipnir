@@ -180,6 +180,13 @@ func (s *Session) RoleModels() []RoleModel {
 		}
 		out = append(out, RoleModel{FallbackRole, ref, from})
 	}
+	if ref := s.roleRef(VisionRole); ref != "" {
+		from := "models.roles"
+		if s.opts.RoleModels[VisionRole] != "" {
+			from = "--role-model"
+		}
+		out = append(out, RoleModel{VisionRole, ref, from})
+	}
 	for _, role := range []string{EmbedderRole, RerankerRole} {
 		if ref := s.roleRef(role); ref != "" {
 			from := "models.roles"

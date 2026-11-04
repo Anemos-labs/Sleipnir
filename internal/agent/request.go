@@ -31,7 +31,7 @@ const maxAttempts = 6
 // caller can tell whether the response's thinking is still bound to the thread
 // it is appended to.
 func (a *Agent) request(ctx context.Context) (*provider.Response, uint64, error) {
-	retriedContext, retriedBinding := false, false
+	retriedContext, retriedBinding, retriedImages := false, false, false
 	effortRetries := 0
 	var opt reqOpt
 	for {
@@ -63,6 +63,12 @@ func (a *Agent) request(ctx context.Context) (*provider.Response, uint64, error)
 			// binding. Removing all thinking is always allowed: strip it durably (a
 			// declared rebase, not a render-time toggle that would flip back) and
 			// try once more, asking the endpoint to drop rather than reject if it can.
+			// An endpoint that refuses the prompt's images is sent it again with every image described in text.
+			case !retriedImages && imageRefusal(pe):
+				retriedImages = true
+				if a.refuseImages(ctx, pe) {
+					continue
+				}
 			case pe.Kind == provider.ErrThinkingBinding && !retriedBinding:
 				retriedBinding = true
 				if a.recoverBinding(pe) {
@@ -600,6 +606,11 @@ func (a *Agent) call(ctx context.Context, req *provider.Request, prio int, on fu
 // callOn is call on a named provider: the compactor's, when the session gives it a model of its own.
 // reached is the endpoint's flag of having answered (Agent.reached): nil for another endpoint than the agent's own.
 func (a *Agent) callOn(ctx context.Context, prov provider.Provider, req *provider.Request, prio int, on func(provider.Event), reached *atomic.Bool) (*provider.Response, error) {
+	if mp := a.withMedia(req.Prompt); mp != req.Prompt {
+		r := *req
+		r.Prompt = mp
+		req = &r
+	}
 	var last error
 	var failed time.Time // when the request first failed: OutagePatience counts from there
 	announced := -1      // the half-minute of waiting that the last notice of the patient phase was made in

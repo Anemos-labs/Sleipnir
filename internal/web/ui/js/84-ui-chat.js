@@ -14,7 +14,30 @@
   const FEED_G = { tool: '⚙', edit: '✎', done: '✓', mail: '✉', ask: '?', steer: '⤷', x: '⊘' };
   const TOOL_GLYPH = n => /^(Write|Edit)$/.test(String(n)) ? '✎' : '⚙';
   const WORDS = { think: 'thinking', tool: 'running a tool', edit: 'editing', wait: 'waiting', ask: 'asking you', idle: 'idle', done: 'done', stuck: 'stuck' };
-  const chip = t => esc(t).replace(/\[pasted text #\d+ \+\d+ lines\]/g, m => '<span class="pastechip">' + m + '</span>');
+  const pasteChips = t => esc(t).replace(/\[pasted text #\d+ \+\d+ lines\]/g, m => '<span class="pastechip">' + m + '</span>');
+  /** An image a person attached, as a message carries it ([[image:REF|name]], agent.ImageToken). */
+  const IMG_TOK = /\[\[image:([0-9a-f]{64})(?:\|([^\]\n]{0,200}))?\]\]/g;
+  /** The picture of an attached image in the person's row: served by the session (GET /images/{ref}); the name stays as a chip. */
+  function imgHtml(S, ref, name) {
+    const label = '<span class="pastechip">image' + (name ? ': ' + esc(name) : '') + '</span>';
+    if (!S || S.id == null || S.id === '' || S.placeholder || !SL.api) return label;
+    return '<span class="uimg"><img src="' + esc(SL.api.tab(S.id) + '/images/' + ref) + '" alt="' + esc(name || 'attached image') + '" loading="lazy" decoding="async">' + label + '</span>';
+  }
+  /** A person's text with its paste chips, and its attached images as pictures. */
+  const chip = (t, S) => {
+    t = String(t == null ? '' : t); let out = '', last = 0, imgs = '';
+    t.replace(IMG_TOK, (m0, ref, name, i) => { out += pasteChips(t.slice(last, i)); imgs += imgHtml(S, ref, name); last = i + m0.length; return m0; });
+    out += pasteChips(t.slice(last));
+    return imgs ? out.replace(/\s+$/, '') + '<span class="uimgs">' + imgs + '</span>' : out;
+  };
+  ui.imageChips = chip;
+  /* an attached picture opens at full size; one the session no longer has leaves its name chip */
+  if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') document.addEventListener('click', e => {
+    const im = e.target && e.target.closest && e.target.closest('.uimg img'); if (!im || !ui.modal) return;
+    ui.modal({ title: im.alt || 'Attached image', kicker: 'image', desc: 'as attached to the message (the model reads its description once it is no longer attached)', wide: true, cls: 'uimgdlg',
+      body: '<img class="uimg-full" src="' + esc(im.getAttribute('src')) + '" alt="' + esc(im.alt) + '">' });
+  });
+  if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') document.addEventListener('error', e => { const t = e.target; if (t && t.tagName === 'IMG' && t.closest && t.closest('.uimg')) t.remove(); }, true);
   const hms = ms => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0'); };
   /** The time of day of an entry or event: its real time when the server sent one (`at`, history), else the session's start plus t. */
   const todAt = (S, e) => e && e.at ? hms(e.at) : tod(S.meta.t0, e ? e.t : 0);
@@ -78,7 +101,7 @@
   function rowHtml(e, S, m) {
     const T = todAt(S, e), at = ' data-ag="' + esc(e.ag || '') + '"' + (e.task ? ' data-task="' + esc(e.task) + '"' : '');
     switch (e.k) {
-      case 'you': return '<div class="msg you" data-ag="you"><div class="who">You <time>' + T + '</time></div><span class="' + (e.text.charAt(0) === '/' ? 'code' : '') + '">' + chip(e.text) + '</span></div>';
+      case 'you': return '<div class="msg you" data-ag="you"><div class="who">You <time>' + T + '</time></div><span class="' + (e.text.charAt(0) === '/' ? 'code' : '') + '">' + chip(e.text, S) + '</span></div>';
       case 'say': { const who = e.ag === 'mgr' ? 'Manager' : e.ag, col = agCol(e.ag); return '<div class="msg ' + (e.ag === 'mgr' ? 'mgr' : 'agsay') + '"' + at + ' style="--c:' + col + '"><div class="who">' + esc(who) + ' <time>' + T + '</time></div><div class="mt md" ' + (e.stream ? 'data-full="' + esc(e.text) + '" data-t0="' + nm(e.t) + '" data-rate="' + nm(e.rate, 70) + '"' : '') + '>' + (e.stream ? '' : prose(e.text)) + '</div></div>'; }
       case 'sys': return '<div class="msg sys"' + (e.ag ? at : '') + '><span class="sg">' + esc(e.glyph || '◇') + '</span><span>' + esc(e.text) + (e.plan ? ' <span class="dim">' + nm(S.plan.length) + ' steps, see Goal plan</span>' : '') + (own(OPEN, e.open) ? ' <button class="btn sm" type="button" data-open-page="' + esc(e.open) + '">' + esc(OPEN[e.open]) + '</button>' : '') + '</span></div>';
       case 'tool': {
@@ -283,7 +306,45 @@
     sc.listen(planBox, 'click', e => { if (e.target.closest('#planTgl')) { const S = SL.sessions.active; S.ui.planOpen = !S.ui.planOpen; planBox._h = ''; renderPlan(S, S.m); } });
 
     /* ---------- composer ---------- */
-    const inp = $('#input'), form = $('#composer'), SLASH = { open: false, items: [], idx: 0, mode: 'cmd' }, slashEl = $('#slash'), RS = { pasted: [], hi: -1 };
+    const inp = $('#input'), form = $('#composer'), SLASH = { open: false, items: [], idx: 0, mode: 'cmd' }, slashEl = $('#slash'), RS = { pasted: [], hi: -1, imgs: [] };
+    /* ---------- attached images: pasted, dropped or picked; each is stored by the session and travels in the message as a token ---------- */
+    const strip = $('#imgStrip'), IMG_CHIP = /\[image #(\d+)(?:: [^\]\n]*)?\]/g, MAX_IMG = 20 * 1024 * 1024;
+    /** The message as sent: every image chip of the composer becomes the token of its stored picture (a chip whose upload failed
+     *  or is still running is dropped). */
+    const withImages = (v, imgs) => v.replace(IMG_CHIP, (m0, n) => { const it = imgs[+n - 1]; return it && it.token ? it.token : it ? '' : m0; });
+    function paintStrip() {
+      const live = RS.imgs.filter(it => it && inp.value.indexOf('[image #' + it.n) >= 0);
+      strip.hidden = !live.length;
+      strip.innerHTML = live.map(it => '<span class="ith' + (it.token ? '' : ' up') + (it.err ? ' err' : '') + '" title="' + esc(it.err || it.name) + '"><img src="' + esc(it.url) + '" alt=""><span>#' + it.n + '</span><button type="button" data-irm="' + it.n + '" aria-label="Remove image ' + it.n + '">×</button></span>').join('');
+    }
+    /** Store one picture with the session and put its chip at the caret. */
+    function attachFile(f) {
+      const S = SL.sessions.active; if (!S || S.readOnly || S.placeholder) { ui.toast('start a session first: images are stored with it', 'warm'); return; }
+      if (!/^image\/(png|jpeg|gif|webp)$/.test(f.type)) { ui.toast('only PNG, JPEG, GIF and WebP images can be attached', 'warm'); return; }
+      if (f.size > MAX_IMG) { ui.toast(f.name + ' is larger than 20 MB', 'warm'); return; }
+      const n = RS.imgs.length + 1, name = (f.name && f.name !== 'image.png' ? f.name : 'pasted-' + n + '.' + f.type.split('/')[1]).replace(/[\]|\n]/g, ''), it = { n, name, url: URL.createObjectURL(f) };
+      RS.imgs.push(it);
+      const tag = '[image #' + n + ': ' + name + ']', pos = inp.selectionStart, pre = inp.value.slice(0, pos);
+      inp.setRangeText((pre && !/\s$/.test(pre) ? ' ' : '') + tag + ' ', inp.selectionStart, inp.selectionEnd, 'end'); autosize(); S.ui.draft = inp.value; paintStrip();
+      const rd = new FileReader();
+      rd.onload = () => {
+        const data = String(rd.result || '').replace(/^data:[^,]*,/, '');
+        SL.api.post(SL.api.tab(S.id) + '/images', { name, data }, { timeout: 120000 }).then(r => {
+          if (r && r.ok && r.data && r.data.token) it.token = r.data.token; else { it.err = (r && r.message) || 'the image could not be stored'; ui.toast(name + ': ' + it.err, 'warm'); }
+          paintStrip();
+        });
+      };
+      rd.onerror = () => { it.err = 'the image could not be read'; paintStrip(); };
+      rd.readAsDataURL(f);
+    }
+    sc.listen($('#attachBtn'), 'click', () => $('#imgPick').click());
+    sc.listen($('#imgPick'), 'change', e => { Array.from(e.target.files || []).forEach(attachFile); e.target.value = ''; inp.focus(); });
+    sc.listen(strip, 'click', e => { const b = e.target.closest('[data-irm]'); if (!b) return; const n = b.dataset.irm; inp.value = inp.value.replace(new RegExp('\\s?\\[image #' + n + '(?:: [^\\]\\n]*)?\\]'), ''); autosize(); paintStrip(); inp.focus(); });
+    sc.listen(form, 'dragover', e => { if (e.dataTransfer && Array.from(e.dataTransfer.types || []).indexOf('Files') >= 0) { e.preventDefault(); form.classList.add('drop'); } });
+    sc.listen(form, 'dragleave', () => form.classList.remove('drop'));
+    sc.listen(form, 'drop', e => { form.classList.remove('drop'); const fs = e.dataTransfer && Array.from(e.dataTransfer.files || []).filter(f => /^image\//.test(f.type)); if (fs && fs.length) { e.preventDefault(); fs.forEach(attachFile); inp.focus(); } });
+    /** Whether every image of the composer's text is stored (a send waits for nothing: it is refused with a toast until then). */
+    const imagesPending = v => { let busy = false; v.replace(IMG_CHIP, (m0, n) => { const it = RS.imgs[+n - 1]; if (it && !it.token && !it.err) busy = true; return m0; }); return busy; };
     const autosize = () => { inp.style.height = 'auto'; inp.style.height = Math.min(120, inp.scrollHeight) + 'px'; };
     /** A queued line: its text and, once the server has it, Send now (a message only: it steers the running turn), Edit (takes it out and
      *  puts it back in the composer) and × (takes it out). An action of the session (a goal change) has no buttons: it stays. */
@@ -313,9 +374,10 @@
       const S = SL.sessions.active, v = inp.value.trim(); if (!S || !v) return;
       if (!turnBusy(S) || S.readOnly) { submit(); return; }
       if (v.charAt(0) === '/') { ui.toast('a command cannot steer: Enter queues it', 'warm'); return; }
-      const pasted = RS.pasted.slice(), full = v.replace(/\[pasted text #(\d+) \+\d+ lines\]/g, (m0, n) => pasted[+n - 1] != null ? pasted[+n - 1] : m0);
+      if (imagesPending(v)) { ui.toast('an image is still being stored: send again in a moment', 'warm'); return; }
+      const pasted = RS.pasted.slice(), full = withImages(v, RS.imgs).replace(/\[pasted text #(\d+) \+\d+ lines\]/g, (m0, n) => pasted[+n - 1] != null ? pasted[+n - 1] : m0);
       const r = SL.act.steer('mgr', full); if (!r || r.ok === false) { if (r && r.why) ui.toast(r.why, 'warm'); return; }
-      inp.value = ''; S.ui.draft = ''; autosize(); closeSlash(); RS.pasted = []; RS.hi = -1; if (S.hist[S.hist.length - 1] !== v) S.hist.push(v);
+      inp.value = ''; S.ui.draft = ''; autosize(); closeSlash(); RS.pasted = []; RS.imgs = []; paintStrip(); RS.hi = -1; if (S.hist[S.hist.length - 1] !== v) S.hist.push(v);
       r.done.then(res => { if (res && res.ok === false) restore(S, v, pasted); });
     }
     /* while a turn runs the hint says what Enter and Ctrl+Enter do: short in the bar, the whole sentence in its title */
@@ -345,22 +407,24 @@
       closeSlash(); if (run && !c.args) { inp.value = ''; SL.palette.run(c, ''); } else { inp.value = c.name + ' '; inp.focus(); }
     }
     /** Put a line that was not sent back into the composer (when nothing new was typed there meanwhile), with its pasted text. */
-    function restore(S, v, pasted) { if (S !== SL.sessions.active || inp.value.trim()) return false; inp.value = v; S.ui.draft = v; RS.pasted = pasted; autosize(); return true; }
+    function restore(S, v, pasted, imgs) { if (S !== SL.sessions.active || inp.value.trim()) return false; inp.value = v; S.ui.draft = v; RS.pasted = pasted; if (imgs) { RS.imgs = imgs; paintStrip(); } autosize(); return true; }
     function submit() {
       const S = SL.sessions.active; let v = inp.value.trim(); if (!v) return;
       /* a replay never changes the session: the line stays in the composer */
       if (v.charAt(0) !== '/' && S.replay) { ui.toast('go live to talk: a replay never changes the session (the line is kept)', 'warm'); return; }
-      const pasted = RS.pasted.slice(); inp.value = ''; S.ui.draft = ''; autosize(); closeSlash(); RS.pasted = []; RS.hi = -1; if (S.hist[S.hist.length - 1] !== v) S.hist.push(v);
+      if (v.charAt(0) !== '/' && imagesPending(v)) { ui.toast('an image is still being stored: send again in a moment', 'warm'); return; }
+      const imgs = RS.imgs.slice(), vs = v.charAt(0) !== '/' ? withImages(v, imgs).trim() : v;
+      const pasted = RS.pasted.slice(); inp.value = ''; S.ui.draft = ''; autosize(); closeSlash(); RS.pasted = []; RS.imgs = []; paintStrip(); RS.hi = -1; if (S.hist[S.hist.length - 1] !== v) S.hist.push(v);
       /* a slash line that is an action of the session (/goal TEXT) comes back into the composer when it is refused, as a message does */
-      if (v.charAt(0) === '/') { const r = SL.palette.runLine(v); if (r && r.ok === false) restore(S, v, pasted); else if (r && r.done) r.done.then(res => { if (res && res.ok === false && res.code !== 'aborted' && !restore(S, v, pasted)) ui.toast('not sent: ' + clip1(v, 60) + ' (↑ brings it back)', 'warm'); }); return; }
+      if (v.charAt(0) === '/') { const r = SL.palette.runLine(v); if (r && r.ok === false) restore(S, v, pasted, imgs); else if (r && r.done) r.done.then(res => { if (res && res.ok === false && res.code !== 'aborted' && !restore(S, v, pasted, imgs)) ui.toast('not sent: ' + clip1(v, 60) + ' (↑ brings it back)', 'warm'); }); return; }
       /* the agent gets the pasted text; the transcript keeps the chips */
-      const full = v.replace(/\[pasted text #(\d+) \+\d+ lines\]/g, (m0, n) => pasted[+n - 1] != null ? pasted[+n - 1] : m0);
+      const full = vs.replace(/\[pasted text #(\d+) \+\d+ lines\]/g, (m0, n) => pasted[+n - 1] != null ? pasted[+n - 1] : m0);
       const off = !!deliveryBlock(S), delivery = { autoFix: !off && !!$('#autoFixCI').checked, autoMerge: !off && !!$('#autoMergePR').checked };
-      const r = SL.act.send(v, undefined, Object.assign({ text: full }, delivery));
+      const r = SL.act.send(vs, undefined, Object.assign({ text: full }, delivery));
       if (r && r.ok !== false) { S.ui.delivery = {}; $('#autoFixCI').checked = false; $('#autoMergePR').checked = false; }
       /* until the server took it, the line is not gone: refused, it comes back into the composer */
-      if (r && r.ok === false) { restore(S, v, pasted); if (r.why) ui.toast(r.why, 'warm'); }
-      else if (r && r.done) r.done.then(res => { if (res && res.ok === false && res.code !== 'aborted') { const back = restore(S, v, pasted); if (back) { S.ui.delivery = delivery; $('#autoFixCI').checked = delivery.autoFix; $('#autoMergePR').checked = delivery.autoMerge; } if (!back) ui.toast('not sent: ' + clip1(v, 60) + ' (↑ brings it back)', 'warm'); } });
+      if (r && r.ok === false) { restore(S, v, pasted, imgs); if (r.why) ui.toast(r.why, 'warm'); }
+      else if (r && r.done) r.done.then(res => { if (res && res.ok === false && res.code !== 'aborted') { const back = restore(S, v, pasted, imgs); if (back) { S.ui.delivery = delivery; $('#autoFixCI').checked = delivery.autoFix; $('#autoMergePR').checked = delivery.autoMerge; } if (!back) ui.toast('not sent: ' + clip1(v, 60) + ' (↑ brings it back)', 'warm'); } });
       composerUpdate(S);
     }
     ['autoFixCI','autoMergePR'].forEach(id => sc.listen($('#'+id), 'change', () => { const S = SL.sessions.active; if (S) S.ui.delivery = { autoFix: !!$('#autoFixCI').checked, autoMerge: !!$('#autoMergePR').checked }; }));
@@ -389,7 +453,7 @@
     }
     sc.listen(form, 'click', e => { if (e.target.closest('[data-dlv="plugins"]')) { e.preventDefault(); if (ui.nav) { $('#app').dataset.pv = 'main'; ui.nav.go('plugins'); } else SL.views.show('plugins'); } });
     sc.on('plugins-changed', () => { DLV.sig = ''; const S = SL.sessions.active; if (S) paintDelivery(S); });
-    sc.listen(inp, 'input', () => { autosize(); SL.time.noteKey(); updateSlash(); const S = SL.sessions.active; if (S) S.ui.draft = inp.value; });
+    sc.listen(inp, 'input', () => { autosize(); SL.time.noteKey(); updateSlash(); if (RS.imgs.length) paintStrip(); const S = SL.sessions.active; if (S) S.ui.draft = inp.value; });
     sc.listen(inp, 'keydown', e => {
       SL.time.noteKey();
       if (SLASH.open) {
@@ -414,7 +478,10 @@
         if (e.key === 'ArrowUp' && atTop && h.length) { e.preventDefault(); RS.hi = Math.min(h.length - 1, RS.hi + 1); inp.value = h[h.length - 1 - RS.hi]; autosize(); } else if (e.key === 'ArrowDown' && atEnd && RS.hi >= 0) { e.preventDefault(); RS.hi--; inp.value = RS.hi < 0 ? '' : h[h.length - 1 - RS.hi]; autosize(); }
       }
     });
-    sc.listen(inp, 'paste', e => { const t = (e.clipboardData || window.clipboardData || { getData() { return ''; } }).getData('text'), n = t.split('\n').length; if (n >= 5) { e.preventDefault(); RS.pasted.push(t); inp.setRangeText('[pasted text #' + RS.pasted.length + ' +' + n + ' lines]', inp.selectionStart, inp.selectionEnd, 'end'); autosize(); } });
+    sc.listen(inp, 'paste', e => {
+      const items = Array.from((e.clipboardData && e.clipboardData.items) || []).filter(x => x.kind === 'file' && /^image\//.test(x.type));
+      if (items.length) { e.preventDefault(); items.forEach(x => { const f = x.getAsFile(); if (f) attachFile(f); }); return; }
+      const t = (e.clipboardData || window.clipboardData || { getData() { return ''; } }).getData('text'), n = t.split('\n').length; if (n >= 5) { e.preventDefault(); RS.pasted.push(t); inp.setRangeText('[pasted text #' + RS.pasted.length + ' +' + n + ' lines]', inp.selectionStart, inp.selectionEnd, 'end'); autosize(); } });
     sc.listen(form, 'submit', e => { e.preventDefault(); submit(); });
     ui.setDraft = v => { inp.value = v; autosize(); inp.focus(); };
     ui.composeFocus = () => inp.focus();
