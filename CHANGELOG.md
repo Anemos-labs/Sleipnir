@@ -7,6 +7,19 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A manager that only reads while the team waits is told what to do next, on
+  the result of its third read-only call in a row (and every third after): the
+  submissions waiting for its decision, with the `task accept` calls to make;
+  else the ready tasks a free slot or an idle member could start, with the
+  `spawn` calls to make; else, after six such calls on an empty board with the
+  whole team idle, to hand the reading to a scout or to tasks. A shell
+  command counts when it only reads or re-runs the checks. Any other call
+  starts the count again, except plan, memory, skill and sleipnir calls, which
+  leave it as it is. No prompt bytes change: the line rides on tool results.
+- A tool argument declared a list of strings that a model sends as one string
+  reaches the tool as a list: a JSON array written as text is that array, any
+  other string a list of that one string. It was refused before ("files is not
+  an array"). The thread keeps the call as the model wrote it.
 - The state the harness keeps (sessions, scratch, worktrees, RL work) is in
   one data directory, `$SLEIPNIR_HOME`, else `~/.sleipnir`; settings,
   credentials, notes, teams and plugins stay in `~/.sleipnir`. The worktrees of isolated teams move there

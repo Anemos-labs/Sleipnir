@@ -228,6 +228,9 @@ func (a *Agent) runOne(ctx context.Context, call core.Block) (out core.Block, ex
 		res.Meta = withErrorKind(res.Meta, ErrKindUnknownTool)
 		return
 	}
+	if in, ok := tools.CoerceLists(t.Spec().InputSchema, call.Input); ok {
+		call.Input = in // a list of one sent as the item, or as its JSON text (see tools.CoerceLists)
+	}
 	hc := ToolHookCall{Agent: a.cfg.ID, Role: a.cfg.Role, Tool: name, Input: call.Input, Env: a.env()}
 	var hookText []string
 	if h := a.cfg.Hooks; h != nil {

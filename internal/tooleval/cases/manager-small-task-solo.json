@@ -41,14 +41,30 @@
   ],
   "board": "<live board=\"v2\">\nyou: mgr (manager)\ntasks:\n  T1 todo \"Scaffold the Go module and the ledgerly command\"\nboard: 1 open, 0 done\nteam: architect 0/1 · backend 0/3 · tester 0/1 · reviewer 0/1\n6 free slot(s) (architect, backend, tester, reviewer), 1 ready task(s) with no owner: start workers (spawn), in parallel where the tasks are independent\n</live>",
   "expect": {
-    "all": [
+    "any": [
+      {
+        "tool": "spawn",
+        "args": {
+          "task": "^T1$"
+        },
+        "why": "start the scaffold everything else builds on"
+      },
+      {
+        "tool": "task",
+        "args": {
+          "action": "^create$"
+        },
+        "why": "or create the rest of the tasks first"
+      }
+    ],
+    "none": [
       {
         "tool": "spawn",
         "args": {
           "task": "^T1$",
-          "solo": true
+          "solo": "^(false)?$"
         },
-        "why": "a scaffold is small work with one owner: a pool's rounds of votes only delay it"
+        "why": "a scaffold is small work with one owner: without solo=true the role's pool plans it in rounds of votes"
       }
     ]
   }

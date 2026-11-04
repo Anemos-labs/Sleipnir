@@ -253,6 +253,8 @@ type holdHooks struct {
 	noted   map[string]bool
 	// handed are the top-level directories a manager's edit has carried the free-slot line about (handoffLine).
 	handed map[string]bool
+	// looked is how many looking calls the manager has made in a row (lookLine).
+	looked int
 }
 
 var (
@@ -285,6 +287,13 @@ func (h *holdHooks) BeforeTool(ctx context.Context, c agent.ToolHookCall) agent.
 	}
 	if o.Veto {
 		return o
+	}
+	effective := c.Input // what the call runs with: the wrapped hooks may have rewritten it
+	if len(o.UpdatedInput) > 0 {
+		effective = o.UpdatedInput
+	}
+	if line := h.lookLine(c.Tool, effective); line != "" {
+		o.Context = strings.TrimSpace(o.Context + "\n" + line)
 	}
 	if editsFiles(c.Tool) {
 		if line := h.editLine(); line != "" {

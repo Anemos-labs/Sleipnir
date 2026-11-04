@@ -143,3 +143,27 @@ func TestAPersonIsShownTheToolThatRanNotTheLeakedName(t *testing.T) {
 		t.Errorf("the sink was shown %q, want the tool that ran", sink.names)
 	}
 }
+
+// A model often sends a list of one as the item itself, or the list as its JSON text. The tool gets the list its schema declares.
+func TestAListSentAsOneStringReachesTheToolAsAList(t *testing.T) {
+	scoped := fakeTool{name: "scope", schema: `{"type":"object","properties":{"files":{"type":"array","items":{"type":"string"}}}}`,
+		run: func(in json.RawMessage) *tools.Result { return &tools.Result{Text: "scope:" + string(in)} }}
+	r := newRig(t, rigOpts{noCompact: true, tools: []fakeTool{scoped}}, func(c *mock.Call) mock.Reply {
+		if len(c.Messages) < 4 {
+			return mock.Reply{ToolCalls: []mock.ToolCall{
+				{ID: "f1", Name: "scope", Args: `{"files":"a.go"}`},
+				{ID: "f2", Name: "scope", Args: `{"files":"[\"a.go\",\"b.go\"]"}`},
+			}}
+		}
+		return mock.Reply{Text: "done"}
+	})
+	if _, err := r.agent.Run(context.Background(), "go"); err != nil {
+		t.Fatal(err)
+	}
+	results := r.agent.Thread().Snapshot().Turns[2].Blocks
+	for i, want := range []string{`scope:{"files":["a.go"]}`, `scope:{"files":["a.go","b.go"]}`} {
+		if results[i].IsError || results[i].PlainText() != want {
+			t.Errorf("call %d = %+v, want %q", i+1, results[i], want)
+		}
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
+	toolpkg "github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // Check reports whether the calls of a response meet e under the prompt's tools, and when they do not, why: the first
@@ -16,6 +17,12 @@ func Check(calls []core.Block, tools []core.ToolSpec, e Expect) (bool, string) {
 	byName := map[string]core.ToolSpec{}
 	for _, t := range tools {
 		byName[t.Name] = t
+	}
+	calls = append([]core.Block(nil), calls...)
+	for i, c := range calls {
+		if t, ok := byName[c.ToolName]; ok {
+			calls[i].Input, _ = toolpkg.CoerceLists(t.InputSchema, c.Input) // what the harness makes of the call before it runs
+		}
 	}
 	for _, c := range calls {
 		if why := invalid(c, byName); why != "" {
