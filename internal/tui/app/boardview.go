@@ -127,6 +127,8 @@ func taskTable(s Scene, w, limit int) []cell.Line {
 		titleW := w - r.w
 		tail := ""
 		switch {
+		case t.State == state.TaskFailed: // why it failed, in the words of the web card
+			tail = closureWords(t.Closure, t.Attempts)
 		case len(t.Deps) > 0 && t.State == state.TaskTodo:
 			tail = "after " + strings.Join(t.Deps, ",")
 		case t.Attempts > 1:
@@ -169,6 +171,41 @@ func taskTable(s Scene, w, limit int) []cell.Line {
 		out = append(out, cell.Styled(st.dim, fmt.Sprintf("… and %d more", more)))
 	}
 	return out
+}
+
+// closureWords says why a task failed from its closure (kind or kind(target), internal/swarm/closure.go) and its attempts, in the
+// words the web board's failed card uses (ui.closureWords).
+func closureWords(closure string, attempts int) string {
+	kind, target := closure, ""
+	if i := strings.IndexByte(closure, '('); i >= 0 {
+		kind, target = closure[:i], strings.TrimSuffix(closure[i+1:], ")")
+	}
+	switch kind {
+	case "verifier":
+		return "verification kept failing"
+	case "exhausted":
+		if attempts > 1 {
+			return fmt.Sprintf("out of attempts (%d)", attempts)
+		}
+		return "out of attempts"
+	case "denied":
+		return "the manager refused the work"
+	case "canceled":
+		return "canceled"
+	case "superseded":
+		if target != "" {
+			return "replaced by " + clean(target)
+		}
+		return "replaced by another task"
+	case "blocked_on":
+		if target != "" {
+			return "blocked on " + clean(target)
+		}
+		return "blocked on another task"
+	case "":
+		return "failed"
+	}
+	return "failed (" + clean(closure) + ")"
 }
 
 // taskAge is an unfinished task's time in its column at now, short enough for a row (45s, 12m, 3h 05m), or "" for a merged or

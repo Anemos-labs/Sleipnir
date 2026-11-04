@@ -512,8 +512,8 @@
         "since": "2026-09-30T20:52:28.535089559Z",
         "history": [
           {"at": "2026-09-30T20:52:28.475522271Z", "state": "todo"},
-          {"at": "2026-09-30T20:52:28.475688293Z", "state": "running", "owner": "sc-1"},
-          {"at": "2026-09-30T20:52:28.504473477Z", "state": "verifying", "owner": "sc-1"},
+          {"at": "2026-09-30T20:52:28.475688293Z", "state": "running", "owner": "sc-1", "cost_usd": 0.011543999999999999, "requests": 2},
+          {"at": "2026-09-30T20:52:28.504473477Z", "state": "verifying", "owner": "sc-1", "cost_usd": 0.005248, "requests": 1},
           {"at": "2026-09-30T20:52:28.535089559Z", "state": "merged", "owner": "sc-1"}
         ],
         "cost_usd": 0.016791999999999998,
@@ -534,8 +534,8 @@
         "since": "2026-09-30T20:52:28.535114926Z",
         "history": [
           {"at": "2026-09-30T20:52:28.475572747Z", "state": "todo"},
-          {"at": "2026-09-30T20:52:28.475775638Z", "state": "running", "owner": "sc-2"},
-          {"at": "2026-09-30T20:52:28.521757173Z", "state": "verifying", "owner": "sc-2"},
+          {"at": "2026-09-30T20:52:28.475775638Z", "state": "running", "owner": "sc-2", "cost_usd": 0.011255999999999999, "requests": 2},
+          {"at": "2026-09-30T20:52:28.521757173Z", "state": "verifying", "owner": "sc-2", "cost_usd": 0.005232, "requests": 1},
           {"at": "2026-09-30T20:52:28.535114926Z", "state": "merged", "owner": "sc-2"}
         ],
         "cost_usd": 0.016488,
@@ -556,8 +556,8 @@
         "since": "2026-09-30T20:52:28.535134363Z",
         "history": [
           {"at": "2026-09-30T20:52:28.475613331Z", "state": "todo"},
-          {"at": "2026-09-30T20:52:28.476873583Z", "state": "running", "owner": "sc-3"},
-          {"at": "2026-09-30T20:52:28.497330661Z", "state": "verifying", "owner": "sc-3"},
+          {"at": "2026-09-30T20:52:28.476873583Z", "state": "running", "owner": "sc-3", "cost_usd": 0.011255999999999999, "requests": 2},
+          {"at": "2026-09-30T20:52:28.497330661Z", "state": "verifying", "owner": "sc-3", "cost_usd": 0.005248, "requests": 1},
           {"at": "2026-09-30T20:52:28.535134363Z", "state": "merged", "owner": "sc-3"}
         ],
         "cost_usd": 0.016503999999999998,
@@ -578,8 +578,8 @@
         "since": "2026-09-30T20:52:28.535152754Z",
         "history": [
           {"at": "2026-09-30T20:52:28.475644136Z", "state": "todo"},
-          {"at": "2026-09-30T20:52:28.476935097Z", "state": "running", "owner": "sc-4"},
-          {"at": "2026-09-30T20:52:28.523394483Z", "state": "verifying", "owner": "sc-4"},
+          {"at": "2026-09-30T20:52:28.476935097Z", "state": "running", "owner": "sc-4", "cost_usd": 0.011255999999999999, "requests": 2},
+          {"at": "2026-09-30T20:52:28.523394483Z", "state": "verifying", "owner": "sc-4", "cost_usd": 0.005216, "requests": 1},
           {"at": "2026-09-30T20:52:28.535152754Z", "state": "merged", "owner": "sc-4"}
         ],
         "cost_usd": 0.016472,
@@ -601,8 +601,8 @@
         "since": "2026-09-30T20:52:28.697561617Z",
         "history": [
           {"at": "2026-09-30T20:52:28.53519368Z", "state": "todo"},
-          {"at": "2026-09-30T20:52:28.535289497Z", "state": "running", "owner": "dc-1"},
-          {"at": "2026-09-30T20:52:28.666138317Z", "state": "verifying", "owner": "dc-1"},
+          {"at": "2026-09-30T20:52:28.535289497Z", "state": "running", "owner": "dc-1", "cost_usd": 0.026424, "requests": 4},
+          {"at": "2026-09-30T20:52:28.666138317Z", "state": "verifying", "owner": "dc-1", "cost_usd": 0.005704, "requests": 1},
           {"at": "2026-09-30T20:52:28.697561617Z", "state": "merged", "owner": "dc-1"}
         ],
         "cost_usd": 0.032128,
@@ -624,8 +624,8 @@
         "since": "2026-09-30T20:52:28.697587098Z",
         "history": [
           {"at": "2026-09-30T20:52:28.535223818Z", "state": "todo"},
-          {"at": "2026-09-30T20:52:28.537449267Z", "state": "running", "owner": "dc-2"},
-          {"at": "2026-09-30T20:52:28.616366063Z", "state": "verifying", "owner": "dc-2"},
+          {"at": "2026-09-30T20:52:28.537449267Z", "state": "running", "owner": "dc-2", "cost_usd": 0.02622, "requests": 4},
+          {"at": "2026-09-30T20:52:28.616366063Z", "state": "verifying", "owner": "dc-2", "cost_usd": 0.00572, "requests": 1},
           {"at": "2026-09-30T20:52:28.697587098Z", "state": "merged", "owner": "dc-2"}
         ],
         "cost_usd": 0.03194,
@@ -646,8 +646,8 @@
         "since": "2026-09-30T20:52:29.116409262Z",
         "history": [
           {"at": "2026-09-30T20:52:28.697621239Z", "state": "todo"},
-          {"at": "2026-09-30T20:52:28.697651907Z", "state": "running", "owner": "rv-1"},
-          {"at": "2026-09-30T20:52:29.105513265Z", "state": "verifying", "owner": "rv-1"},
+          {"at": "2026-09-30T20:52:28.697651907Z", "state": "running", "owner": "rv-1", "cost_usd": 0.01098, "requests": 2},
+          {"at": "2026-09-30T20:52:29.105513265Z", "state": "verifying", "owner": "rv-1", "cost_usd": 0.00512, "requests": 1},
           {"at": "2026-09-30T20:52:29.116409262Z", "state": "merged", "owner": "rv-1"}
         ],
         "cost_usd": 0.0161,

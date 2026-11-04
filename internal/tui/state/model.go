@@ -224,6 +224,14 @@ func (s *State) onResponse(e events.Event, t time.Time) {
 		if !side {
 			tk.Requests++
 		}
+		if n := len(tk.History); n > 0 { // and the stretch it is in: what each attempt cost
+			h := &tk.History[n-1]
+			h.CostUSD += cost
+			h.ListUSD += list
+			if !side {
+				h.Requests++
+			}
+		}
 	}
 	a.SavedUSD += saved
 	if !priced {
