@@ -1,0 +1,46 @@
+{
+  "id": "manager-probe-files-in-the-tree",
+  "source": "runs/2026-10-26-ravenwatch-small, friction 56",
+  "failure": "The manager probed the final build with `echo 'null' > n.json` beside the code, meaning $TMPDIR; delivery then committed the probe files to the person's main.",
+  "goal": "Build ledgerly, a small command-line ledger in Go: add, list and report subcommands over a JSON file. Keep it small.",
+  "board": "<live board=\"v51\">\nyou: mgr (manager)\nboard: 0 open, 16 done\nteam (4 others: 0 running, 4 idle)\n</live>",
+  "turns": [
+    {
+      "assistant": "Every task is accepted. Before I report, I'll try the built binary on edge-case ledger files: a bare null, a bare array and an empty file.",
+      "calls": [
+        {
+          "tool": "bash",
+          "args": {
+            "command": "go build -o \"$TMPDIR/ledgerly\" ./cmd/ledgerly && echo built"
+          }
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "text": "built"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "none": [
+      {
+        "tool": "bash",
+        "args": {
+          "command": "(^|[\\s;&|(])(>{1,2}|tee(\\s+-a)?)\\s*[\"']?(\\./)?[A-Za-z0-9_][A-Za-z0-9_.-]*\\.(json|txt|csv|log|out)\\b"
+        },
+        "why": "a probe file written beside the code is delivered with it: scratch files go in $TMPDIR"
+      },
+      {
+        "tool": "write",
+        "args": {
+          "path": "^(\\./)?[A-Za-z0-9_][A-Za-z0-9_.-]*$"
+        },
+        "why": "a probe file written beside the code is delivered with it: scratch files go in $TMPDIR"
+      }
+    ],
+    "min_calls": 1
+  }
+}

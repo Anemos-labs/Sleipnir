@@ -34,6 +34,7 @@ remember the answer), `sleipnir trust add` says it without a session, and the an
 | `recon` | print the project survey that seeds the shared prompt layer |
 | `inspect` | the cache inspector: a read-only dashboard over a recorded session |
 | `council` | score screenshots with a council of vision models against references, round after round |
+| `tooleval` | measure how models use the tools in situations models got wrong in real runs, under variants of the tool descriptions |
 | `doctor` | probe an endpoint: streaming, tools, prefix-cache behaviour, warm-up needs |
 | `models` | list models and prices from a marketplace catalogue |
 | `demo` | a scripted team on a mock endpoint, no key needed |
@@ -1199,6 +1200,77 @@ flags:
         how long one member may take to answer; one that has not is a missing vote (default 5m0s)
   -trust-project
         read the project's own config file, including its provider settings
+```
+<!-- /flags -->
+
+### `sleipnir tooleval`
+
+`sleipnir tooleval --model M [--model M...]` measures how well models use the harness's tools in situations where models went
+wrong before. A case starts from the actual first prompt of a role in a team session of this build (its system text, every tool
+spec and the team card, with the case's goal and live board in place), plays what had happened (the agent's calls, what the
+tools answered, the harness's notices), and states what the next response must do: a call it must make (`any`, `all`) or must
+not make (`none`), matched by tool and by regular expressions over the arguments. A call to a tool the prompt does not have, or
+with arguments its schema refuses, fails a case whatever its rules say. The suite shipped with the build holds failures of real
+runs, each naming the run it came from; `--cases` runs others instead, and `--case` picks some.
+
+Each case is asked `--samples` times of each model under each variant of the tool descriptions. `--variants` names a JSON file
+of variants, `{"name": {"tool": "description"}}`, tried beside the build's own (`current`), and the report gives each variant's
+pass rate beside the bytes its tools add to every prompt (`--sizes` prints them tool by tool): a description can be rewritten or
+cut, and the change kept when the pass rate holds. A sample whose answer does not come within `--timeout` is counted apart,
+with how much reasoning had streamed. The exit status is 0 when every model passed at `--min-pass` or more under the build's
+descriptions, 3 when one did not, and 1 on an error.
+
+`--harvest DIR` reads a session kept with `--training-logs` and writes each failed tool call as a case (JSON lines, to `--out`)
+that replays the exact prompt of the request that made it: a refused call is expected to be made properly, any other failed
+call not to be repeated as it was. These expectations are a draft, to sharpen with the call that was right.
+
+<!-- flags: tooleval -->
+```text
+usage: sleipnir tooleval [flags]
+
+Measures how well models use the harness's tools in situations where models went wrong in real runs. Each case is the actual
+first prompt of a role in a team session of this build (its system text and every tool spec), then what had happened, and a rule
+for the next response: the call it must make, or must not. Every case is asked --samples times of each --model under each
+variant of the tool descriptions (--variants), and the report gives each variant's pass rate beside the size of its
+descriptions, so a description can be rewritten or cut and the change kept when the pass rate holds. Without --cases it runs the
+suite shipped with this build, whose cases name the run they came from. Exit status 0 means every model passed at --min-pass or
+more under the build's descriptions, 3 that one did not, 1 an error.
+
+--harvest DIR turns the failed tool calls of a session kept with --training-logs into cases that replay its exact prompts, and
+writes them (JSON lines) to --out instead of running anything.
+
+  sleipnir tooleval --model heimdallm/z-ai/glm-5.3-flash --variants shorter.json --sizes
+  sleipnir tooleval --harvest ~/.sleipnir/sessions/20261104-101500-ab12cd --out cases/harvested.jsonl
+
+flags:
+  -case value
+        run only this case, or the cases whose id starts with it and a dash (repeat)
+  -cases string
+        a case file (JSON, a JSON array, or JSON lines) or a directory of them, in place of the shipped suite
+  -harvest value
+        a session directory kept with --training-logs: write its failed calls as cases to --out (repeat)
+  -json
+        print the report as JSON
+  -max-tokens int
+        the longest answer, in tokens (default 8192)
+  -min-pass float
+        the pass rate, from 0 to 1, each model must reach under the build's descriptions (exit 3 below it)
+  -model value
+        a model to ask, provider/model (repeat, or separate with commas)
+  -out string
+        with --harvest: the file the cases are written to (default: standard output)
+  -parallel int
+        how many requests are in flight at once (default 4)
+  -samples int
+        how many times each case is asked of each model under each variant (default 3)
+  -sizes
+        also print the size of each tool's name, description and schema under each variant
+  -timeout duration
+        how long one answer may take; one that has not come counts as no answer (default 5m0s)
+  -trust-project
+        read the project's own config file, including its provider settings
+  -variants string
+        a JSON file of variants to try beside the build's descriptions: {"name": {"tool": "description"}}
 ```
 <!-- /flags -->
 

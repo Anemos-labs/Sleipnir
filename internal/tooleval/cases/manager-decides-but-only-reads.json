@@ -1,0 +1,75 @@
+{
+  "id": "manager-decides-but-only-reads",
+  "source": "runs/2026-10-21-ravenwatch, friction 16",
+  "failure": "For forty minutes the manager decided in every turn to spawn T131 to T136, then ended the turn after reads and git checks only.",
+  "team": [
+    "architect",
+    "backend",
+    "backend",
+    "backend",
+    "frontend",
+    "frontend",
+    "tester",
+    "reviewer"
+  ],
+  "goal": "Build the Ravenwatch monitoring platform the README and SPEC.md describe.",
+  "board": "<live board=\"v412\">\nyou: mgr (manager)\ntasks:\n  T131 todo \"Incident detail API\"\n  T132 todo \"Incident detail page\"\n  T133 todo \"Security findings API\"\n  T134 todo \"Security page\"\n  T135 todo \"NOC wall view\"\n  T136 todo \"Capacity units in the hypervisor API\"\nboard: 6 open, 128 done\nteam (7 others: 0 running, 7 idle)\nteam: architect 0/1 · backend 0/3 · frontend 0/2 · tester 0/1 · reviewer 0/1\n7 free slot(s) (architect, backend, frontend, tester, reviewer), 6 ready task(s) with no owner: start workers (spawn), in parallel where the tasks are independent\n</live>",
+  "turns": [
+    {
+      "assistant": "The review's findings are now tasks T131 to T136. I'll spawn them now, after one more look at the incident handler.",
+      "calls": [
+        {
+          "tool": "read",
+          "args": {
+            "path": "internal/cp/incidents.go"
+          }
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "text": "package cp\n\n// Incidents serves /api/v1/incidents.\nfunc (s *Server) Incidents(w http.ResponseWriter, r *http.Request) {\n... (95 lines)"
+        }
+      ]
+    },
+    {
+      "calls": [
+        {
+          "tool": "bash",
+          "args": {
+            "command": "git log --oneline -5"
+          }
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "text": "97ad12c Merge T130: hypervisor page\nf4a050e Merge T129: entity metrics\n..."
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "any": [
+      {
+        "tool": "spawn",
+        "args": {
+          "task": "^T13[1-6]$"
+        },
+        "why": "the decision is made and seven slots are free: spawn"
+      }
+    ],
+    "none": [
+      {
+        "tool": "read",
+        "why": "another read postpones the spawns it already decided on"
+      },
+      {
+        "tool": "bash",
+        "why": "another check postpones the spawns it already decided on"
+      }
+    ]
+  }
+}
