@@ -253,7 +253,8 @@ func (h *webHostImpl) register(srv *web.Server) {
 	})
 }
 
-// start starts the first tab (or the fixture's tabs), then reopens the pinned sessions (web_pins.go). The command calls it once the server's address is bound: a run that cannot
+// start starts the first tab (or the fixture's tabs), then reopens the pinned sessions (web_pins.go) and starts the automatic storage
+// cleanup (storage.go). The command calls it once the server's address is bound: a run that cannot
 // listen starts no session and leaves nothing behind.
 func (h *webHostImpl) start() {
 	if h.fixture != nil {
@@ -262,6 +263,7 @@ func (h *webHostImpl) start() {
 	}
 	h.startFirst()
 	h.track(h.reopenPinned)
+	h.track(h.housekeep)
 }
 
 // startFirst starts the first tab in --cwd with the server's defaults, as `sleipnir chat` would start (--resume and --continue

@@ -141,6 +141,7 @@ Settings that could send your API key to another host, run commands or widen wha
 | `providers.<name>.auth`, `.dialect` | choose which credential is sent and how; a ChatGPT sign-in is never sent on a project's choice, trusted or not |
 | `providers.<name>.allow_hosts`, `.allow_insecure_http` | say where your key may go: dropped from **every** project layer, trusted or not (section 6) |
 | `resources.*` | how much of your machine the agents' commands may take: dropped from **every** project layer, trusted or not (section 6) |
+| `storage.*` | what of your recorded history the harness deletes by itself: dropped from **every** project layer, trusted or not (section 6) |
 | `permissions.mode` | `bypass` and `yolo` turn off the prompts |
 | `permissions.allow` | pre-approves actions |
 | `permissions.roles.<role>.mode`, `.allow` | the same, per role |
@@ -211,7 +212,7 @@ does not apply to it.)
 |---|---|
 | the variable named by a provider's `api_key_env` | the API key. Built-in providers: `HEIMDALLM_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`. At start-up the harness moves every `*_API_KEY` variable (and any other variable a provider names) out of its own environment into memory, so nothing it starts (git, hooks, verifiers, MCP servers, the agent's shell) inherits it; name yours `..._API_KEY` |
 | `<NAME>_BASE_URL` | overrides the `base_url` of provider `<NAME>` (upper-cased, `-` becomes `_`): `HEIMDALLM_BASE_URL`, `OPENROUTER_BASE_URL`, `OPENAI_BASE_URL`, `LOCAL_BASE_URL`. Applies to configured providers too. The environment is not your word (a `.envrc` or a CI job can set it), so the key follows an override only to the provider's own host, to loopback, or to a host in `allow_hosts`; anything else is refused with the line of configuration that would allow it |
-| `SLEIPNIR_HOME` | the state directory (default `~/.sleipnir`): `sessions/`, `cache/`, `rl-work/` |
+| `SLEIPNIR_HOME` | the data directory (default `~/.sleipnir`): `sessions/` (with each session's scratch `tmp/`), `worktrees/`, `rl-work/`, `lore/`, `run/` and the rest (`docs/STORAGE.md`). Your user configuration, credentials, memory notes, teams and plugins stay in `~/.sleipnir` |
 | `SLEIPNIR_INSPECT_TOKEN` | access token for `sleipnir inspect` on a non-loopback address |
 | `BRAVE_API_KEY`, `TAVILY_API_KEY`, `SEARXNG_URL` | enable the `web_search` tool (the first one set wins, in this order); without one only `web_fetch` exists |
 | `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` | honoured by the provider clients and the web tools |
@@ -385,7 +386,7 @@ or replicas may still need cold prefills.
 | `max_workers` | integer | `0` (no ceiling) | yes | The ceiling on the workers of a session's swarm; the manager and the mailman are not counted. `--swarm N` asks for a manager and N workers and is refused when N is more than this (`swarm: 8 workers requested (and the manager) but swarm.max_workers caps a session at 4 workers`); a smaller request is honoured. It is how a user file keeps a stray `--swarm 50` from spending a budget. `0` sets no ceiling. The older key `max_agents` (and `SLEIPNIR_SWARM_MAX_AGENTS`), which counted the manager, is refused with the new key and its value, `max_agents` minus one |
 | `requests_per_minute` | integer | `0` (500) | yes | Request budget of the whole swarm. Lower it if the endpoint answers 429 |
 | `max_concurrent_requests` | integer | `0` (24) | yes | Requests in flight across the swarm |
-| `isolation` | string | `none` | yes | `none` (all agents edit the one working tree, guarded by write leases; `shared` is the older spelling of the same thing) or `worktree`: each writer works in a git worktree of its own and finished work is integrated through a verifying merge queue (`docs/SWARM-PROTOCOL.md`). `--isolation` overrides it. The trees live in your cache directory, whatever the configuration says |
+| `isolation` | string | `none` | yes | `none` (all agents edit the one working tree, guarded by write leases; `shared` is the older spelling of the same thing) or `worktree`: each writer works in a git worktree of its own and finished work is integrated through a verifying merge queue (`docs/SWARM-PROTOCOL.md`). `--isolation` overrides it. The trees live in the data directory (`<state>/worktrees`, `docs/STORAGE.md`), whatever the configuration says |
 | `auto_docs` | boolean | `true` | yes | The team's docs worker keeps README, `docs/` and `AGENTS.md` current without being asked: after accepted tasks and agreements the harness gives it a `docs: catch up` task with the changes, the first once an implementation task is accepted (`docs/SWARM-PROTOCOL.md`). It applies to a team with a docs slot; `--auto-docs=false` makes docs a role the manager assigns |
 | `pool_max` | integer | `0` (4) | yes | The most members of one role that plan and work one parent task together. A role with more slots forms the pool of its next parent from the others at once, even while the first pool is still agreeing on its plan (`docs/SWARM-PROTOCOL.md`). A negative value sets no cap: every free member of the role joins |
 | `push_progress` | boolean | `true` | yes | With `isolation = "worktree"`, push the integration branch to the checkout's push remote (else `origin`) as `sleipnir/<topic>-<session suffix>` (a slug of the goal's objective, else of the first merged commit's subject) after every merge, so verified work is off the machine before the run ends (`docs/SWARM-PROTOCOL.md`). It never writes any other branch; without a push remote it does nothing |
@@ -471,6 +472,24 @@ On a 24-core machine with 32 GiB the defaults are 18 CPUs, 4 slots of 4 workers 
 laptop, 6 CPUs and one slot of 6 workers. Only your user file sets `resources`: a project file's is dropped, trusted or
 not, and `SLEIPNIR_RESOURCES_CPUS` and the like work as for every section. A command run inside a container sandbox
 (`--sandbox`) takes its slot and its worker counts, but its priority is the container's.
+
+### `storage`
+
+The housekeeping of the data directory (`$SLEIPNIR_HOME`, else `~/.sleipnir`; `docs/STORAGE.md`). `sleipnir web` cleans it by
+itself at most once a day: it deletes the recorded sessions older than `session_max_age` past the newest `keep_sessions` (never a
+pinned one, nor one a process holds), with their worktrees, whose edits are first committed onto their Git branches; it empties the
+scratch directories of sessions nobody has written to for a day; and it releases the worktrees of sessions that are gone. A branch
+that holds commits no other branch has is always kept. `sleipnir storage` shows the room each area takes, and
+`sleipnir storage clean` does the same cleanup on demand, whatever `clean` says.
+
+| Key | Type | Default | Applied | Meaning |
+|---|---|---|---|---|
+| `clean` | `"auto"` or `"off"` | `"auto"` | at the next check (hourly) | Whether `sleipnir web` cleans the data directory by itself |
+| `session_max_age` | string | `"30d"` | at the next check | How old a session's newest file must be for the automatic cleanup to delete it: `30d`, `36h`, `2w`; at least an hour |
+| `keep_sessions` | integer | `20` (also for `0`) | at the next check | How many of the newest sessions are kept whatever their age |
+
+Only your user file sets `storage`: a project file's is dropped, trusted or not. `SLEIPNIR_STORAGE_CLEAN=off` and the like work
+as for every section.
 
 ### Recording and training data
 

@@ -262,6 +262,7 @@ Every day:
   login     store a key, or sign in with your ChatGPT plan; logout removes it
   models    list models and prices from a marketplace catalogue
   sessions  list recorded sessions (sessions prune: delete the old ones)
+  storage   what the data directory holds; storage clean removes what is old
   update    install the latest release (the chat says when there is one)
 
 Set up a project:

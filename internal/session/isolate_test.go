@@ -355,10 +355,10 @@ func isoOptions(t *testing.T, repo string, client *openaichat.Client, model cost
 	return o
 }
 
-// treesOf is the directory a session's worktrees are made in: under the cache
-// directory of the session's home, never under its state directory.
+// treesOf is the directory a session's worktrees are made in: under the data
+// directory of the session's home (session.WorktreesDir).
 func treesOf(o session.Options, sid string) string {
-	return filepath.Join(o.Home, ".cache", "sleipnir", "worktrees", sid)
+	return filepath.Join(session.WorktreesDir(o.Home), sid)
 }
 
 func statusLines(t *testing.T, repo string) []string {

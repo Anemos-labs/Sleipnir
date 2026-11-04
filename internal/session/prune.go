@@ -5,14 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"math"
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/gitx"
 	"github.com/anemos-labs/sleipnir/internal/workspace"
@@ -249,23 +248,11 @@ func PlanPruneDir(root string, now time.Time, olderThan time.Duration, keep int,
 	return p, nil
 }
 
-// ParseAge reads a duration the way a person writes one for a directory of old things: 36h, 90m, 30d, 2w, or 0.
+// ParseAge reads a duration the way a person writes one for a directory of old things: 36h, 90m, 30d, 2w, or 0 (config.ParseAge).
 func ParseAge(s string) (time.Duration, error) {
-	s = strings.TrimSpace(s)
-	for suffix, unit := range map[string]time.Duration{"d": 24 * time.Hour, "w": 7 * 24 * time.Hour} {
-		if n, ok := strings.CutSuffix(s, suffix); ok {
-			v, err := strconv.ParseFloat(n, 64)
-			// NaN, an infinity or a number of days past what a duration holds would come out as a negative age, which every
-			// session is older than: refused, as a typo is
-			if err != nil || math.IsNaN(v) || v < 0 || v*float64(unit) >= math.MaxInt64 {
-				return 0, fmt.Errorf("%q is not an age (try 30d, 36h or 2w)", s)
-			}
-			return time.Duration(v * float64(unit)), nil
-		}
-	}
-	d, err := time.ParseDuration(s)
-	if err != nil || d < 0 {
-		return 0, fmt.Errorf("%q is not an age (try 30d, 36h or 2w)", s)
+	d, ok := config.ParseAge(s)
+	if !ok {
+		return 0, fmt.Errorf("%q is not an age (try 30d, 36h or 2w)", strings.TrimSpace(s))
 	}
 	return d, nil
 }

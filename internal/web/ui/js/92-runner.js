@@ -126,7 +126,7 @@
    *  group is listed under Other. */
   const TASKS = [
     ['run', 'Run work', 'start a session, run a goal without a terminal, or put one on a schedule', 'tools.run', ['chat', 'run', 'swarm', 'research', 'scan', 'schedule', 'daemon', 'demo']],
-    ['sessions', 'Sessions', 'find, replay, watch and clean up recorded sessions', 'tools.observe', ['sessions', 'replay', 'watch', 'inspect', 'friction']],
+    ['sessions', 'Sessions', 'find, replay, watch and clean up recorded sessions', 'tools.observe', ['sessions', 'storage', 'replay', 'watch', 'inspect', 'friction']],
     ['models', 'Models & providers', 'keys, the model catalogue, and what an endpoint really does', 'tools.evaluate', ['models', 'login', 'logout', 'doctor', 'mock', 'sim', 'council', 'tooleval']],
     ['ext', 'Skills & plugins', 'plugins, tool servers and what a project may configure', 'tools.setup', ['plugins', 'mcp', 'trust']],
     ['maint', 'Maintenance', 'set up a project, read the configuration, update Sleipnir', 'tools.setup', ['init', 'recon', 'config', 'update', 'version', 'help', 'web']],
@@ -136,7 +136,7 @@
   /** What each top-level command is for, in a few plain words (its summary in the spec says how). */
   const PLAIN = {
     chat: 'Start a chat with the team', run: 'Run one goal and exit', swarm: 'Run a goal with a whole team', research: 'List and publish research runs', scan: 'List deep scans and their reports', schedule: 'Schedule a goal', daemon: 'Run the scheduled goals', demo: 'Watch a scripted demo team',
-    sessions: 'List and prune recorded sessions', replay: 'Replay a recorded session', watch: 'Watch a session as it runs', inspect: 'Serve the dashboard of a session', friction: 'Find what slowed sessions down',
+    sessions: 'List and prune recorded sessions', storage: 'See and free the room Sleipnir takes', replay: 'Replay a recorded session', watch: 'Watch a session as it runs', inspect: 'Serve the dashboard of a session', friction: 'Find what slowed sessions down',
     models: 'Browse the model catalogue', login: 'Add a provider key', logout: 'Remove a provider key', doctor: 'Test what an endpoint does', mock: 'Serve the built-in test model', sim: 'Estimate what caching saves', council: 'Score screenshots of a design', tooleval: 'Measure how models use the tools',
     plugins: 'Turn plugins on and off', mcp: 'Approve and test tool servers', trust: 'Trust a project\u2019s own settings',
     init: 'Set up a project', recon: 'Survey a project', config: 'Show the configuration in force', update: 'Update Sleipnir', version: 'Show the version', help: 'List every command', web: 'Serve this page in a browser',

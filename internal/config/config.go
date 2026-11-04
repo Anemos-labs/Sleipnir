@@ -91,6 +91,8 @@ type Config struct {
 	Tools       Tools               `json:"tools"`
 	// Resources is the share of the machine the agents' commands may use (internal/machine).
 	Resources Resources `json:"resources"`
+	// Storage is the housekeeping of the harness's data directory (docs/STORAGE.md).
+	Storage Storage `json:"storage"`
 	// Plugins switches the harness's plugins on and off (internal/plugin,
 	// docs/PLUGINS.md).
 	Plugins Plugins `json:"plugins"`
@@ -364,6 +366,53 @@ type Resources struct {
 	Priority string `json:"priority,omitempty"`
 	// Unlimited turns every limit off.
 	Unlimited bool `json:"unlimited"`
+}
+
+// Storage is the housekeeping of the data directory ($SLEIPNIR_HOME, else ~/.sleipnir): how long a recorded session, with its
+// worktrees and scratch files, is kept before the harness deletes it by itself (docs/STORAGE.md). Only the user's own file sets
+// it: what of the person's history is deleted is not a repository's choice.
+type Storage struct {
+	// Clean is "auto" (the default, also for "") or "off": whether the harness cleans the data directory by itself, at most once
+	// a day. `sleipnir storage clean` works either way.
+	Clean string `json:"clean,omitempty"`
+	// SessionMaxAge is how old a session's newest file must be for the automatic cleanup to delete it ("30d" when empty; 36h,
+	// 2w and the like).
+	SessionMaxAge string `json:"session_max_age,omitempty"`
+	// KeepSessions is how many of the newest sessions are kept whatever their age (0: 20).
+	KeepSessions int `json:"keep_sessions"`
+}
+
+// Storage cleanup modes.
+const (
+	StorageCleanAuto = "auto"
+	StorageCleanOff  = "off"
+)
+
+// Automatic storage cleanup defaults.
+const (
+	DefaultSessionMaxAge = "30d"
+	DefaultKeepSessions  = 20
+)
+
+// AutoClean reports whether the harness cleans the data directory by itself.
+func (s Storage) AutoClean() bool {
+	return !strings.EqualFold(strings.TrimSpace(s.Clean), StorageCleanOff)
+}
+
+// MaxAge is SessionMaxAge, or its default when empty.
+func (s Storage) MaxAge() string {
+	if v := strings.TrimSpace(s.SessionMaxAge); v != "" {
+		return v
+	}
+	return DefaultSessionMaxAge
+}
+
+// Keep is KeepSessions, or its default when 0.
+func (s Storage) Keep() int {
+	if s.KeepSessions > 0 {
+		return s.KeepSessions
+	}
+	return DefaultKeepSessions
 }
 
 // DefaultTimeout is DefaultTimeoutSec as a duration.

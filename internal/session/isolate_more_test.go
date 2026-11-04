@@ -76,7 +76,7 @@ func TestTheSameTeamWithoutIsolationStillWorks(t *testing.T) {
 			if got := git(t, repo, "rev-parse", "HEAD"); got != head {
 				t.Error("HEAD moved")
 			}
-			if _, err := os.Stat(filepath.Join(o.Home, ".cache")); err == nil {
+			if _, err := os.Stat(session.WorktreesDir(o.Home)); err == nil {
 				t.Error("a shared-tree run made worktrees")
 			}
 			for typ, n := range eventTypes(t, s.Dir) {
@@ -260,7 +260,7 @@ func crash(t *testing.T, repo, path string) {
 func TestTreesOfACrashedSessionAreCleanedUpAtTheNextStart(t *testing.T) {
 	repo := isoRepo(t)
 	home := t.TempDir()
-	top := filepath.Join(home, ".cache", "sleipnir", "worktrees")
+	top := session.WorktreesDir(home)
 	ctx := context.Background()
 	r, err := gitx.Open(repo)
 	if err != nil {

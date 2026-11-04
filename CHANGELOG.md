@@ -7,6 +7,22 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Everything the harness keeps is in one data directory, `$SLEIPNIR_HOME`,
+  else `~/.sleipnir`. The worktrees of isolated teams move there
+  (`<state>/worktrees/<session>/<agent>`) from the cache directory
+  (`~/.cache/sleipnir/worktrees`); a session started before keeps its trees
+  where they are, resumes from there, and they go when it is deleted. The
+  permission engine leaves a session's own trees out of the protection of the
+  data directory; the project's rules still hold inside them. `sleipnir web`
+  now cleans the data directory by itself once a day: sessions older than 30
+  days past the newest 20 (never pinned or live ones, with their worktrees,
+  whose edits are committed onto their branches first), the scratch
+  directories of sessions idle for a day, and the worktrees of sessions that
+  are gone. `storage.clean` (`"off"` stops it), `storage.session_max_age` and
+  `storage.keep_sessions` tune it, from the user's file only. `sleipnir
+  storage` shows the room each area takes, and `sleipnir storage clean` cleans
+  on demand. No prompt bytes change.
+
 - A goal's plan shows how much of the work is left, not how many steps are
   ticked. A plan step takes an `effort` estimate in hours (a number, or text
   such as "90m" or "2d") and the `milestone` it serves, and a plan holds 24

@@ -27,6 +27,7 @@ remember the answer), `sleipnir trust add` says it without a session, and the an
 | `init` | write a starter `.sleipnir/config.json` and `AGENTS.md` (or, with `--user`, your `~/.sleipnir/config.json`) |
 | `config` | show the effective configuration and where each value came from |
 | `sessions` | list recorded sessions; `sessions prune` deletes the old ones |
+| `storage` | what the data directory holds, area by area; `storage clean` removes what is old |
 | `chat` | interactive session with slash commands |
 | `web` | the interface in a browser, on this machine: sessions, workspace and settings |
 | `run` | run one goal (a single agent, or a manager with workers) |
@@ -125,6 +126,51 @@ flags:
         delete sessions whose newest file is older than this (30d, 36h, 2w; 0 is any age) (default "30d")
   -yes
         delete them (without it, the sessions that would go are listed and nothing is deleted)
+```
+<!-- /flags -->
+
+### `sleipnir storage`
+
+Shows where the data directory is and the room each part of it takes. Everything the harness keeps for itself is in that one
+directory, `$SLEIPNIR_HOME`, else `~/.sleipnir` (`docs/STORAGE.md`): the recorded sessions, their scratch directories (each session's
+`$TMPDIR`), the worktrees of isolated teams, the RL work directories and the rest (settings, credentials, memories, plugins). The
+worktrees that earlier versions kept in the cache directory are listed too while any are left. It also says whether the automatic
+cleanup is on.
+
+<!-- flags: storage -->
+```text
+usage: sleipnir storage [clean [flags]]
+
+Shows where the harness keeps its data ($SLEIPNIR_HOME, else ~/.sleipnir) and the room each part of it takes: the recorded
+sessions, their scratch directories, the worktrees of isolated teams, the RL work directories and the rest (settings, credentials,
+memories, plugins). `storage clean` removes what is old; sleipnir web does that by itself once a day unless storage.clean is "off".
+```
+<!-- /flags -->
+
+#### `sleipnir storage clean`
+
+Removes what is old from the data directory, as `sleipnir web` does by itself once a day: the sessions older than `--older-than`
+past the newest `--keep` (never a pinned one, nor one a process holds), the scratch directories of sessions nobody has written to for
+a day, and the worktrees of sessions that are gone. A session's worktrees are released as `sessions prune` releases them: the edits
+left in a tree are committed onto its Git branch first, the tree is removed, and a branch that holds commits no other branch has is
+kept and named. Without `--yes` nothing is removed: it lists what would go, with the size.
+
+<!-- flags: storage clean -->
+```text
+usage: sleipnir storage clean [flags]
+
+Removes what is old from the data directory: the sessions older than --older-than past the newest --keep (never a pinned one, nor
+one a process holds), the scratch directories of sessions nobody has written to for a day, and the worktrees of sessions that are
+gone. Worktrees are released as a deleted session's are: uncommitted edits are committed onto their Git branch first, and a branch
+that holds commits no other branch has is kept. Nothing is removed without --yes; without it what would go is listed, with its size.
+
+flags:
+  -keep int
+        never delete the newest N sessions, whatever their age; unset, storage.keep_sessions (default 20)
+  -older-than string
+        delete sessions whose newest file is older than this (30d, 36h, 2w; 0 is any age); unset, storage.session_max_age (default "30d")
+  -yes
+        clean (without it, what would go is listed and nothing is removed)
 ```
 <!-- /flags -->
 
