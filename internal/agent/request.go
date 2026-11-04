@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"math/rand"
@@ -203,19 +204,32 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 		req.BindingMode = "drop_block"
 	}
 	start := a.cfg.Now()
-	callCtx, cancelCall := context.WithCancel(ctx)
-	defer cancelCall()
+	callCtx, cancelCall := context.WithCancelCause(ctx)
+	defer cancelCall(nil)
+	var stall *time.Timer
+	if promptImages(req.Prompt) > 0 {
+		// An endpoint that takes the images and never answers would hold the run for as long as its timeout: past ImageStall
+		// without a start, the request counts as a refusal of its images (request sends it again with them described).
+		stall = time.AfterFunc(ImageStall, func() { cancelCall(errImageStall) })
+		defer stall.Stop()
+	}
 	var reps repeatWatch
 	resp, err := a.call(callCtx, req, a.cfg.Priority, func(e provider.Event) {
 		a.forward(e)
 		if e.Kind == provider.EvStart {
 			started(true)
 		}
+		if stall != nil && e.Kind != provider.EvStart && e.Kind != provider.EvReset {
+			stall.Stop() // the model is answering: headers alone are not an answer (a stalled gateway sends them)
+		}
 		if reps.observe(e) {
-			cancelCall()
+			cancelCall(nil)
 		}
 	})
 	started(err == nil)
+	if err != nil && ctx.Err() == nil && errors.Is(context.Cause(callCtx), errImageStall) {
+		err = stallError()
+	}
 	if err != nil && reps.tripped && ctx.Err() == nil {
 		err = fmt.Errorf("%w (%s, %d times)", ErrRepeatedCalls, reps.name, repeatedCallLimit)
 	}

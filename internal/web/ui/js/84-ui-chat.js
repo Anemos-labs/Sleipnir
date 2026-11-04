@@ -308,28 +308,25 @@
     /* ---------- composer ---------- */
     const inp = $('#input'), form = $('#composer'), SLASH = { open: false, items: [], idx: 0, mode: 'cmd' }, slashEl = $('#slash'), RS = { pasted: [], hi: -1, imgs: [] };
     /* ---------- attached images: pasted, dropped or picked; each is stored by the session and travels in the message as a token ---------- */
-    const strip = $('#imgStrip'), IMG_CHIP = /\[image #(\d+)(?:: [^\]\n]*)?\]/g, MAX_IMG = 20 * 1024 * 1024;
-    /** The message as sent: every image chip of the composer becomes the token of its stored picture (a chip whose upload failed
-     *  or is still running is dropped). */
-    const withImages = (v, imgs) => v.replace(IMG_CHIP, (m0, n) => { const it = imgs[+n - 1]; return it && it.token ? it.token : it ? '' : m0; });
+    const strip = $('#imgStrip'), MAX_IMG = 20 * 1024 * 1024;
+    /** The message as sent: the text, then the token of each attached picture ([[image:REF|name]]); the agent numbers them
+     *  ("[image 1: name]") in the order they come. A picture whose upload failed is left out. */
+    const withImages = (v, imgs) => { const toks = imgs.filter(it => it.token).map(it => it.token); return toks.length ? (v ? v + '\n' : '') + toks.join(' ') : v; };
     function paintStrip() {
-      const live = RS.imgs.filter(it => it && inp.value.indexOf('[image #' + it.n) >= 0);
-      strip.hidden = !live.length;
-      strip.innerHTML = live.map(it => '<span class="ith' + (it.token ? '' : ' up') + (it.err ? ' err' : '') + '" title="' + esc(it.err || it.name) + '"><img src="' + esc(it.url) + '" alt=""><span>#' + it.n + '</span><button type="button" data-irm="' + it.n + '" aria-label="Remove image ' + it.n + '">×</button></span>').join('');
+      strip.hidden = !RS.imgs.length;
+      strip.innerHTML = RS.imgs.map((it, i) => '<span class="ith' + (it.token ? '' : ' up') + (it.err ? ' err' : '') + '" title="' + esc(it.err || it.name) + '">' + (it.url ? '<img src="' + esc(it.url) + '" alt="">' : '') + '<span>' + (i + 1) + '</span><button type="button" data-irm="' + i + '" aria-label="Remove image ' + (i + 1) + ': ' + esc(it.name) + '">×</button></span>').join('');
     }
-    /** Store one picture with the session and put its chip at the caret. */
+    /** Store one picture with the session; it shows in the strip above the message box until the message is sent. */
     function attachFile(f) {
       const S = SL.sessions.active; if (!S || S.readOnly || S.placeholder) { ui.toast('start a session first: images are stored with it', 'warm'); return; }
       if (!/^image\/(png|jpeg|gif|webp)$/.test(f.type)) { ui.toast('only PNG, JPEG, GIF and WebP images can be attached', 'warm'); return; }
       if (f.size > MAX_IMG) { ui.toast(f.name + ' is larger than 20 MB', 'warm'); return; }
-      const n = RS.imgs.length + 1, name = (f.name && f.name !== 'image.png' ? f.name : 'pasted-' + n + '.' + f.type.split('/')[1]).replace(/[\]|\n]/g, ''), it = { n, name, url: URL.createObjectURL(f) };
-      RS.imgs.push(it);
-      const tag = '[image #' + n + ': ' + name + ']', pos = inp.selectionStart, pre = inp.value.slice(0, pos);
-      inp.setRangeText((pre && !/\s$/.test(pre) ? ' ' : '') + tag + ' ', inp.selectionStart, inp.selectionEnd, 'end'); autosize(); S.ui.draft = inp.value; paintStrip();
+      const name = (f.name && f.name !== 'image.png' ? f.name : 'pasted-' + (RS.imgs.length + 1) + '.' + f.type.split('/')[1]).replace(/[\]|\n]/g, ''), it = { name, url: '' };
+      RS.imgs.push(it); paintStrip();
       const rd = new FileReader();
       rd.onload = () => {
-        const data = String(rd.result || '').replace(/^data:[^,]*,/, '');
-        SL.api.post(SL.api.tab(S.id) + '/images', { name, data }, { timeout: 120000 }).then(r => {
+        it.url = String(rd.result || ''); paintStrip();
+        SL.api.post(SL.api.tab(S.id) + '/images', { name, data: it.url.replace(/^data:[^,]*,/, '') }, { timeout: 120000 }).then(r => {
           if (r && r.ok && r.data && r.data.token) it.token = r.data.token; else { it.err = (r && r.message) || 'the image could not be stored'; ui.toast(name + ': ' + it.err, 'warm'); }
           paintStrip();
         });
@@ -339,12 +336,12 @@
     }
     sc.listen($('#attachBtn'), 'click', () => $('#imgPick').click());
     sc.listen($('#imgPick'), 'change', e => { Array.from(e.target.files || []).forEach(attachFile); e.target.value = ''; inp.focus(); });
-    sc.listen(strip, 'click', e => { const b = e.target.closest('[data-irm]'); if (!b) return; const n = b.dataset.irm; inp.value = inp.value.replace(new RegExp('\\s?\\[image #' + n + '(?:: [^\\]\\n]*)?\\]'), ''); autosize(); paintStrip(); inp.focus(); });
+    sc.listen(strip, 'click', e => { const b = e.target.closest('[data-irm]'); if (!b) return; RS.imgs.splice(+b.dataset.irm, 1); paintStrip(); inp.focus(); });
     sc.listen(form, 'dragover', e => { if (e.dataTransfer && Array.from(e.dataTransfer.types || []).indexOf('Files') >= 0) { e.preventDefault(); form.classList.add('drop'); } });
     sc.listen(form, 'dragleave', () => form.classList.remove('drop'));
     sc.listen(form, 'drop', e => { form.classList.remove('drop'); const fs = e.dataTransfer && Array.from(e.dataTransfer.files || []).filter(f => /^image\//.test(f.type)); if (fs && fs.length) { e.preventDefault(); fs.forEach(attachFile); inp.focus(); } });
-    /** Whether every image of the composer's text is stored (a send waits for nothing: it is refused with a toast until then). */
-    const imagesPending = v => { let busy = false; v.replace(IMG_CHIP, (m0, n) => { const it = RS.imgs[+n - 1]; if (it && !it.token && !it.err) busy = true; return m0; }); return busy; };
+    /** Whether an attached picture is still being stored (a send is refused with a toast until it is). */
+    const imagesPending = () => RS.imgs.some(it => !it.token && !it.err);
     const autosize = () => { inp.style.height = 'auto'; inp.style.height = Math.min(120, inp.scrollHeight) + 'px'; };
     /** A queued line: its text and, once the server has it, Send now (a message only: it steers the running turn), Edit (takes it out and
      *  puts it back in the composer) and × (takes it out). An action of the session (a goal change) has no buttons: it stays. */
@@ -371,10 +368,10 @@
     });
     /** Ctrl+Enter while a turn runs: what the composer holds goes to the running turn as a steer (/steer), not into the queue. */
     function steerNow() {
-      const S = SL.sessions.active, v = inp.value.trim(); if (!S || !v) return;
+      const S = SL.sessions.active, v = inp.value.trim(); if (!S || (!v && !RS.imgs.length)) return;
       if (!turnBusy(S) || S.readOnly) { submit(); return; }
       if (v.charAt(0) === '/') { ui.toast('a command cannot steer: Enter queues it', 'warm'); return; }
-      if (imagesPending(v)) { ui.toast('an image is still being stored: send again in a moment', 'warm'); return; }
+      if (imagesPending()) { ui.toast('an image is still being stored: send again in a moment', 'warm'); return; }
       const pasted = RS.pasted.slice(), full = withImages(v, RS.imgs).replace(/\[pasted text #(\d+) \+\d+ lines\]/g, (m0, n) => pasted[+n - 1] != null ? pasted[+n - 1] : m0);
       const r = SL.act.steer('mgr', full); if (!r || r.ok === false) { if (r && r.why) ui.toast(r.why, 'warm'); return; }
       inp.value = ''; S.ui.draft = ''; autosize(); closeSlash(); RS.pasted = []; RS.imgs = []; paintStrip(); RS.hi = -1; if (S.hist[S.hist.length - 1] !== v) S.hist.push(v);
@@ -409,12 +406,12 @@
     /** Put a line that was not sent back into the composer (when nothing new was typed there meanwhile), with its pasted text. */
     function restore(S, v, pasted, imgs) { if (S !== SL.sessions.active || inp.value.trim()) return false; inp.value = v; S.ui.draft = v; RS.pasted = pasted; if (imgs) { RS.imgs = imgs; paintStrip(); } autosize(); return true; }
     function submit() {
-      const S = SL.sessions.active; let v = inp.value.trim(); if (!v) return;
+      const S = SL.sessions.active; let v = inp.value.trim(); if (!v && !RS.imgs.length) return;
       /* a replay never changes the session: the line stays in the composer */
       if (v.charAt(0) !== '/' && S.replay) { ui.toast('go live to talk: a replay never changes the session (the line is kept)', 'warm'); return; }
-      if (v.charAt(0) !== '/' && imagesPending(v)) { ui.toast('an image is still being stored: send again in a moment', 'warm'); return; }
+      if (v.charAt(0) !== '/' && imagesPending()) { ui.toast('an image is still being stored: send again in a moment', 'warm'); return; }
       const imgs = RS.imgs.slice(), vs = v.charAt(0) !== '/' ? withImages(v, imgs).trim() : v;
-      const pasted = RS.pasted.slice(); inp.value = ''; S.ui.draft = ''; autosize(); closeSlash(); RS.pasted = []; RS.imgs = []; paintStrip(); RS.hi = -1; if (S.hist[S.hist.length - 1] !== v) S.hist.push(v);
+      const pasted = RS.pasted.slice(); inp.value = ''; S.ui.draft = ''; autosize(); closeSlash(); RS.pasted = []; if (v.charAt(0) !== '/') { RS.imgs = []; paintStrip(); } RS.hi = -1; if (v && S.hist[S.hist.length - 1] !== v) S.hist.push(v);
       /* a slash line that is an action of the session (/goal TEXT) comes back into the composer when it is refused, as a message does */
       if (v.charAt(0) === '/') { const r = SL.palette.runLine(v); if (r && r.ok === false) restore(S, v, pasted, imgs); else if (r && r.done) r.done.then(res => { if (res && res.ok === false && res.code !== 'aborted' && !restore(S, v, pasted, imgs)) ui.toast('not sent: ' + clip1(v, 60) + ' (↑ brings it back)', 'warm'); }); return; }
       /* the agent gets the pasted text; the transcript keeps the chips */
@@ -453,7 +450,7 @@
     }
     sc.listen(form, 'click', e => { if (e.target.closest('[data-dlv="plugins"]')) { e.preventDefault(); if (ui.nav) { $('#app').dataset.pv = 'main'; ui.nav.go('plugins'); } else SL.views.show('plugins'); } });
     sc.on('plugins-changed', () => { DLV.sig = ''; const S = SL.sessions.active; if (S) paintDelivery(S); });
-    sc.listen(inp, 'input', () => { autosize(); SL.time.noteKey(); updateSlash(); if (RS.imgs.length) paintStrip(); const S = SL.sessions.active; if (S) S.ui.draft = inp.value; });
+    sc.listen(inp, 'input', () => { autosize(); SL.time.noteKey(); updateSlash(); const S = SL.sessions.active; if (S) S.ui.draft = inp.value; });
     sc.listen(inp, 'keydown', e => {
       SL.time.noteKey();
       if (SLASH.open) {

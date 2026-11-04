@@ -74,6 +74,13 @@ func (e Entry) IsChat() bool {
 	return e.Modality == "" || strings.HasSuffix(e.Modality, "->text")
 }
 
+// TakesImages reports whether the model accepts images as input: the input side of its modality names "image"
+// ("text+image->text"). A catalogue that does not say leaves it open, and open counts as yes.
+func (e Entry) TakesImages() bool {
+	in, _, found := strings.Cut(strings.ToLower(e.Modality), "->")
+	return e.Modality == "" || !found || strings.Contains(in, "image")
+}
+
 // IsEmbedding reports whether the model turns text into vectors (an OpenAI-compatible POST /embeddings): its modality ends in
 // "->embeddings", or, in a catalogue that does not say, its id names an embedding model ("text-embedding-3-small", "nomic-embed-text").
 func (e Entry) IsEmbedding() bool {

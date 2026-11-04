@@ -7,18 +7,30 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
-- Images reach every dialect: an image stored in the blob store (the read tool,
-  an MCP result, a picture attached in the web composer) is sent as a data URL,
-  scaled down past 1568 pixels or about 3.7 MB, and on Chat Completions and
-  Responses the image a tool returned follows its results in the turn's user
-  message. A request carries at most `cache.attached_images` images (default 1),
-  the newest of the current run; every other image is replaced in the thread by
-  a description written for it in a side request of its own (the `vision` role's
-  model, else the agent's), so a message with many images is split into one
-  description request per extra image. An endpoint that refuses images gets the
-  request again with every image described. Prompt-cache change: retiring an
-  image rewrites the thread from that image on as a declared rebase, so the
-  cache misses once from there (docs/CACHE-DESIGN.md, Images).
+- Images a tool returns (a screenshot the read tool opens, an MCP tool's
+  picture) reach the model on every wire format. Chat Completions and the
+  Responses API carry a tool's output as text, so its images follow in the
+  user message after it, each after a line naming the call; blob references
+  are sent as data URLs on all three formats. An image that cannot be resolved
+  is sent as a note saying so. A model whose catalogue says it takes text only
+  gets that note in place of the image. Prompt-cache change: only requests
+  that carry an image change bytes.
+
+- Images no longer pile up in a conversation. A request carries at most
+  `cache.attached_images` images (default 1), the newest of the current run;
+  every other image (earlier runs, extra pictures of one message, older
+  screenshots of a tool loop) is replaced in the thread by a description
+  written for it in a side request that carries only that image (the `vision`
+  role's model, else the agent's), so a message with many images is split into
+  one description request per extra image and the person still sees them all.
+  A model whose catalogue says it takes text only gets every image as its
+  description when a `vision` model is set. An endpoint that refuses images, or
+  does not answer a request with images, is asked again with every image
+  described. Images are scaled down past 1568 pixels or about 3.7 MB before they
+  are sent. The web composer attaches pictures (paste, drop, or the image
+  button) and the transcript shows them. Prompt-cache change: retiring an image
+  rewrites the thread from that image on as a declared rebase, so the cache
+  misses once from there (docs/CACHE-DESIGN.md, Images).
 
 - The `sleipnir` tool has a `sessions` action: the agent the person talks to
   in a tab of `sleipnir web` lists the server's other sessions, reads what one

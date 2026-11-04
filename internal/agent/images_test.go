@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/core"
@@ -52,13 +53,14 @@ type imgProvider struct {
 	reply  func(n int, r imgReq) (core.Turn, *provider.Error)
 	mainN  int
 	refuse bool // refuse a conversation request that carries any image
+	hang   bool // never answer a conversation request that carries any image
 }
 
 func (p *imgProvider) Profile() provider.Profile {
 	return provider.Profile{Name: "img", Dialect: "openai-chat", Cache: cost.OpenAICacheModel()}
 }
 
-func (p *imgProvider) Do(_ context.Context, req *provider.Request, on func(provider.Event)) (*provider.Response, error) {
+func (p *imgProvider) Do(ctx context.Context, req *provider.Request, on func(provider.Event)) (*provider.Response, error) {
 	if on != nil {
 		on(provider.Event{Kind: provider.EvStart})
 	}
@@ -95,8 +97,12 @@ func (p *imgProvider) Do(_ context.Context, req *provider.Request, on func(provi
 	if !r.describe {
 		p.mainN++
 	}
-	refuse := p.refuse
+	refuse, hang := p.refuse, p.hang
 	p.mu.Unlock()
+	if hang && !r.describe && len(r.images) > 0 {
+		<-ctx.Done()
+		return nil, &provider.Error{Kind: provider.ErrNetwork, Message: "cancelled", Err: ctx.Err()}
+	}
 	var turn core.Turn
 	switch {
 	case r.describe:
@@ -346,5 +352,28 @@ func TestImagesStayInTheLog(t *testing.T) {
 				t.Errorf("the thread still holds the picture after the next message: %+v", tr)
 			}
 		}
+	}
+}
+
+// An endpoint that takes a request with images and never starts its answer is not waited on for its whole timeout: past
+// ImageStall the request is sent again with every image described.
+func TestImageStallFallsBackToDescriptions(t *testing.T) {
+	old := agent.ImageStall
+	agent.ImageStall = 50 * time.Millisecond
+	defer func() { agent.ImageStall = old }()
+	p := &imgProvider{hang: true, reply: func(int, imgReq) (core.Turn, *provider.Error) { return arvText("ok"), nil }}
+	a, blobs := newImageAgent(t, p, agent.ImagePolicy{})
+	h, _ := blobs.Put(imgPNG(t, 5, 5, color.RGBA{7, 7, 7, 255}))
+	start := time.Now()
+	res, err := a.Run(context.Background(), "what is this "+agent.ImageToken(h, "x.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Text != "ok" || time.Since(start) > 10*time.Second {
+		t.Errorf("answer %q after %s", res.Text, time.Since(start))
+	}
+	main, _ := p.split()
+	if len(main) != 2 || len(main[1].images) != 0 || !strings.Contains(main[1].text, "DESCRIPTION ") {
+		t.Errorf("requests = %+v, want a stalled one with the image and a second with its description", main)
 	}
 }

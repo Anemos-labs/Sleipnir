@@ -158,7 +158,8 @@ mark.nca{unicode-bidi:isolate-override;direction:ltr;background:var(--warm-a);co
 .composer .ith.err{box-shadow:0 0 0 1px var(--red,#d55)}
 .composer .ith button{position:absolute;top:0;right:0;width:16px;height:16px;line-height:14px;font-size:12px;color:#fff;background:rgba(0,0,0,.55);border-radius:0 0 0 3px}
 .msg.you .uimgs{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}
-.msg.you .uimg{display:inline-flex;flex-direction:column;gap:3px;max-width:min(220px,100%)}
+.msg.you .uimg{display:inline-flex;flex-direction:column;gap:3px;max-width:min(140px,46%)}
+.msg.you .uimg .pastechip{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .uimgdlg .uimg-full{display:block;max-width:100%;max-height:75vh;margin:0 auto;border-radius:4px}
-.msg.you .uimg img{display:block;max-width:100%;max-height:150px;border-radius:4px;box-shadow:0 0 0 1px var(--line2);background:var(--panel2);cursor:zoom-in}
+.msg.you .uimg img{display:block;max-width:100%;max-height:100px;object-fit:cover;border-radius:4px;box-shadow:0 0 0 1px var(--line2);background:var(--panel2);cursor:zoom-in}
 .slash{position:absolute;left:0;right:0;bottom:calc(100% + 4px);max-height:300px;overflow:auto;background:var(--panel2);border:1px solid var(--line2);box-shadow:0 -10px 30px var(--shade);z-index:20}

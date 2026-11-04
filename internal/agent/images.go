@@ -55,8 +55,9 @@ const KindImage = "image"
 // describeTimeout bounds one description request, and waitDescription bounds how long a request that must retire an image
 // waits for its description before it uses the placeholder.
 const (
-	describeTimeout = 3 * time.Minute
-	waitDescription = 3 * time.Minute
+	describeTimeout = 2 * time.Minute
+	waitDescription = 2 * time.Minute
+
 	// maxDescribing is how many description requests one agent has in flight at once.
 	maxDescribing = 3
 	// describeMaxTokens is the output limit of a description request (reasoning models spend part of it thinking).
@@ -98,7 +99,7 @@ func (a *Agent) imageKeep() int {
 	a.imgs.mu.Lock()
 	refused := a.imgs.refused
 	a.imgs.mu.Unlock()
-	if refused {
+	if refused || a.cfg.Model.NoImages {
 		return 0
 	}
 	n := a.cfg.Images.Attached
@@ -288,6 +289,9 @@ func (a *Agent) describeOnce(ctx context.Context, b core.Block, question string)
 	prov, model := a.cfg.Provider, a.cfg.Model
 	if a.cfg.Images.Describer != nil {
 		prov, model = a.cfg.Images.Describer, a.cfg.Images.DescriberModel
+	}
+	if model.NoImages {
+		return "", fmt.Errorf("model %s takes text only: name a model that sees images for the vision role", model.ID)
 	}
 	params := a.requestParams(prov, model.ID)
 	params.MaxTokens = describeMaxTokens
@@ -659,4 +663,32 @@ func sniffImage(b []byte) string {
 		return "image/webp"
 	}
 	return ""
+}
+
+// ImageStall is how long a conversation request that carries images may go without the endpoint starting its answer.
+// Some endpoints accept images and then never answer: past it the request is treated as a refusal of its images.
+var ImageStall = 150 * time.Second
+
+// errImageStall is the cause of a conversation request cancelled because the endpoint did not start answering a prompt that
+// carries images within ImageStall.
+var errImageStall = errors.New("image stall")
+
+// promptImages counts the images of a prompt, those inside tool results included.
+func promptImages(p *core.Prompt) int {
+	n := 0
+	for _, m := range p.Messages {
+		for _, b := range m.Blocks {
+			if b.Kind == core.BlockImage {
+				n++
+			}
+			n += len(core.ToolResultImages(b))
+		}
+	}
+	return n
+}
+
+// stallError is the refusal a request stalled on its images is reported as (imageRefusal recognises it).
+func stallError() *provider.Error {
+	return &provider.Error{Kind: provider.ErrServer, NoRetry: true,
+		Message: fmt.Sprintf("the endpoint did not start answering a request with images within %s", ImageStall)}
 }

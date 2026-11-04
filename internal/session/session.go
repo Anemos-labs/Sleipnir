@@ -809,7 +809,7 @@ func (s *Session) buildFallback() error {
 // clientFor is BuildProvider for this session: the client of ref, with the session's token capture, behind Options.WrapProvider
 // when one is set.
 func (s *Session) clientFor(ref ModelRef) (provider.Provider, cost.Model, error) {
-	p, m, err := BuildProvider(s.cfg, ref, ProviderOptions{CaptureTokens: s.opts.CaptureTokens})
+	p, m, err := BuildProvider(s.cfg, ref, ProviderOptions{CaptureTokens: s.opts.CaptureTokens, Media: BlobMedia(s.Blobs)})
 	if err == nil && s.opts.WrapProvider != nil {
 		p = s.opts.WrapProvider(p)
 	}
