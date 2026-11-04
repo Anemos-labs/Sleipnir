@@ -284,6 +284,9 @@ func TestAStopReturnsATaskResumedDuringTheRun(t *testing.T) {
 	if res := secRevCall(t, tool, id, "backend", map[string]any{"action": "resume", "id": readme.ID}); res.IsError {
 		t.Fatal(res.Text)
 	}
+	if got := r.sw.get(id).currentTask(); got != readme.ID {
+		t.Fatalf("current task after resume = %q, want %q", got, readme.ID)
+	}
 	if _, err := r.sw.StopAgent(id); err != nil {
 		t.Fatal(err)
 	}
