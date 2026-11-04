@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A task goes to a member of its own role. `spawn` with another role, `spawn
+  agent=` naming a member of another role, a self-claim and a handover of a
+  task whose role the team can staff are refused, naming the task's role and
+  its members. A queued task no longer names other roles' free slots as a place
+  to start it. `task revise` takes `role=` to move a top-level task outside any
+  pool to another role on purpose. Prompt-cache change: the manager's role pin
+  and the `task` tool's description change bytes.
 - Team mail, task text and contracts are no longer cut short. Mail over its
   kind's inline limit (600 characters for a request or blocker, 1,200 for
   info, answer and contract) is accepted up to 24,000 characters: its opening

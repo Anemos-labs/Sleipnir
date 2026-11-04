@@ -79,7 +79,7 @@ func (t *taskTool) Spec() core.ToolSpec {
 	return core.ToolSpec{
 		Name:         "task",
 		NoTreeWrites: true, // tree mutations use the verified integration bridge
-		Description: "Shared task board. Manager: deliver (text=commit message) verifies direct changes and commits the integrated result to the original checkout without creating a task; then use bash for push and PR commands. Manager: revise (id, text=reason, optional title, description, kind, files, deps) repairs a task in place; resolve (id, text=explanation) completes work no longer needed. Pool leaders: create with parent=id (inherits the parent's kind unless specified) and accept their child tasks. Actions: list, get (id: full task and agreement), claim (id), update (id, text = one-line status), " +
+		Description: "Shared task board. Manager: deliver (text=commit message) verifies direct changes and commits the integrated result to the original checkout without creating a task; then use bash for push and PR commands. Manager: revise (id, text=reason, optional title, description, role, kind, files, deps) repairs a task in place (role= moves a top-level task to another role); resolve (id, text=explanation) completes work no longer needed. Pool leaders: create with parent=id (inherits the parent's kind unless specified) and accept their child tasks. Actions: list, get (id: full task and agreement), claim (id), update (id, text = one-line status), " +
 			"done (id, text = one-line result, optional agreement = full shared contract, at most 16000 bytes/400 lines, optional assumptions = choices you made that the task left open, one line each, at most 8, optional commit = the message of the commit that records your change, in the project's commit convention (Conventional Commits, type(scope): summary, when it has none), saying what the code now does and why, never task ids or agent names: the harness verifies the work before review). Accepted agreements are inherited by dependent tasks and preserved through compaction. " +
 			"block (id, text = reason, optional target = the id of the task it waits for), resume (id), " +
 			"handover (id, text = a short summary for your successor: what is done, what is left, what you learned; the harness gives your task, your work and the summary to a fresh worker of your role; the manager may hand over a worker's task). Manager only: create (title, description, role, deps, files = scope, kind = work or plan; plans require a read-only role and an agreement, not code verification; rigor = plan adds a read-only plan task the work waits for and inherits, rigor = reviewed also a reviewer's check of that plan, for work that is risky or hard to undo), " +
@@ -241,7 +241,6 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		}
 		return r, nil
 	case "claim":
-		ro := s.roles[c.Env.Role].ReadOnly
 		m := s.get(me)
 		// A claim of the task the worker is already on changes nothing on the board: it neither counts as progress nor queues the
 		// assignment again. A worker on a 5k-entity perf task claimed its two tasks three times in 45 minutes, each time told to
@@ -253,7 +252,7 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		if m != nil && m.tree != nil {
 			wip = s.wipMessage(m)
 		}
-		if err := s.Board.claim(me, in.ID, s.claimCheck(me, ro)); err != nil {
+		if err := s.Board.claim(me, in.ID, s.claimCheck(me, s.roles[c.Env.Role])); err != nil {
 			// Workers were told to start the parent with spawn, which only the manager may do, and claimed again.
 			var pe poolParentError
 			if errors.As(err, &pe) {
@@ -879,11 +878,10 @@ func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error)
 			if !t.s.queueSpawn(req, task.Rev) {
 				was = "was already queued"
 			}
-			out := fmt.Sprintf("%s %s for the next free %s member (%s). The harness starts it then and tells you: do not spawn it on %s again; use wait.", req.TaskID, was, busy.role, busy.held, busy.role)
-			if line := spillLine(t.s.freeWriters(busy.role), busy.role, req.TaskID); line != "" {
-				out += " " + strings.ToUpper(line[:1]) + line[1:] + "."
-			}
-			return text("%s", out), nil
+			// It waits for its own role: each role runs on the model chosen for its kind of work, so a member of another role that
+			// happens to be free is not offered.
+			return text("%s %s for the next free %s member (%s). The harness starts it then and tells you: do not spawn it on %s or on another role; use wait.",
+				req.TaskID, was, busy.role, busy.held, busy.role), nil
 		}
 	}
 	if err != nil {
