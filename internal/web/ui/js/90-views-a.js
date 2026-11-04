@@ -247,9 +247,16 @@
     const big = L.W > W || L.H > H, size = big ? ' width="' + L.W + '" height="' + L.H + '" style="width:' + L.W + 'px;height:' + L.H + 'px"' : '';
     return { html: '<svg viewBox="0 0 ' + L.W + ' ' + L.H + '"' + size + ' preserveAspectRatio="xMidYMid meet" role="img" aria-label="task dependencies">' + eh + nodes + '</svg>', head: 'a task waits for the tasks it depends on' + (nf + nr ? ' · ' + foldWords + ' tasks folded into one' : '') };
   }
+  /** What the marks on the Board view's cards mean, under the board, as a status legend does. */
+  const BOARD_LEGEND = '<div class="blegend" role="note" aria-label="What the marks on a card mean">' +
+    '<span><i class="lg live" aria-hidden="true"></i>live: its owner is working on it now</span>' +
+    '<span><i class="lg stalled" aria-hidden="true"></i>⚠ stalled: the stall detector named it</span>' +
+    '<span><i class="lg failed" aria-hidden="true"></i>✗ failed, with why and what to do</span>' +
+    '<span><i class="lg strip" aria-hidden="true"></i>its history: a segment per stretch, ↩ N times sent back</span>' +
+    '<span><b class="num">12m</b> time in its column</span><span><b class="num">try 2</b> its attempt</span><span><b class="num">$0.12</b> spent on it</span></div>';
   reg({ name: 'board', title: 'Board', mount(sc, root, params, S0) {
     const P = ui.pageHead(sc, root, S0, 'board', params, { title: 'Board', purpose: 'The tasks the manager made from the goal, by stage (to do, running, being verified, merged), and which task waits for which.', action: { label: 'Open the merge queue', title: 'Workspace \u203a Merge: what is verified and merged into your files' }, onAction: () => (ui.nav ? ui.nav.go('merge') : SL.views.show('workspace', { tab: 'merge' })) });
-    P.fill({ 'board.tasks': '<section class="panel"><div class="ph"><h2>Task board</h2><div class="r"><span class="bbsum"></span><span>drag disabled: the manager moves tasks</span></div></div><div class="kan"></div></section>',
+    P.fill({ 'board.tasks': '<section class="panel"><div class="ph"><h2>Task board</h2><div class="r"><span class="bbsum"></span><span>drag disabled: the manager moves tasks</span></div></div><div class="kan"></div>' + BOARD_LEGEND + '</section>',
       'board.deps': '<section class="panel"><div class="ph"><h2>Dependencies</h2><div class="r"><span class="dgsum">a task waits for the tasks it depends on</span></div></div><div class="dg"></div></section>' });
     const B = ui.board.make(sc, $('.kan', root), true), host = $('.dg', root);
     function render(S, m) {

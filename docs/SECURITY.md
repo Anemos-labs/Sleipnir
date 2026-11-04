@@ -476,7 +476,7 @@ session, the agents' and the verification's, inside one container of its own; `-
 `ruby:3-bookworm`, `node:lts-bookworm`, else `buildpack-deps:bookworm`. For Go, whose fetch runs none of the project's code and
 nothing its configuration names (`go mod download`), the container starts on the network, fetches the modules into its in-memory `HOME`, and is
 disconnected from every network before the session's first command; a container that cannot be disconnected is removed and the
-session does not start. Builds and tests then run offline. Other languages' package managers run install scripts, build
+session does not start. Builds and tests then run offline. When a command fails because a name did not resolve or a host could not be reached (in the words of go, curl, git, pip or npm), the bash tool adds a note to its result: the network looks unreachable, retrying will not help, and how to work with what is installed (`GOPROXY=off`, `npm --offline`, `pip --no-index`), so a model in a sandbox or behind a firewall does not spend its first minutes retrying downloads. Other languages' package managers run install scripts, build
 packages or run programs the project's configuration names (cargo's credential providers), so nothing is fetched for them: use `--sandbox-network` when the session must install dependencies. The harness stays outside: the model's keys, the session's recording, the file and web tools,
 hooks and MCP servers run on the host, and each command is sent in with `docker exec`. This is the pattern hosted review
 services use for untrusted repositories: the agent loop outside, commands streamed into the sandbox.

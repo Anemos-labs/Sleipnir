@@ -240,7 +240,7 @@
         "since": "2026-01-02T03:04:07Z",
         "history": [
           {"at": "2026-01-02T03:04:06.605Z", "state": "todo"},
-          {"at": "2026-01-02T03:04:07Z", "state": "running", "owner": "be-1"}
+          {"at": "2026-01-02T03:04:07Z", "state": "running", "owner": "be-1", "cost_usd": 0.004, "requests": 1}
         ],
         "cost_usd": 0.004,
         "requests": 1
@@ -259,7 +259,7 @@
         "since": "2026-01-02T03:04:07.01Z",
         "history": [
           {"at": "2026-01-02T03:04:06.615Z", "state": "todo"},
-          {"at": "2026-01-02T03:04:07.01Z", "state": "running", "owner": "fe-1"}
+          {"at": "2026-01-02T03:04:07.01Z", "state": "running", "owner": "fe-1", "cost_usd": 0.004, "requests": 1}
         ],
         "cost_usd": 0.004,
         "requests": 1

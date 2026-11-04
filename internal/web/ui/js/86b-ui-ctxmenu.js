@@ -39,6 +39,8 @@
   /** Copy text and say whether it worked. */
   const copy = (txt, what) => U.copy(String(txt)).then(ok => ui.toast(ok ? what + ' copied' : 'copy is not available here', ok ? 'ok' : 'warm'));
   /** Put text in the message box (append, or replace what is there) and give it the focus. */
+  /** Put text in the message box (after what is there, or in place of it), open the rail and focus it at the end. */
+  ui.compose = (text, replace) => compose(text, replace);
   function compose(text, replace) {
     const i = $('#input'); if (!i || i.disabled) { ui.toast('the message box is not available here', 'warm'); return; }
     if (ui.rail && ui.rail.open) ui.rail.open();

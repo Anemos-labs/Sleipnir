@@ -343,16 +343,19 @@ func TestATasklessRunSlowToEndIsAnnouncedOnce(t *testing.T) {
 		t.Fatalf("spawn: %+v", res)
 	}
 	now := r.sw.deps.Now()
+	be.mu.Lock()
+	taskless := be.run
+	be.mu.Unlock()
 	for i := 1; i <= 3; i++ {
 		r.sw.queueTick(now.Add(tasklessGrace + time.Duration(i)*time.Second))
 	}
 	close(release)
-	// Once the taskless run ends, the queued task may start on the member at once (the pool has one slot), so the member can be
-	// running again before it is seen idle: a run on the queued task shows the taskless run ended as well.
+	// The run is gone once the member is idle or runs another: the supervisor's own pass starts the queued task on the member
+	// as soon as it is free, so the idle moment between the two can be too short for the poll to see.
 	rvWait(t, "the taskless run to end", func() bool {
 		be.mu.Lock()
 		defer be.mu.Unlock()
-		return be.life == lifeIdle || be.task == next.ID
+		return be.run != taskless || be.life == lifeIdle
 	})
 	rvWait(t, "the manager to be told", func() bool { return mailSent(r, be.id+"'s run had no task while "+next.ID+" waited") >= 1 })
 	if n := mailSent(r, be.id+"'s run had no task while "+next.ID+" waited"); n != 1 {
