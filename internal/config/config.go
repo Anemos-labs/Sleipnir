@@ -270,8 +270,9 @@ type Swarm struct {
 	// guarded by write leases; "shared" is the older spelling of the same thing) or
 	// "worktree": each writer gets a git worktree of its own and finished work is
 	// integrated through a verifying merge queue (docs/SWARM-PROTOCOL.md section 14).
-	// The trees always live in the user's cache directory, never in the repository
-	// and never anywhere a configuration value names: a project's file may switch
+	// The trees live in the data directory ($SLEIPNIR_HOME, else ~/.sleipnir; a session
+	// started before they moved keeps its trees in the user's cache directory), never in
+	// the repository and never anywhere a configuration value names: a project's file may switch
 	// isolation on (it only reduces risk), but it cannot choose where anything is
 	// written.
 	Isolation string `json:"isolation,omitempty"`

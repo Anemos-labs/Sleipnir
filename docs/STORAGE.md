@@ -1,7 +1,8 @@
 # Storage
 
-Sleipnir keeps everything it writes for itself in one data directory: `$SLEIPNIR_HOME` when it is set, else `~/.sleipnir`
-(`<state>` below). A project's own `.sleipnir/` folder (its configuration, research runs, scans, council ledger) belongs to the
+Sleipnir keeps the state it writes for itself (sessions, their scratch directories, worktrees, RL work) in one data directory:
+`$SLEIPNIR_HOME` when it is set, else `~/.sleipnir` (`<state>` below). Your settings, credentials, notes, teams and plugins stay
+in `~/.sleipnir` either way (the last row of the table). A project's own `.sleipnir/` folder (its configuration, research runs, scans, council ledger) belongs to the
 project and is never touched by anything on this page.
 
 ## What is in it
@@ -62,8 +63,8 @@ deleted as `sessions prune` deletes one, worktrees included: the edits left in e
 (`sleipnir/<id>/<agent>`), the trees are removed, and every branch that holds commits no other branch has is kept and named.
 
 Without `--yes` the command removes nothing and lists what would go, with its size. `storage.clean = "off"` stops the automatic
-cleanup; the command still works. The settings are read from your user file only: a repository cannot make the harness remove
-anything of yours.
+cleanup; the command still works. The settings come from your user file or the environment (`SLEIPNIR_STORAGE_CLEAN` and the
+like), never from a project file: a repository cannot make the harness remove anything of yours.
 
 The work a cleanup keeps is in ordinary Git branches of the project: `git branch --list 'sleipnir/*'` lists them, and `git log
 sleipnir/<id>/<agent>` shows what each holds. Delete one with `git branch -D` once it is no longer needed.

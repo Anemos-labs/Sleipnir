@@ -27,9 +27,7 @@ func TestTheStateDirectoryProtectionStopsAtTheAgentsTrees(t *testing.T) {
 		t.Fatal(err)
 	}
 	link := filepath.Join(wt, "src", "cfg.json")
-	if err := os.Symlink(filepath.Join(state, "config.json"), link); err != nil {
-		t.Skip("no symbolic links here:", err)
-	}
+	linked := os.Symlink(filepath.Join(state, "config.json"), link) == nil // without links, only that case is left out
 	for _, mode := range []Mode{ModeAcceptEdits, ModeBypass} {
 		e := f.engine(t, Config{Mode: mode, StateDir: state, TreeParents: []string{trees}, Ask: guardedAsk})
 		e.Confine("be-1", wt)
@@ -45,6 +43,9 @@ func TestTheStateDirectoryProtectionStopsAtTheAgentsTrees(t *testing.T) {
 			{name: "a link in the tree to the settings", paths: []string{link}, want: "ask", why: "Edit("},
 			{name: "the folder of every session's trees", cmd: "rm -rf " + filepath.Join(state, "worktrees"), want: "not allow"},
 		} {
+			if len(c.paths) == 1 && c.paths[0] == link && !linked {
+				continue
+			}
 			var d Decision
 			if c.cmd != "" {
 				d = e.Check(context.Background(), Request{Agent: "be-1", Role: "backend", Tool: "Bash", Command: c.cmd, Cwd: wt, Summary: "bash"})

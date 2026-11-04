@@ -7,8 +7,9 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
-- Everything the harness keeps is in one data directory, `$SLEIPNIR_HOME`,
-  else `~/.sleipnir`. The worktrees of isolated teams move there
+- The state the harness keeps (sessions, scratch, worktrees, RL work) is in
+  one data directory, `$SLEIPNIR_HOME`, else `~/.sleipnir`; settings,
+  credentials, notes, teams and plugins stay in `~/.sleipnir`. The worktrees of isolated teams move there
   (`<state>/worktrees/<session>/<agent>`) from the cache directory
   (`~/.cache/sleipnir/worktrees`); a session started before keeps its trees
   where they are and resumes from there. The permission engine leaves a

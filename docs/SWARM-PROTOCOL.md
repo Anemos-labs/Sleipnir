@@ -1064,8 +1064,8 @@ created at the integration tip when the worker is spawned (`internal/workspace`)
 (`sessions prune`, a delete in the page, or the storage cleanup of `docs/STORAGE.md`), which commits their edits onto their
 branches first. The rest of the data directory is protected (every write there asks); a session's own trees are its agents'
 workspace and are left out of that protection, while the project's own rules (`Edit(./.sleipnir/**)` and the like) hold inside
-each tree. Sessions of earlier versions keep their trees in `<cache>/sleipnir/worktrees` (`$XDG_CACHE_HOME`, or `~/.cache`)
-until they are deleted; they resume from there.
+each tree. Sessions of earlier versions keep their trees in `<cache>/sleipnir/worktrees`, `<cache>` being the platform's per-user
+cache directory (`$XDG_CACHE_HOME`, or `~/.cache`, on Unix), until they are deleted; they resume from there.
 The trees start from what the person sees now, *uncommitted edits included* (a
 snapshot commit that no branch of theirs points at), and the result is applied on top of exactly that. A session started in
 a subdirectory keeps its writers in the same subdirectory of their trees. The manager
