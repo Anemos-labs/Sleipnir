@@ -36,11 +36,14 @@ they do not indicate whether a change has been released.
 - Images a tool returns (a screenshot the read tool opens, an MCP tool's
   picture) reach the model on every wire format. Chat Completions and the
   Responses API carry a tool's output as text, so its images follow in the
-  user message after it, each after a line naming the call; blob references
-  are sent as data URLs on all three formats. An image that cannot be resolved
-  is sent as a note saying so. A model whose catalogue says it takes text only
-  gets that note in place of the image. Prompt-cache change: only requests
-  that carry an image change bytes.
+  user message after it, each after a line naming the call. Blob references
+  are sent inline: as data URLs on those two, as base64 sources on the
+  Messages API. On all three, an image that cannot be sent (no blob, not an
+  image) is a note saying so instead of a failed request, and a model whose
+  catalogue entry says it takes text only gets that note in place of every
+  image, decided per request, so the conversation keeps its images for a
+  model that sees them. Prompt-cache change: only requests that carry an
+  image change bytes.
 
 - Images no longer pile up in a conversation. A request carries at most
   `cache.attached_images` images (default 1), the newest of the current run;

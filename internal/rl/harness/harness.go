@@ -664,3 +664,9 @@ func unanswered(err error) bool {
 
 // exhausted atomically reports whether the request limit has been reached.
 func (l *limited) exhausted() bool { return l.hit.Load() }
+
+// Unwrap is the client b counts (provider.MarkTextOnly reaches it through b).
+func (b *budgeted) Unwrap() provider.Provider { return b.Provider }
+
+// Unwrap is the client l counts.
+func (l *limited) Unwrap() provider.Provider { return l.Provider }

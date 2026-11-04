@@ -33,6 +33,9 @@ func ImageURL(b Block, media MediaFunc) (string, error) {
 	if mt == "" {
 		return "", fmt.Errorf("image %q has no media type", clip(ref, 24))
 	}
+	if !strings.HasPrefix(mt, "image/") {
+		return "", fmt.Errorf("image %q has media type %q, which is not an image", clip(ref, 24), clip(mt, 40))
+	}
 	data, err := media(ref, mt)
 	if err != nil {
 		return "", fmt.Errorf("resolving image %q: %w", clip(ref, 24), err)
@@ -49,6 +52,24 @@ func ImageURL(b Block, media MediaFunc) (string, error) {
 func ImageNotSent(err error) string {
 	return "[an image is not shown: " + err.Error() + "]"
 }
+
+// Imaging is how a wire format sends images: Media resolves blob references, and TextOnly (a model that takes text only) sends
+// every image as a note instead.
+type Imaging struct {
+	Media    MediaFunc
+	TextOnly bool
+}
+
+// URL is ImageURL for this imaging: ErrTextOnly for every image of a model that takes text only.
+func (im Imaging) URL(b Block) (string, error) {
+	if im.TextOnly {
+		return "", ErrTextOnly
+	}
+	return ImageURL(b, im.Media)
+}
+
+// ErrTextOnly is the refusal for a model that takes text only: the image is sent as a note (ImageNotSent) that says so.
+var ErrTextOnly = errors.New("this model takes text only; ask a model that sees images to look at it, or read what produced it")
 
 // ToolResultImages are the image blocks a tool result carries, in order.
 func ToolResultImages(b Block) []Block {

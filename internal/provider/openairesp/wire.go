@@ -34,6 +34,8 @@ type Options struct {
 	// Media resolves an image block's blob reference to its bytes, which are sent as a data URL (core.ImageURL). Without it an
 	// image that is a blob reference is sent as a note that it cannot be shown (core.ImageNotSent).
 	Media core.MediaFunc
+	// NoImages sends a note in place of every image (provider.Profile.NoImages).
+	NoImages bool
 }
 
 // request fixes field order so bodies are reproducible for golden tests and payload diffing. Order carries no meaning for the server.
@@ -160,9 +162,9 @@ func renderMessage(m core.Message, o Options) ([]json.RawMessage, error) {
 	case core.RoleAssistant:
 		return renderAssistant(m, o)
 	case core.RoleUser:
-		return renderUser(m, "user", o.Media)
+		return renderUser(m, "user", core.Imaging{Media: o.Media, TextOnly: o.NoImages})
 	case core.RoleSystem:
-		return renderUser(m, "developer", o.Media) // the endpoint takes instructions and developer messages, not system ones, in the input
+		return renderUser(m, "developer", core.Imaging{Media: o.Media, TextOnly: o.NoImages}) // the endpoint takes instructions and developer messages, not system ones, in the input
 	}
 	return nil, fmt.Errorf("openairesp: unsupported role %q", m.Role)
 }
@@ -237,7 +239,7 @@ func replayable(b core.Block) bool { return b.WireFormat == Dialect && len(b.Wir
 // renderUser emits the tool results first (a result goes right after the call it answers), then the rest of the turn as one message.
 // The order is fixed, so the same turn always renders to the same bytes. The output of a function call is sent as text, so the images a
 // tool returned open that message, each after a line naming the call it came from.
-func renderUser(m core.Message, role string, media core.MediaFunc) ([]json.RawMessage, error) {
+func renderUser(m core.Message, role string, media core.Imaging) ([]json.RawMessage, error) {
 	var out []json.RawMessage
 	var shown, parts []map[string]any
 	for _, b := range m.Blocks {
@@ -269,8 +271,8 @@ func renderUser(m core.Message, role string, media core.MediaFunc) ([]json.RawMe
 }
 
 // imagePart is an image block as an input part: its URL (core.ImageURL), or a note that it cannot be sent and why.
-func imagePart(b core.Block, media core.MediaFunc) map[string]any {
-	u, err := core.ImageURL(b, media)
+func imagePart(b core.Block, media core.Imaging) map[string]any {
+	u, err := media.URL(b)
 	if err != nil {
 		return map[string]any{"type": "input_text", "text": core.ImageNotSent(err)}
 	}
