@@ -794,7 +794,15 @@ func (t *Translator) planCall(input json.RawMessage, ts float64, at int64) {
 		return
 	}
 	ev := &wire.Plan{Steps: make([]string, 0, len(items)), St: make([]string, 0, len(items))}
-	for _, it := range items {
+	eff, ms := make([]float64, len(items)), make([]string, len(items))
+	for i, it := range items {
+		eff[i], ms[i] = float64(it.Effort), it.Milestone
+		if it.Effort > 0 {
+			ev.Eff = eff
+		}
+		if it.Milestone != "" {
+			ev.Mile = ms
+		}
 		ev.Steps = append(ev.Steps, line(it.Step, capPlan))
 		st := "pending"
 		switch it.Status {

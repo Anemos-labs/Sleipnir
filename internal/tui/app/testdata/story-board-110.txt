@@ -4,8 +4,8 @@
 │ todo 1                     running 1                  verifying 0                merged 1                  │
 │ ▢ T3 shop                  ▣ T2 shop                                             ✓ T1                      │
 ├─ tasks ────────────────────────────────────────────────────────┬─ merge queue ─────────────────────────────┤
-│ ▣ T2   w2     the cart page                                    │ no worktree isolation in this run: work   │
-│ ▢ T3   —      the checkout                                     │ is written to the checkout directly       │
+│ ▣ T2   w2     the cart page                                 1m │ no worktree isolation in this run: work   │
+│ ▢ T3   —      the checkout                                  1m │ is written to the checkout directly       │
 │ ✓ T1   w1     the catalogue api                                │                                           │
 ├────────────────────────────────────────────────────────────────┴───────────────────────────────────────────┤
 │                                                                                                            │

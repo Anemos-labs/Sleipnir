@@ -25,7 +25,7 @@ func TestThePlanToolKeepsOnePlanPerAgentAndSaysWhatIsWrong(t *testing.T) {
 		t.Error("the plan changes nothing but the plan: it must not ask the person")
 	}
 	r := run(t, tool, "a1", `{"items":[{"step":"read the test","status":"done"},{"step":"fix it","status":"doing"},{"step":"run go test"}]}`)
-	if r.IsError || !strings.Contains(r.Text, "1 of 3 done") || !strings.Contains(r.Text, "[>] 2. fix it") {
+	if r.IsError || !strings.Contains(r.Text, "1 of 3 steps done") || !strings.Contains(r.Text, "[>] 2. fix it") {
 		t.Fatalf("%+v", r)
 	}
 	if st.Open("a1") != 2 || st.Open("a2") != 0 {
@@ -38,5 +38,24 @@ func TestThePlanToolKeepsOnePlanPerAgentAndSaysWhatIsWrong(t *testing.T) {
 	}
 	if st.Open("a1") != 2 {
 		t.Error("a refused plan must leave the old one")
+	}
+}
+
+// A check's advice is added to a saved plan's result, and the plan is kept: an estimate the tool reads as hours weighs the
+// progress it reports.
+func TestThePlanToolAddsTheCheckAndWeighsTheEstimates(t *testing.T) {
+	st := plan.NewStore()
+	var seen string
+	tool := New(st).WithCheck(func(agent string, items []plan.Item) string {
+		seen = agent
+		return "no step names milestone M3"
+	})
+	r := run(t, tool, "mgr", `{"items":[{"step":"api","status":"done","effort":1,"milestone":"M1"},{"step":"ui","effort":"9h","milestone":"m2"}]}`)
+	if r.IsError || seen != "mgr" || !strings.Contains(r.Text, "about 10% of 10h estimated") || !strings.HasSuffix(r.Text, "no step names milestone M3") ||
+		!strings.Contains(r.Text, "[ ] 2. ui (M2, 9h)") {
+		t.Fatalf("%+v", r)
+	}
+	if got := st.Get("mgr"); len(got) != 2 || got[1].Effort != 9 || got[1].Milestone != "M2" {
+		t.Errorf("kept: %+v", got)
 	}
 }
