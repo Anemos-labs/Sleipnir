@@ -16,3 +16,11 @@ func TestIdListTakesAListOrOneStringOfIds(t *testing.T) {
 		}
 	}
 }
+
+// An explicit empty list stays a list: task revise reads a nil list as "leave the dependencies as they are".
+func TestAnEmptyIdListIsNotNil(t *testing.T) {
+	var l idList
+	if err := json.Unmarshal([]byte(`[]`), &l); err != nil || l == nil {
+		t.Fatalf("idList from [] = %#v, %v; want an empty, non-nil list", l, err)
+	}
+}

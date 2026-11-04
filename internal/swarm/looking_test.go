@@ -42,7 +42,7 @@ func TestAManagerReadingWhileReadyTasksWaitIsToldWhichSpawnsToMake(t *testing.T)
 		t.Fatalf("the first two looks carried %q", got)
 	}
 	got := call("bash", map[string]any{"command": "git log --oneline -5"})
-	if !strings.Contains(got, "Stop reading: T1 and T2 are ready") || !strings.Contains(got, "spawn task=T1, spawn task=T2") ||
+	if !strings.Contains(got, "Stop reading: T1 and T2 are ready") || !strings.Contains(got, "spawn task=T1 role=backend, spawn task=T2 role=frontend") ||
 		!strings.Contains(got, "3 free slots") || strings.Contains(got, "T3") {
 		t.Fatalf("the third look carried %q", got)
 	}
@@ -108,12 +108,80 @@ func TestLookingTool(t *testing.T) {
 		tool, in        string
 		looking, counts bool
 	}{
-		{"read", `{}`, true, true}, {"bash", `{}`, true, true}, {"task", `{"action":"list"}`, true, true},
+		{"read", `{}`, true, true}, {"task", `{"action":"list"}`, true, true},
+		{"bash", `{"command":"git log --oneline -5 && sed -n 1,40p main.go"}`, true, true}, {"bash", `{"command":"go test ./..."}`, true, true},
+		{"bash", `{"command":"git commit -am wip"}`, false, true}, {"bash", `{"command":"echo x > notes.md"}`, false, true},
+		{"bash", `{}`, false, true},
 		{"task", `{"action":"accept"}`, false, true}, {"spawn", `{}`, false, true}, {"write", `{}`, false, true},
 		{"plan", `{}`, false, false}, {"memory", `{}`, false, false},
 	} {
 		if l, n := lookingTool(c.tool, json.RawMessage(c.in)); l != c.looking || n != c.counts {
 			t.Errorf("%s %s: %v %v", c.tool, c.in, l, n)
 		}
+	}
+}
+
+// A shell command that may change something ends the run of looks, and gets no line: two reads, then a commit.
+func TestAManagerShellCommandThatChangesSomethingIsNotARead(t *testing.T) {
+	r, call := lookRig(t, []string{"backend"})
+	r.sw.Board.Restore(&Snapshot{Tasks: []Task{{ID: "T1", Title: "api", Role: "backend", Status: StatusTodo}}})
+	call("read", readMain)
+	call("read", readMain)
+	if got := call("bash", map[string]any{"command": "git commit -am wip"}); got != "" {
+		t.Fatalf("a commit after two reads carried %q", got)
+	}
+	if got := call("read", readMain) + call("read", readMain); got != "" {
+		t.Fatalf("two reads after the commit carried %q", got)
+	}
+}
+
+// The call is judged by the input it runs with: a task list that the wrapped hooks rewrite into a task accept is a decision.
+func TestTheLookCountJudgesTheRewrittenInput(t *testing.T) {
+	r, _ := lookRig(t, []string{"backend"})
+	r.sw.Board.Restore(&Snapshot{Tasks: []Task{{ID: "T1", Title: "api", Role: "backend", Status: StatusTodo}}})
+	h := &holdHooks{s: r.sw, m: r.sw.get("mgr"), inner: rewriteHooks{to: json.RawMessage(`{"action":"accept","id":"T1"}`)}}
+	for i := 0; i < lookEvery; i++ {
+		o := h.BeforeTool(context.Background(), agent.ToolHookCall{Agent: "mgr", Role: "manager", Tool: "task", Input: json.RawMessage(`{"action":"list"}`)})
+		if strings.Contains(o.Context, "Stop reading") {
+			t.Fatalf("call %d, rewritten into a decision, carried %q", i+1, o.Context)
+		}
+	}
+}
+
+// A ready task is offered only where a member could start it: a team that does not limit roles still stops at MaxWorkers.
+func TestAReadyTaskIsNotOfferedPastTheWorkerLimit(t *testing.T) {
+	r, call := lookRig(t, nil)
+	r.sw.Board.Restore(&Snapshot{Tasks: []Task{{ID: "T1", Title: "api", Role: "backend", Status: StatusTodo}}})
+	r.sw.cfg.MaxWorkers = 0 // every place taken, and no idle member
+	for i := 0; i < lookEvery; i++ {
+		if got := call("read", readMain); strings.Contains(got, "spawn task=") {
+			t.Fatalf("read %d at the worker limit carried %q", i+1, got)
+		}
+	}
+	r.sw.cfg.MaxWorkers = 8
+	for i := 0; i < lookEvery-1; i++ {
+		call("read", readMain)
+	}
+	if got := call("read", readMain); !strings.Contains(got, "spawn task=T1 role=backend") || !strings.Contains(got, "8 free slots") {
+		t.Fatalf("under the limit the line was %q", got)
+	}
+}
+
+// A plan in review is not said to be built and tested: its text is its evidence.
+func TestAPlanInReviewIsNotSaidToBeBuilt(t *testing.T) {
+	r, call := lookRig(t, []string{"backend"})
+	r.sw.Board.Restore(&Snapshot{Tasks: []Task{{ID: "T1", Title: "design", Role: "backend", Kind: TaskKindPlan, Status: StatusTodo}}})
+	if err := r.sw.Board.Claim("be-1", "T1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.submitAgreementAt("be-1", "T1", 0, "the plan", "", "the API takes JSON and answers 200"); err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	for i := 0; i < lookEvery; i++ {
+		got = call("read", readMain)
+	}
+	if !strings.Contains(got, "T1 waits in review") || !strings.Contains(got, "a plan or report is its own text") {
+		t.Fatalf("the line for a plan in review was %q", got)
 	}
 }

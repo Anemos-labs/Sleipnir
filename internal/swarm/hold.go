@@ -288,7 +288,11 @@ func (h *holdHooks) BeforeTool(ctx context.Context, c agent.ToolHookCall) agent.
 	if o.Veto {
 		return o
 	}
-	if line := h.lookLine(c.Tool, c.Input); line != "" {
+	effective := c.Input // what the call runs with: the wrapped hooks may have rewritten it
+	if len(o.UpdatedInput) > 0 {
+		effective = o.UpdatedInput
+	}
+	if line := h.lookLine(c.Tool, effective); line != "" {
 		o.Context = strings.TrimSpace(o.Context + "\n" + line)
 	}
 	if editsFiles(c.Tool) {

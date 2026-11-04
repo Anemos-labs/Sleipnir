@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/perm"
 )
 
 // The looking guard.
@@ -27,12 +29,20 @@ const (
 	lookIdleAfter = 6
 )
 
-// lookingTool reports whether a call of the manager only looks: it reads, searches or runs a command, or reads the board,
-// and starts or decides nothing. A tool that is neither (plan, memory, skill) is neutral (counts reports false for it).
+// lookingTool reports whether a call of the manager only looks: it reads or searches, runs a command that only reads or
+// re-runs the checks, or reads the board, and starts or decides nothing. A tool that is neither (plan, memory, skill) is neutral (counts reports false for it).
 func lookingTool(tool string, input json.RawMessage) (looking, counts bool) {
 	switch tool {
-	case "read", "grep", "glob", "ls", "bash", "bash_output", "recall":
+	case "read", "grep", "glob", "ls", "bash_output", "recall":
 		return true, true
+	case "bash":
+		// A command that only reads, or re-runs the checks, looks; one that may change something (or cannot be told) does not.
+		var in struct {
+			Command string `json:"command"`
+		}
+		_ = json.Unmarshal(input, &in)
+		isTest, _ := classifyCommand(in.Command)
+		return isTest || perm.ReadsOnly(in.Command), true
 	case "task":
 		var in struct {
 			Action string `json:"action"`
@@ -83,9 +93,17 @@ func (h *holdHooks) lookLine(tool string, input json.RawMessage) string {
 		if len(waiting) > 1 {
 			verb = "wait"
 		}
-		return fmt.Sprintf("Stop reading: %s %s in review, and the harness has already built and tested each submission on the merged tree. "+
+		evidence := "the harness has already built and tested each submission on the merged tree"
+		for _, w := range waiting {
+			if t, ok := snap.Task(w.ID); ok && !h.s.implementationTask(t) {
+				// a plan or a report is not built: its text is the evidence
+				evidence = "the harness has already built and tested each code change on the merged tree, and a plan or report is its own text"
+				break
+			}
+		}
+		return fmt.Sprintf("Stop reading: %s %s in review, and %s. "+
 			"Decide from its evidence now: %s, or task reject with what to fix; read more only for a doubt the evidence leaves.",
-			joinNames(names), verb, strings.Join(decide, ", "))
+			joinNames(names), verb, evidence, strings.Join(decide, ", "))
 	}
 	if ready, free := h.s.startable(snap); len(ready) > 0 {
 		shown := ready
@@ -95,7 +113,8 @@ func (h *holdHooks) lookLine(tool string, input json.RawMessage) string {
 		}
 		calls := make([]string, len(shown))
 		for i, id := range shown {
-			calls[i] = "spawn task=" + id
+			t, _ := snap.Task(id)
+			calls[i] = "spawn task=" + id + " role=" + t.Role // the role too: outside persistent pools a spawn names it
 		}
 		return fmt.Sprintf("Stop reading: %s %s ready with no owner, and %s could start now. Your next calls are %s%s, all in this turn; "+
 			"read what you still need once they run.", joinNames(shown), pluralWord(len(ready), "is", "are"), free, strings.Join(calls, ", "), more)
@@ -111,9 +130,10 @@ func (h *holdHooks) lookLine(tool string, input json.RawMessage) string {
 	return ""
 }
 
-// startable returns the ready tasks (to do, unowned, their dependencies done, not already queued for a member) that a member of
-// their role could start now, a free slot or an idle member no pool keeps, with what could start them ("3 slots", "be-2").
-// A team that does not limit roles can start every ready task.
+// startable returns the ready tasks (to do, unowned, with a role, their dependencies done, not already queued for a member)
+// that a member of their role could start now, with what could start them ("3 free slots and 1 idle member"): an idle member
+// no pool keeps, or a new one where the team has a free slot of the role (any role, in a team that does not limit roles) and
+// the swarm is under MaxWorkers.
 func (s *Swarm) startable(snap *Snapshot) ([]string, string) {
 	slots, _ := TeamCounts(s.cfg.Team)
 	used, spare := map[string]int{}, map[string][]string{}
@@ -134,29 +154,44 @@ func (s *Swarm) startable(snap *Snapshot) ([]string, string) {
 		queued[id] = true
 	}
 	s.mu.Unlock()
+	workers := 0
+	for _, n := range used {
+		workers += n
+	}
+	room := max(0, s.cfg.MaxWorkers-workers) // a new member takes one of MaxWorkers places too
+	roleRoom := func(role string) int {
+		if !s.teamLimited() {
+			return room
+		}
+		return min(room, max(0, slots[role]-used[role]))
+	}
 	var ready []string
 	freeSlots, idle := 0, map[string]bool{}
 	counted := map[string]bool{}
 	for _, t := range snap.Tasks {
-		if t.Status != StatusTodo || t.Owner != "" || queued[t.ID] || t.Parent != "" {
+		if t.Status != StatusTodo || t.Owner != "" || queued[t.ID] || t.Parent != "" || t.Role == "" {
 			continue
 		}
 		if ok, _ := depsDone(snap, t); !ok {
 			continue
 		}
-		open := !s.teamLimited() || slots[t.Role]-used[t.Role] > 0 || len(spare[t.Role]) > 0
-		if !open {
+		if roleRoom(t.Role) == 0 && len(spare[t.Role]) == 0 {
 			continue
 		}
 		ready = append(ready, t.ID)
 		if !counted[t.Role] {
 			counted[t.Role] = true
-			freeSlots += max(0, slots[t.Role]-used[t.Role])
+			if s.teamLimited() {
+				freeSlots += roleRoom(t.Role)
+			} else {
+				freeSlots = room
+			}
 			for _, id := range spare[t.Role] {
 				idle[id] = true
 			}
 		}
 	}
+	freeSlots = min(freeSlots, room)
 	var what []string
 	if freeSlots > 0 {
 		what = append(what, fmt.Sprintf("%d free %s", freeSlots, pluralWord(freeSlots, "slot", "slots")))

@@ -62,7 +62,7 @@ func (l *idList) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &many); err != nil {
 		return err
 	}
-	*l = nil
+	*l = idList{}            // an explicit [] stays an empty list, not nil: task revise reads nil as "deps unchanged"
 	for _, s := range many { // an element may hold several ids too: a string made into a list of one (tools.CoerceLists)
 		*l = append(*l, strings.FieldsFunc(s, func(r rune) bool { return r == ',' || unicode.IsSpace(r) })...)
 	}
