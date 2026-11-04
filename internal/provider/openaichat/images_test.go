@@ -2,6 +2,7 @@ package openaichat_test
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -76,5 +77,39 @@ func TestTextOnlyModelGetsNotes(t *testing.T) {
 	body, err := openaichat.Build(p, openaichat.Options{Media: media, NoImages: true}, false)
 	if err != nil || strings.Contains(string(body), "image_url") || strings.Count(string(body), "takes text only") != 2 {
 		t.Fatalf("%v %s", err, body)
+	}
+}
+
+// Switching between a model that sees images and one that takes text only, and back, renders the same stored thread each time:
+// the images come back after the text-only model, the thread is never changed, and each request's bytes follow only the model
+// it goes to (so a prompt cached for one is never reused for the other, and a switch back renders the first bytes again).
+func TestImagesSurviveASwitchToTextOnlyAndBack(t *testing.T) {
+	media := func(ref, _ string) ([]byte, error) { return []byte("png"), nil }
+	img := core.Block{Kind: core.BlockImage, MediaType: "image/png", MediaRef: "h1"}
+	p := &core.Prompt{Model: "m", Messages: []core.Message{
+		{Role: core.RoleAssistant, Blocks: []core.Block{{Kind: core.BlockToolUse, ToolID: "c1", ToolName: "read", Input: json.RawMessage(`{}`)}}},
+		{Role: core.RoleUser, Blocks: []core.Block{core.ToolResult("c1", false, core.Text("Image"), img), img}},
+	}}
+	render := func(textOnly bool) string {
+		t.Helper()
+		body, err := openaichat.Build(p, openaichat.Options{Media: media, NoImages: textOnly}, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(body)
+	}
+	seeing, blind, again := render(false), render(true), render(false)
+	if strings.Count(seeing, "data:image/png;base64,") != 2 || strings.Contains(seeing, "takes text only") {
+		t.Fatalf("a model that sees images: %s", seeing)
+	}
+	if strings.Contains(blind, "image_url") || strings.Count(blind, "takes text only") != 2 {
+		t.Fatalf("a text-only model: %s", blind)
+	}
+	if again != seeing {
+		t.Fatalf("switching back renders other bytes:\n%s\n%s", seeing, again)
+	}
+	got := p.Messages[1].Blocks
+	if !reflect.DeepEqual(got[1], img) || len(got[0].Result) != 2 || !reflect.DeepEqual(got[0].Result[1], img) {
+		t.Fatalf("rendering changed the stored thread: %+v", got)
 	}
 }
