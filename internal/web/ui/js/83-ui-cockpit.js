@@ -48,6 +48,8 @@
       /* on the Board view, why it failed or what stalls it, in words, under its title */
       let why = n.querySelector('.twhy'); const whyText = !B.big || n.classList.contains('trow') ? '' : isF ? '✗ ' + ui.closureWords(t.closure, t.attempts) : stall ? '⚠ ' + (stall.text || stall.kind || 'stalled') : '';
       if (whyText) { if (!why) { why = document.createElement('span'); why.className = 'twhy ' + (isF ? 'bad' : 'warm'); const tti = n.querySelector('.tti'); if (tti) tti.after(why); else n.appendChild(why); } why.className = 'twhy ' + (isF ? 'bad' : 'warm'); why.textContent = whyText; why.title = isF ? 'failed: ' + (t.closure || 'closed') : (stall.kind || 'stall') + ': ' + (stall.text || ''); } else if (why) why.remove();
+      let sm = n.querySelector('.smark');
+      if (stall && tow) { if (!sm) { sm = document.createElement('span'); sm.className = 'smark'; sm.textContent = '⚠'; tow.appendChild(sm); } sm.title = (stall.kind || 'stall') + ': ' + (stall.text || ''); } else if (sm) sm.remove();
       if (stall && !isF) n.title = n.title.replace(/ · ⚠ .*$/, '') + ' · ⚠ ' + (stall.text || stall.kind || 'stalled');
       let tr = n.querySelector('.tmark'); const nTry = t.attempts > 1 ? 'try ' + t.attempts : '';
       if (nTry && tow) { if (!tr) { tr = document.createElement('span'); tr.className = 'dim tmark'; tow.appendChild(tr); } tr.textContent = nTry; } else if (tr) tr.remove();
