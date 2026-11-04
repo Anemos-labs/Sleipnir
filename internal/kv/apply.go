@@ -100,7 +100,7 @@ func DefaultApplyPolicy() ApplyPolicy {
 		UserInstructionKey:       "instructions",
 		UserInstructionMaxTokens: 2000,
 		TaskMaxTokens:            8000,
-		MaxAssignmentBytes:       64000,
+		MaxAssignmentBytes:       32000,
 		MaxInstructionTokens:     12000,
 		MaxSpineTokens:           3000,
 		MaxNoteOps:               64,

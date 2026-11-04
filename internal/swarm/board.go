@@ -22,7 +22,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unicode/utf8"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
 )
@@ -46,17 +45,16 @@ const (
 // rendering of the board, so what one agent can add is what every agent pays for.
 const (
 	maxTitleRunes  = 160
-	maxDescRunes   = 8000 // a description is refused over it (descTooLong), never cut
-	maxBlockLines  = 200  // lines of a multi-line field (cleanBlock): a description, a report, feedback, an agreement
+	maxDescRunes   = 2000
 	maxRoleRunes   = 32
 	maxTaskDeps    = 16
-	maxLineRunes   = 240
-	maxResultRunes = 300
-	maxEvidRunes   = 800
-	maxReportRunes = 12000
+	maxLineRunes   = 140
+	maxResultRunes = 160
+	maxEvidRunes   = 320
+	maxReportRunes = 4000
 	maxAssumptions = 8   // assumptions one submission may list
-	maxAssumeRunes = 400 // runes in one assumption
-	maxNoteRunes   = 600
+	maxAssumeRunes = 200 // runes in one assumption
+	maxNoteRunes   = 300
 	maxAlertRunes  = 160
 	maxPendingEvts = 4096
 )
@@ -511,20 +509,6 @@ type TaskSpec struct {
 	Solo bool
 }
 
-// descTooLong refuses a task description over maxDescRunes characters or maxBlockLines lines, saying by how much: a description
-// is the worker's whole assignment, so it is kept whole or refused, never cut where the limit falls.
-func descTooLong(desc string) error {
-	desc = strings.TrimSpace(strings.ReplaceAll(desc, "\r\n", "\n"))
-	n, lines := utf8.RuneCountInString(desc), strings.Count(desc, "\n")+1
-	switch {
-	case n > maxDescRunes:
-		return fmt.Errorf("description too long: %d characters, %d over the %d-character limit. Keep the requirements in it and put long reference material in a file the description names", n, n-maxDescRunes, maxDescRunes)
-	case lines > maxBlockLines:
-		return fmt.Errorf("description too long: %d lines, over the %d-line limit. Keep the requirements in it and put long reference material in a file the description names", lines, maxBlockLines)
-	}
-	return nil
-}
-
 // TaskCheck is evaluated inside the board's critical section on the task an
 // operation is about to assign, so a decision that depends on other tasks (scope
 // overlap) cannot go stale between the check and the change.
@@ -582,9 +566,6 @@ func (b *Board) createLocked(d *draft, spec TaskSpec) (Task, error) {
 			seen[dep] = true
 			deps = append(deps, dep)
 		}
-	}
-	if err := descTooLong(spec.Desc); err != nil {
-		return Task{}, err
 	}
 	files, err := cleanScopes(spec.Files)
 	if err != nil {

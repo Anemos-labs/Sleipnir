@@ -184,7 +184,7 @@ func DefaultConfig() Config {
 		SuperviseEvery: time.Second, InboxSoftCap: 12, MaxMailWakes: 40,
 		WakeQuiet: 1500 * time.Millisecond, WakeMax: 10 * time.Second, MaxWakes: 8,
 		MailmanQuiet: 1500 * time.Millisecond, MailmanMax: 6 * time.Second, MailmanBound: 30 * time.Second,
-		MailmanBatch: 24, MailmanMaxPending: 200, MailmanDigestChars: 2000,
+		MailmanBatch: 24, MailmanMaxPending: 200, MailmanDigestChars: 700,
 	}
 }
 

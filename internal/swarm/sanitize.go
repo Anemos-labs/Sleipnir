@@ -74,13 +74,13 @@ func cleanText(s string, max int) string {
 func oneLine(s string, max int) string { return cleanText(s, max) }
 
 // cleanBlock is cleanText for multi-line text (task descriptions): line breaks are
-// kept, at most maxBlockLines lines, trailing space trimmed, everything else as cleanText.
+// kept, at most 40 lines, trailing space trimmed, everything else as cleanText.
 func cleanBlock(s string, max int) string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", "\n")
 	lines := strings.Split(s, "\n")
-	if len(lines) > maxBlockLines {
-		lines = lines[:maxBlockLines]
+	if len(lines) > 40 {
+		lines = lines[:40]
 	}
 	for i, l := range lines {
 		lines[i] = strings.TrimRight(neutralise(strings.Map(func(r rune) rune {

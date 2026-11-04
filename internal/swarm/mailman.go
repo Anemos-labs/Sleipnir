@@ -58,11 +58,11 @@ const mailmanMinDigest = 3
 const mailmanStrikes = 2
 
 // mailmanViewBudget bounds the parcel text of one request to the mailman, in characters
-// as the request carries it (quoted): about 6,000 tokens, under a third of the planner's
-// token soft limit (kv.DefaultPlanner's SoftThreadTokens) and far less of the share of a
-// window at which compaction starts, so one batch cannot crowd out the mailman's own context. Up to 6 messages of the longest
-// kind (4,000 characters by default, without quotes or backslashes) fit whole.
-const mailmanViewBudget = 24000
+// as the request carries it (quoted): about 4,000 tokens, a fifth of the planner's token
+// soft limit (kv.DefaultPlanner's SoftThreadTokens) and far less of the share of a window
+// at which compaction starts, so one batch cannot crowd out the mailman's own context. Up to 13 messages of the longest kind
+// (1,200 characters by default, without quotes or backslashes) fit whole.
+const mailmanViewBudget = 16000
 
 // mailmanParcelFloor is the least of each parcel the mailman is shown, however full its
 // batch: a batch takes at most mailmanMaxBatch parcels, so that an equal share of the
@@ -70,7 +70,7 @@ const mailmanViewBudget = 24000
 const mailmanParcelFloor = 240
 
 // mailmanMaxBatch caps Config.MailmanBatch: the most parcels one request can show at
-// least mailmanParcelFloor characters of each within mailmanViewBudget (100).
+// least mailmanParcelFloor characters of each within mailmanViewBudget (66).
 const mailmanMaxBatch = mailmanViewBudget / mailmanParcelFloor
 
 // parcelView returns how many characters of each parcel the mailman is shown, given the
