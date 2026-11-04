@@ -434,10 +434,13 @@ type Agent struct {
 }
 
 // inboxMsg is one queued message. Steering typed by a human is preserved through
-// compaction as an instruction; mail from other agents is data and is not.
+// compaction as an instruction; mail from other agents is data and is not. person
+// marks what the person typed (Steer), as opposed to a harness note that is kept
+// like steering (Send without the mail prefix).
 type inboxMsg struct {
-	text  string
-	steer bool
+	text   string
+	steer  bool
+	person bool
 }
 
 // New builds an agent with an empty thread.
@@ -544,12 +547,15 @@ const mailPrefix = "[mail"
 // that carries the router's "[mail" prefix is mail from another agent (data, not
 // instructions); anything else is human steering and survives compaction
 // verbatim in the instructions notes. Use Steer to say so explicitly.
-func (a *Agent) Send(text string) { a.enqueue(text, !strings.HasPrefix(text, mailPrefix)) }
+func (a *Agent) Send(text string) {
+	a.enqueue(inboxMsg{text: text, steer: !strings.HasPrefix(text, mailPrefix)})
+}
 
 // Steer queues human steering: text typed by the person driving this agent. It
-// rides with the next tool results (or as its own turn) and, unlike mail, is
-// copied into the instructions notes when its turn is compacted.
-func (a *Agent) Steer(text string) { a.enqueue(text, true) }
+// rides with the next tool results (or as its own turn) behind kv.PersonFrame,
+// which tells the model whose words they are and that they come first, and, unlike
+// mail, is copied into the instructions notes when its turn is compacted.
+func (a *Agent) Steer(text string) { a.enqueue(inboxMsg{text: text, steer: true, person: true}) }
 
 // QueueAssignment replaces the pending harness assignment, without changing an
 // in-flight prompt. The next request carries it as task data; compaction preserves
@@ -574,10 +580,10 @@ func (a *Agent) drainAssignment() {
 	}
 }
 
-// enqueue appends an inbox message and its steering flag under the agent lock.
-func (a *Agent) enqueue(text string, steer bool) {
+// enqueue appends an inbox message under the agent lock.
+func (a *Agent) enqueue(m inboxMsg) {
 	a.mu.Lock()
-	a.inbox = append(a.inbox, inboxMsg{text: text, steer: steer})
+	a.inbox = append(a.inbox, m)
 	a.mu.Unlock()
 }
 
@@ -1141,21 +1147,26 @@ func (a *Agent) drainInbox(resuming bool) {
 	}
 }
 
-// takeInbox returns the queued messages as blocks: at most one steering block
-// and one mail block per drain. Every block is a position for the provider's
-// cache lookback (20 positions), so a burst of mail must not become a burst of
-// blocks; steering keeps its own block because it is preserved differently.
+// takeInbox returns the queued messages as blocks: at most one steering block,
+// one mail block and one block of the person's words (kv.Person) per
+// drain. Every block is a position for the provider's cache lookback (20
+// positions), so a burst of mail must not become a burst of blocks; steering keeps
+// its own block because it is preserved differently. The person's words come last,
+// nearest the model's next step.
 func (a *Agent) takeInbox() []core.Block {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if len(a.inbox) == 0 {
 		return nil
 	}
-	var steer, mail []string
+	var steer, mail, person []string
 	for _, m := range a.inbox {
-		if m.steer {
+		switch {
+		case m.person:
+			person = append(person, m.text)
+		case m.steer:
 			steer = append(steer, m.text)
-		} else {
+		default:
 			mail = append(mail, m.text)
 		}
 	}
@@ -1169,6 +1180,9 @@ func (a *Agent) takeInbox() []core.Block {
 	if len(mail) > 0 {
 		blocks = append(blocks, core.Text(strings.Join(mail, "\n")))
 	}
+	if len(person) > 0 {
+		blocks = append(blocks, kv.Person(strings.Join(person, "\n\n")))
+	}
 	return blocks
 }
 
@@ -1177,6 +1191,18 @@ func (a *Agent) PendingInbox() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return len(a.inbox)
+}
+
+// PendingPerson reports whether something the person typed (Steer) awaits the next turn boundary.
+func (a *Agent) PendingPerson() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, m := range a.inbox {
+		if m.person {
+			return true
+		}
+	}
+	return false
 }
 
 // ---- hot tail delivery -----------------------------------------------------------
