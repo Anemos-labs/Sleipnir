@@ -592,6 +592,11 @@ ephemeral: delivered into the recipient's next turn, cached for a few turns, com
   another run when it goes idle (a bounded number of times), so it is never stranded. A delivery to a retired agent or a
   swarm that has shut down is refused to the sender (`mail.drop` is logged; the sender's rate budget is returned). An
   idle worker is woken by mail; the manager queues it for its next turn.
+* **The person's words are marked as theirs.** What the person types while an agent works (a steer: `/steer`, the web
+  page's Enter during a team's turn) reaches the model with the next tool results inside a fixed frame that names it as
+  the person's message, says that it outranks the plan, the board and harness notes (not the session's permissions),
+  and asks for an answer before any other step. A manager in `wait` returns at once with "the person wrote to you", not
+  "mail arrived". Compaction keeps the person's words without the frame.
 * **A bound on peer wakes.** Each wake is a whole run, so two workers answering each other would keep each other
   running for as long as the budget lasts. Peer mail may start at most 40 runs of one worker for its current task
   (`Config.MaxMailWakes`); past that the mail is still delivered and waits in the inbox, a `swarm.wake_limit` event is

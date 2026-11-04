@@ -320,9 +320,12 @@
     }
     /* while a turn runs the hint says what Enter and Ctrl+Enter do: short in the bar, the whole sentence in its title */
     const HINT_IDLE = '/ commands', HINT_BUSY = 'Enter queues · Ctrl+Enter steers', HINT_BUSY_T = 'Enter queues for after this turn · Ctrl+Enter sends now (steer)';
+    /* a team's manager runs while its members work, so Enter reaches it at once (the server steers it; while the judge rules the line waits) */
+    const HINT_TEAM = 'Enter tells the manager now', HINT_TEAM_T = 'the manager reads your message with its next step and answers it first; while the judge rules, it waits for the next turn';
+    const teamSession = S => !!((S.meta && S.meta.swarm > 0) || (S.roster && S.roster.length > 1));
     function composerUpdate(S) {
       feed.classList.toggle('quiet', S.ui.verbose === false); feed.classList.toggle('verbose', S.ui.verbose === true); const qh = S.ui.queued.map(queuedHtml).join(''), ql = $('#queuedLines'); if (ql._h !== qh) { ql._h = qh; ql.innerHTML = qh; }
-      const hint = $('#cHint'), ht = !S.readOnly && turnBusy(S) ? HINT_BUSY : HINT_IDLE; if (hint && hint.textContent !== ht) { hint.textContent = ht; hint.title = ht === HINT_BUSY ? HINT_BUSY_T : ''; }
+      const hint = $('#cHint'), ht = !S.readOnly && turnBusy(S) ? (teamSession(S) ? HINT_TEAM : HINT_BUSY) : HINT_IDLE; if (hint && hint.textContent !== ht) { hint.textContent = ht; hint.title = ht === HINT_BUSY ? HINT_BUSY_T : ht === HINT_TEAM ? HINT_TEAM_T : ''; }
       paintDelivery(S);
       const ro = !!S.readOnly, t = S.placeholder ? 'start a session first: + New' : S.follow ? 'watching ' + S.sid + ' · read-only · the run belongs to another process' : S.recorded ? 'a recorded session is read-only: ↺ Resume continues it' : '';
       if (inp.disabled !== ro) { inp.disabled = ro; $('.send', form).disabled = ro; } if (inp.title !== t) inp.title = t;

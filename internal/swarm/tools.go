@@ -960,10 +960,10 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		if len(digest) > 0 {
 			s.quietSince.Store(0)
 		}
-		pending := false
+		pending, person := false, false
 		if m != nil {
 			m.pump(s) // coalesced mail moves into the inbox as soon as there is room, so "mail arrived" is true
-			pending = m.a.PendingInbox() > 0
+			pending, person = m.a.PendingInbox() > 0, m.a.PendingPerson()
 		}
 		switch {
 		case s.budgetErr() != nil:
@@ -979,6 +979,10 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		case len(in.Until) == 0 && len(digest) > 0 && (c.Env.Role == "manager" || concernsWorker(me, base, cur)):
 			s.setSeen(me, cur)
 			return c.Env.Finish(report(cur, digest, ""), false), nil
+		case person:
+			// Not "mail": a manager told that mail had come read the person's words as a peer's and went back to waiting.
+			s.setSeen(me, cur)
+			return c.Env.Finish(report(cur, digest, "the person wrote to you (their message comes with this result): answer them before anything else"), false), nil
 		case pending:
 			s.setSeen(me, cur)
 			return c.Env.Finish(report(cur, digest, "mail arrived (delivered with this result)"), false), nil
