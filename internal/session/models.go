@@ -113,6 +113,9 @@ func (s *Session) describe(ctx context.Context, p provider.Provider, m cost.Mode
 				m.ContextTokens, m.WindowGuessed, win = e.Model.ContextTokens, false, sourceCatalogue
 			}
 		}
+		if !m.Plan && !takesImages(s.catalogue(ctx, base, m.ID), m.ID) {
+			m.NoImages = true // a catalogue that says the model takes text only: an image would be refused
+		}
 		if unknown && configured == 0 && win != sourceCatalogue && localBase(base) {
 			if n := s.servedWindow(ctx, base, m.ID); n > 0 {
 				m.ContextTokens, m.WindowGuessed, win = n, false, sourceServer
@@ -124,6 +127,12 @@ func (s *Session) describe(ctx context.Context, p provider.Provider, m cost.Mode
 	}
 	s.note(m, src, win)
 	return m
+}
+
+// takesImages reports whether entries leave model id able to take images: false only when its entry says it takes text only.
+func takesImages(entries []gateway.Entry, id string) bool {
+	e, ok := findEntry(entries, id)
+	return !ok || e.TakesImages()
 }
 
 // reportsWindow reports whether entries give model id a context window of their own.

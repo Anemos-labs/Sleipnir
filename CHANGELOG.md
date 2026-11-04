@@ -15,6 +15,31 @@ they do not indicate whether a change has been released.
   pool to another role on purpose. Prompt-cache change: the manager's role pin
   and the `task` tool's description change bytes.
 
+- Images a tool returns (a screenshot the read tool opens, an MCP tool's
+  picture) reach the model on every wire format. Chat Completions and the
+  Responses API carry a tool's output as text, so its images follow in the
+  user message after it, each after a line naming the call; blob references
+  are sent as data URLs on all three formats. An image that cannot be resolved
+  is sent as a note saying so. A model whose catalogue says it takes text only
+  gets that note in place of the image. Prompt-cache change: only requests
+  that carry an image change bytes.
+
+- Images no longer pile up in a conversation. A request carries at most
+  `cache.attached_images` images (default 1), the newest of the current run;
+  every other image (earlier runs, extra pictures of one message, older
+  screenshots of a tool loop) is replaced in the thread by a description
+  written for it in a side request that carries only that image (the `vision`
+  role's model, else the agent's), so a message with many images is split into
+  one description request per extra image and the person still sees them all.
+  A model whose catalogue says it takes text only gets every image as its
+  description when a `vision` model is set. An endpoint that refuses images, or
+  does not answer a request with images, is asked again with every image
+  described. Images are scaled down past 1568 pixels or about 3.7 MB before they
+  are sent. The web composer attaches pictures (paste, drop, or the image
+  button) and the transcript shows them. Prompt-cache change: retiring an image
+  rewrites the thread from that image on as a declared rebase, so the cache
+  misses once from there (docs/CACHE-DESIGN.md, Images).
+
 - A team's write guard no longer refuses the file tools' writes to the
   session's scratch directory (`$TMPDIR`) or to the system's `/tmp` outside
   the workspace: they are no edit of the project, so no task scope, path owner

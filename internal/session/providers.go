@@ -19,7 +19,9 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/chatgptauth"
 	"github.com/anemos-labs/sleipnir/internal/config"
+	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/cost"
+	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/provider/anthropic"
 	"github.com/anemos-labs/sleipnir/internal/provider/gateway"
@@ -385,6 +387,17 @@ type ProviderOptions struct {
 	CaptureTokens bool
 	HTTPClient    *http.Client
 	OnHeaders     func(http.Header)
+	// Media resolves the blob references of image blocks (a screenshot an agent read, an MCP tool's picture) to their
+	// bytes, so that every wire format sends the image itself. A session sets it to its blob store (BlobMedia).
+	Media core.MediaFunc
+}
+
+// BlobMedia resolves an image block's blob reference from blobs, refusing an image larger than any provider takes.
+func BlobMedia(blobs events.Blobs) core.MediaFunc {
+	if blobs == nil {
+		return nil
+	}
+	return func(ref, _ string) ([]byte, error) { return blobs.GetMax(core.Hash(ref), core.MaxInlineImageBytes) }
 }
 
 // optBool reads a boolean option, returning false for absent keys or other value types.
@@ -450,6 +463,7 @@ func buildChat(ref ModelRef, p config.Provider, base, key string, o ProviderOpti
 		MaxTokensField:       optString(p.Options, "max_tokens_field"),
 		ReasoningEffortField: optString(p.Options, "reasoning_effort_field"),
 		CacheControlParts:    optBool(p.Options, "cache_control_parts"),
+		Media:                o.Media,
 	}
 	if _, configured := p.Options["reasoning_effort_field"]; !configured {
 		// No field is sent until the user chooses an effort. An explicit empty
@@ -500,7 +514,7 @@ func buildResponses(ref ModelRef, p config.Provider, base, key string, o Provide
 		}
 		auth = st
 	}
-	oo := openairesp.Options{Plan: plan, ReasoningSummary: optString(p.Options, "reasoning_summary")}
+	oo := openairesp.Options{Plan: plan, ReasoningSummary: optString(p.Options, "reasoning_summary"), Media: o.Media}
 	oo.ExtraBody = extraBodyFor(p, ref.Model)
 	return openairesp.New(openairesp.Config{
 		Name: ref.Provider, BaseURL: base, Auth: auth, Headers: p.Headers, Options: oo,
@@ -540,6 +554,7 @@ func buildAnthropic(ref ModelRef, p config.Provider, base, key string, o Provide
 		ThinkingDisplay:    optString(p.Options, "thinking_display"),
 		ThinkingBudget:     optInt(p.Options, "thinking_budget"),
 		MaxBreakpoints:     optInt(p.Options, "max_breakpoints"),
+		Media:              o.Media,
 	}
 	ao.ExtraBody = extraBodyFor(p, ref.Model)
 	client := anthropic.New(anthropic.Config{

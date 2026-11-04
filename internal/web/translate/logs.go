@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/plan"
@@ -639,8 +640,9 @@ func isMain(hid string) bool { return hid == "main" || hid == "mgr" }
 // composer's history) and, in a followed log, the start of a turn.
 func (t *Translator) userInput(e events.Event, ts float64, at int64) {
 	var p struct {
-		Text   string `json:"text"`
-		Origin string `json:"origin"`
+		Text   string   `json:"text"`
+		Origin string   `json:"origin"`
+		Images []string `json:"images"`
 	}
 	if json.Unmarshal(e.Data, &p) != nil || (p.Origin != "" && p.Origin != "user") || !isMain(e.Agent) {
 		return
@@ -649,7 +651,13 @@ func (t *Translator) userInput(e events.Event, ts float64, at int64) {
 	if !t.d.logOnly {
 		return
 	}
-	t.put(&wire.Say{Who: "you", Text: text(p.Text, capEvent)}, ts, at, nil)
+	say := text(p.Text, capEvent)
+	for _, ref := range p.Images {
+		if events.ValidHash(core.Hash(ref)) {
+			say += " " + agent.ImageToken(core.Hash(ref), "") // the page shows the picture the person attached
+		}
+	}
+	t.put(&wire.Say{Who: "you", Text: say}, ts, at, nil)
 	if !t.d.history {
 		t.put(&wire.Turn{S: "start"}, ts, at, nil)
 		t.d.turnOpen = true
