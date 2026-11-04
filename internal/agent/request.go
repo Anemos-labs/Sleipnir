@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"math/rand"
@@ -31,7 +32,7 @@ const maxAttempts = 6
 // caller can tell whether the response's thinking is still bound to the thread
 // it is appended to.
 func (a *Agent) request(ctx context.Context) (*provider.Response, uint64, error) {
-	retriedContext, retriedBinding := false, false
+	retriedContext, retriedBinding, retriedImages := false, false, false
 	effortRetries := 0
 	var opt reqOpt
 	for {
@@ -63,6 +64,12 @@ func (a *Agent) request(ctx context.Context) (*provider.Response, uint64, error)
 			// binding. Removing all thinking is always allowed: strip it durably (a
 			// declared rebase, not a render-time toggle that would flip back) and
 			// try once more, asking the endpoint to drop rather than reject if it can.
+			// An endpoint that refuses the prompt's images is sent it again with every image described in text.
+			case !retriedImages && imageRefusal(pe):
+				retriedImages = true
+				if a.refuseImages(ctx, pe) {
+					continue
+				}
 			case pe.Kind == provider.ErrThinkingBinding && !retriedBinding:
 				retriedBinding = true
 				if a.recoverBinding(pe) {
@@ -197,19 +204,32 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 		req.BindingMode = "drop_block"
 	}
 	start := a.cfg.Now()
-	callCtx, cancelCall := context.WithCancel(ctx)
-	defer cancelCall()
+	callCtx, cancelCall := context.WithCancelCause(ctx)
+	defer cancelCall(nil)
+	var stall *time.Timer
+	if promptImages(req.Prompt) > 0 {
+		// An endpoint that takes the images and never answers would hold the run for as long as its timeout: past ImageStall
+		// without a start, the request counts as a refusal of its images (request sends it again with them described).
+		stall = time.AfterFunc(ImageStall, func() { cancelCall(errImageStall) })
+		defer stall.Stop()
+	}
 	var reps repeatWatch
 	resp, err := a.call(callCtx, req, a.cfg.Priority, func(e provider.Event) {
 		a.forward(e)
 		if e.Kind == provider.EvStart {
 			started(true)
 		}
+		if stall != nil && e.Kind != provider.EvStart && e.Kind != provider.EvReset {
+			stall.Stop() // the model is answering: headers alone are not an answer (a stalled gateway sends them)
+		}
 		if reps.observe(e) {
-			cancelCall()
+			cancelCall(nil)
 		}
 	})
 	started(err == nil)
+	if err != nil && ctx.Err() == nil && errors.Is(context.Cause(callCtx), errImageStall) {
+		err = stallError()
+	}
 	if err != nil && reps.tripped && ctx.Err() == nil {
 		err = fmt.Errorf("%w (%s, %d times)", ErrRepeatedCalls, reps.name, repeatedCallLimit)
 	}
@@ -600,6 +620,11 @@ func (a *Agent) call(ctx context.Context, req *provider.Request, prio int, on fu
 // callOn is call on a named provider: the compactor's, when the session gives it a model of its own.
 // reached is the endpoint's flag of having answered (Agent.reached): nil for another endpoint than the agent's own.
 func (a *Agent) callOn(ctx context.Context, prov provider.Provider, req *provider.Request, prio int, on func(provider.Event), reached *atomic.Bool) (*provider.Response, error) {
+	if mp := a.withMedia(req.Prompt); mp != req.Prompt {
+		r := *req
+		r.Prompt = mp
+		req = &r
+	}
 	var last error
 	var failed time.Time // when the request first failed: OutagePatience counts from there
 	announced := -1      // the half-minute of waiting that the last notice of the patient phase was made in

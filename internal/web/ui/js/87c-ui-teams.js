@@ -9,7 +9,7 @@
   const teams = ui.teams = {};
   const NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
   /** the roles that take a model but are never a slot of the team */
-  const SERVICE = ['manager', 'mailman', 'compactor', 'judge', 'embedder', 'reranker'];
+  const SERVICE = ['manager', 'mailman', 'compactor', 'judge', 'embedder', 'reranker', 'vision'];
   teams.service = role => SERVICE.indexOf(role) >= 0;
   /** whether n can name a saved team (letters, digits, '-', '_', '.', at most 64, starting with a letter or a digit) */
   teams.validName = n => NAME.test(String(n || '')) && !/\.json$/.test(String(n));
