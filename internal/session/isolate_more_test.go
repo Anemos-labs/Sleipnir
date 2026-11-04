@@ -239,7 +239,7 @@ func crash(t *testing.T, repo, path string) {
 		if err := json.Unmarshal([]byte(readFile(t, mk)), &doc); err != nil {
 			t.Fatal(err)
 		}
-		if doc["path"] != path {
+		if mp, _ := doc["path"].(string); mp != path && !sameDir(mp, path) {
 			continue
 		}
 		doc["pid"] = deadPID(t)
@@ -251,6 +251,13 @@ func crash(t *testing.T, repo, path string) {
 		return
 	}
 	t.Fatalf("no marker for %s", path)
+}
+
+// sameDir reports whether a and b name the same directory once links are resolved (macOS's temporary directory is under a link).
+func sameDir(a, b string) bool {
+	ra, err1 := filepath.EvalSymlinks(a)
+	rb, err2 := filepath.EvalSymlinks(b)
+	return err1 == nil && err2 == nil && ra == rb
 }
 
 // A session that died leaves its trees behind. The next isolated session of the
