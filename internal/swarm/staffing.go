@@ -51,6 +51,10 @@ type reviewGate struct {
 	// The wait in review for the manager's decision is the manager's time, not the work's.
 	began map[string]time.Time
 	ended map[string]time.Time
+	// blocked is when each assignment ("T3#rev") was last blocked and not yet resumed: the wait on another task or on the person is
+	// not the work's time, so a resume moves the start on by it (noteResumed), and the team's task bound and a review's measure
+	// count only the time the work ran.
+	blocked map[string]time.Time
 	// resumed is, by task id, the start and owner of work a resume found still in flight (restoreInFlight): the restored board
 	// gives the task a new revision, so the start waits for the owner's first run on it (noteBegan) to carry it over.
 	resumed map[string]resumedStart
@@ -80,6 +84,38 @@ func (g *reviewGate) noteBegan(id string, rev uint64, at time.Time, agent string
 	}
 	if _, ok := g.began[key]; !ok {
 		g.began[key] = at
+	}
+}
+
+// noteBlocked records that the assignment rev of task id was blocked at at. Only an assignment that has begun is timed.
+func (g *reviewGate) noteBlocked(id string, rev uint64, at time.Time) {
+	key := id + "#" + strconv.FormatUint(rev, 10)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if _, ok := g.began[key]; !ok {
+		return
+	}
+	if g.blocked == nil {
+		g.blocked = map[string]time.Time{}
+	}
+	if _, ok := g.blocked[key]; !ok {
+		g.blocked[key] = at
+	}
+}
+
+// noteResumed records that the assignment rev of task id, blocked since noteBlocked, was resumed at at: its start moves on by the
+// time it waited.
+func (g *reviewGate) noteResumed(id string, rev uint64, at time.Time) {
+	key := id + "#" + strconv.FormatUint(rev, 10)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	since, ok := g.blocked[key]
+	if !ok {
+		return
+	}
+	delete(g.blocked, key)
+	if b, ok := g.began[key]; ok && at.After(since) {
+		g.began[key] = b.Add(at.Sub(since))
 	}
 }
 

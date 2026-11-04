@@ -300,6 +300,9 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		if err := s.Board.BlockOn(me, in.ID, in.Target, in.Text); err != nil {
 			return tools.Errorf("%v", err), nil
 		}
+		if bt, ok := s.Board.Snapshot().Task(in.ID); ok {
+			s.review.noteBlocked(bt.ID, bt.Rev, s.deps.Now())
+		}
 		return text("%s marked blocked; tell the manager or the owner of what you need (mail)", in.ID), nil
 	case "resume":
 		var err error
@@ -310,6 +313,9 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		}
 		if err != nil {
 			return tools.Errorf("%v", err), nil
+		}
+		if rt, ok := s.Board.Snapshot().Task(in.ID); ok {
+			s.review.noteResumed(rt.ID, rt.Rev, s.deps.Now())
 		}
 		if s.isolated() {
 			return text("%s resumed%s", in.ID, s.afterResume(ctx, me, isMgr, in.ID)), nil
