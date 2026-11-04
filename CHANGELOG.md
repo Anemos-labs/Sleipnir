@@ -7,6 +7,25 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A task goes to a member of its own role. `spawn` with another role, `spawn
+  agent=` naming a member of another role, a self-claim and a handover of a
+  task whose role the team can staff are refused, naming the task's role and
+  its members. A queued task no longer names other roles' free slots as a place
+  to start it. `task revise` takes `role=` to move a top-level task outside any
+  pool to another role on purpose. Prompt-cache change: the manager's role pin
+  and the `task` tool's description change bytes.
+
+- Board and mail limits are wider, so content is not lost: mail takes 2,000
+  characters for a request or blocker and 4,000 for info, answer or contract
+  (was 600 and 1,200); a mailman digest 2,000 (was 700), from up to 24,000
+  characters of parcels per request. A task description takes 8,000 characters
+  and 200 lines (was 2,000 and 40) and is refused over that instead of being
+  cut; a report 12,000 characters, evidence 800, a result 300, a progress line
+  240, a note 600. An agreement takes 12,000 bytes and 200 lines (was 6,000 and
+  40), inherited agreements 36,000, one worker's assignments 48,000, and
+  compaction keeps 64,000 bytes of assignment. Prompt-cache change: the mailman's
+  pin and the `task` tool's description change bytes.
+
 - The `sleipnir` tool has a `sessions` action: the agent the person talks to
   in a tab of `sleipnir web` lists the server's other sessions, reads what one
   said, sends one a message (read as mail, and answered back as mail), waits

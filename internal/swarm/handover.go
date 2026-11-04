@@ -265,7 +265,7 @@ func (h *handover) run(shared *kv.Layer) (res HandoverResult, err error) {
 	if err := h.fault("assign"); err != nil {
 		return res, err
 	}
-	nt, err := s.Board.Handover(h.by, t.ID, t.Rev, pm.id, h.to, s.claimCheck(h.to, h.role.ReadOnly))
+	nt, err := s.Board.Handover(h.by, t.ID, t.Rev, pm.id, h.to, s.claimCheck(h.to, h.role))
 	if err != nil {
 		return res, err
 	}

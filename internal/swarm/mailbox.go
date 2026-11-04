@@ -97,10 +97,11 @@ type RouterConfig struct {
 	DedupeWindow    time.Duration // identical text to the same recipient
 }
 
-// DefaultRouterConfig returns conservative limits: 600 characters for a request or a
-// blocker, 1,200 for mail that carries content.
+// DefaultRouterConfig returns the default limits: 2,000 characters for a request or a
+// blocker, 4,000 for mail that carries content (a planning input, review findings, a
+// changed interface), enough that a message says what it needs to whole.
 func DefaultRouterConfig() RouterConfig {
-	return RouterConfig{MaxPerMinute: 8, MaxPerPairPerMin: 3, MaxChars: 600, MaxContentChars: 1200, DedupeWindow: 5 * time.Minute}
+	return RouterConfig{MaxPerMinute: 8, MaxPerPairPerMin: 3, MaxChars: 2000, MaxContentChars: 4000, DedupeWindow: 5 * time.Minute}
 }
 
 // contentKind reports whether a mail kind carries content rather than asking for
@@ -122,8 +123,8 @@ func (c RouterConfig) maxCharsFor(kind string) int {
 // characters shorter and are refused again. So it says by how much the message is over,
 // gives a target with some margin, and names the places that hold long content:
 // a file in the sender's task scope (for a role that writes), read by its path, and the
-// agreement submitted with task done (at most 6000 bytes), read with task get and
-// inherited by dependent tasks. Notes hold 300 characters and are not offered.
+// agreement submitted with task done (at most 12000 bytes), read with task get and
+// inherited by dependent tasks. Notes hold 600 characters and are not offered.
 func tooLong(kind string, n, limit int) error {
 	return fmt.Errorf("message too long: %d characters, %d over the %d-character limit for %s mail. "+
 		"Cut it to what the recipient needs (aim for about %d), or put the detail where it lasts and mail where to find it: "+

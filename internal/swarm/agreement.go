@@ -7,9 +7,10 @@ import (
 )
 
 const (
-	maxAgreementBytes          = 6000
-	maxInheritedAgreementBytes = 12000
-	maxClaimedAssignmentBytes  = 24000
+	maxAgreementBytes          = 12000
+	maxAgreementLines          = maxBlockLines
+	maxInheritedAgreementBytes = 36000
+	maxClaimedAssignmentBytes  = 48000
 )
 
 // TaskAgreement is an accepted prerequisite's contract, copied into an assignment.
@@ -23,12 +24,12 @@ type TaskAgreement struct {
 // Input that would lose lines or bytes is rejected with an actionable error.
 func cleanAgreement(text string) (string, error) {
 	text = strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n"))
-	if len(text) > maxAgreementBytes || strings.Count(text, "\n") >= 40 {
-		return "", fmt.Errorf("agreement exceeds 6000 bytes or 40 lines: keep the shared decisions concise and reference files for detail")
+	if n, lines := len(text), strings.Count(text, "\n")+1; n > maxAgreementBytes || lines > maxAgreementLines {
+		return "", fmt.Errorf("agreement is %d bytes and %d lines, over the limit of %d bytes and %d lines: keep the shared decisions in it and put long detail in a file it names", n, lines, maxAgreementBytes, maxAgreementLines)
 	}
 	text = cleanBlock(text, 0)
 	if len(text) > maxAgreementBytes {
-		return "", fmt.Errorf("escaped agreement exceeds 6000 bytes: shorten it before submitting")
+		return "", fmt.Errorf("escaped agreement exceeds %d bytes: shorten it before submitting", maxAgreementBytes)
 	}
 	return text, nil
 }
@@ -115,9 +116,19 @@ func (e poolParentError) Error() string {
 
 // claimCheck combines scope enforcement with a limit on protected assignment data.
 // It guards both claims and spawns, including reuse with older blocked tasks.
-func (s *Swarm) claimCheck(agent string, readOnly bool) TaskCheck {
+func (s *Swarm) claimCheck(agent string, role Role) TaskCheck {
+	readOnly := role.ReadOnly
 	check := s.scopeCheck(readOnly)
 	return func(snap *Snapshot, t Task) error {
+		// a pool's own refusal (not a member of it) names the condition more exactly than the role does
+		candidate := t
+		candidate.Owner = agent
+		if err := poolAssignment(snap, candidate); err != nil {
+			return err
+		}
+		if err := s.roleMismatch(snap, t, agent, role.Name); err != nil {
+			return err
+		}
 		if s.cfg.PersistentPools && t.Parent == "" && t.Pool == nil && !t.Solo {
 			counts, _ := TeamCounts(s.cfg.Team)
 			if counts[t.Role] > 1 {
@@ -136,7 +147,7 @@ func (s *Swarm) claimCheck(agent string, readOnly bool) TaskCheck {
 			card += isolationCard(s.integrationRef())
 		}
 		if len(card) > maxClaimedAssignmentBytes {
-			return fmt.Errorf("assignment context exceeds 24000 bytes: finish an owned task or assign another worker")
+			return fmt.Errorf("assignment context exceeds %d bytes: finish an owned task or assign another worker", maxClaimedAssignmentBytes)
 		}
 		return nil
 	}

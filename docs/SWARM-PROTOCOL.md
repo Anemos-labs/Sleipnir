@@ -50,11 +50,17 @@ members are all busy spares none. A `spawn` of an existing task by the manager i
 queued: the answer names what holds the members (`be-1 leads T2, be-2 leads T3`), and the
 harness starts the task on the first member of the role that is free, on the supervisor's
 pass, and tells the manager; a queued task that is assigned, revised or closed meanwhile is
-dropped from the queue, and a resumed session starts with none. When other roles that write code
-(not a read-only role, docs or the tester) have a slot or an idle member free, the answer and the live view's queued line
-name them (`free now: frontend, devops: one of them can take T2 at once if it needs nothing only backend knows (spawn
-role=frontend task=T2)`); a spawn of the task on one of them starts it there. Any other caller is refused
+dropped from the queue, and a resumed session starts with none. Any other caller is refused
 with what to do (wait, or have the busy parent's leader take the work as a child).
+
+A task goes to a member of its own role. Roles exist to run each kind of work on the model and instructions chosen for it
+(`--role-model frontend=<model>`), so a task whose `role` names a role the team can staff is refused to every agent of
+another role: a `spawn` with another `role`, a `spawn agent=` naming a member of another role, that member's own `task
+claim` and a handover. The refusal names the task's role and its members, and says how to go on: `spawn task=<id>` without
+`agent=` starts it on the first free member of its role or queues it, and `task revise id=<id> role=<role>` moves a
+top-level task outside any pool to another role when the work really is that role's. Neither the queued answer nor the live
+view offers a queued task to a member of another role that happens to be free. A task that names no role, or a role the team
+has no slot for, can go to any role; an agent continuing a task it already owns is not refused.
 The first configured member leads, including after resume. `pool propose` records a
 shared agreement covering conventions, interfaces, work division and acceptance.
 Every member calls `pool agree` with its current revision before `pool execute` can
@@ -322,7 +328,7 @@ free (be-2, be-3, fe-1)`) and asks for what is missing to be split among them.
 ## 3. The board
 
 Tasks: `id`, `kind` (work by default, or plan), `title`, `desc`, `status`, `owner`, `role`, `deps`, `files` (scope), `line` (latest one-line progress),
-`result` (what the worker said, one line), `report` (a read-only worker's whole report, up to 4000 characters and 40
+`result` (what the worker said, one line), `report` (a read-only worker's whole report, up to 12000 characters and 200
 lines, kept while the task is in review or done and shown by `task get` only), `evidence` (what the harness observed),
 `agreement` (a proposed contract),
 `agreements` (accepted prerequisite contracts inherited at assignment), `attempts`, `rev`, `closure` (the typed reason
@@ -389,8 +395,9 @@ Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side
 * Notes are *proposals*: eligible for the bounded hot view. Automatic folding into the shared layer is not implemented
   (section 9); agreements use task dependencies instead.
 * **The board is bounded**, because every agent's prompt carries a rendering of it: 1000 tasks; titles 160 characters,
-  descriptions 2000, at most 16 dependencies and 16 scope entries per task; 48 pending notes (8 per author, the oldest
-  evicted, 300 characters each); 8 alerts, which expire after 2 minutes and are cleared when the conflict ends.
+  descriptions 8000 characters and 200 lines (a longer description is refused with its length, never cut), progress lines
+  240, results 300, evidence 800, at most 16 dependencies and 16 scope entries per task; 48 pending notes (8 per author, the
+  oldest evicted, 600 characters each); 8 alerts, which expire after 2 minutes and are cleared when the conflict ends.
 
 ## 4. Task lifecycle and harness-owned "done"
 
@@ -534,12 +541,12 @@ context for new, reused, and claiming workers. They survive private compaction
 and event-log recovery; they do not depend on the live note buffer. Task data
 cannot grant permissions or override user instructions.
 
-Each agreement is limited to 6,000 UTF-8 bytes and 40 lines. Combined inherited
-agreements are limited to 12,000 bytes including labels; excessive submissions
+Each agreement is limited to 12,000 UTF-8 bytes and 200 lines. Combined inherited
+agreements are limited to 36,000 bytes including labels; excessive submissions
 or assignments are rejected with guidance instead of silently truncating a
 contract. Tasks assigned to one worker, including blocked work and worktree
-instructions, must fit 24,000 bytes of assignment text. Compaction preserves
-harness assignments up to a fixed 32,000-byte bound, independently of token
+instructions, must fit 48,000 bytes of assignment text. Compaction preserves
+harness assignments up to a fixed 64,000-byte bound, independently of token
 estimator calibration. Human instruction token limits remain separate.
 
 Accepted contracts are immutable within an assignment revision. A changed design uses
@@ -574,12 +581,12 @@ ephemeral: delivered into the recipient's next turn, cached for a few turns, com
 
 * **Typed**: `info` (no reply expected), `request`, `blocker`, `answer`, `contract` (an interface changed).
 * **No broadcast, no self-mail, known recipients only** (`to: manager` resolves to the manager).
-* **Bounded**: 600 characters for mail that asks for something (`request`, `blocker`) and 1,200 for mail that carries
+* **Bounded**: 2,000 characters for mail that asks for something (`request`, `blocker`) and 4,000 for mail that carries
   content (`info`, `answer`, `contract`), 8 messages per minute per sender, 3 per minute per sender->recipient pair,
   identical text to one recipient deduplicated for 5 minutes; over-limit errors are written for the sending model and say
   what to do instead (use `note`, wait, or fold messages). A message over its kind's limit is refused with its length,
   how far over it is, a target below the limit, and where long content lasts: a file in the sender's task scope, or the
-  agreement submitted with `task done` (at most 6000 bytes, read with `task get`, inherited by dependent tasks). The
+  agreement submitted with `task done` (at most 12,000 bytes, read with `task get`, inherited by dependent tasks). The
   router's bookkeeping is swept, so it does not grow with the number of agents or messages that ever existed.
 * **Framed by the harness.** A delivered message is one line: a harness-written header (`[mail <id> <kind> from
   <agent>]`), the text reduced to one printable line in which harness-looking markers (`[mail`, `[end`, `[system`, ...),
@@ -617,7 +624,7 @@ worker mail -> router (kind, recipient, length, rate limits, dedupe: unchanged)
 * **The mailman decides the words and nothing else.** A digest goes to a recipient that has parcels waiting and stands for
   exactly those parcels. The sender list and the kind (the most urgent among the parcels) come from the harness's ledger,
   never from the mailman: `[mail m41 request via mm-1 from be-1 x2, fe-1] <digest> [untrusted peer data: ...]`. The text is
-  made single-line and defused like any agent's mail and is at most 700 characters. It cannot choose recipients, forge a
+  made single-line and defused like any agent's mail and is at most 2,000 characters. It cannot choose recipients, forge a
   sender, change a kind or carry approvals, and a digest is never delivered as human steering.
 * **Who goes through it.** Only mail from workers, and of that not a `blocker` to the manager: it is delivered at once and
   never digested (it can arrive before mail its sender wrote earlier that is still waiting). The manager's mail, the harness's
@@ -628,11 +635,11 @@ worker mail -> router (kind, recipient, length, rate limits, dedupe: unchanged)
   s after its first, at once when 24 are waiting; both are counted from the parcels' arrival, so housekeeping does not
   extend them), and a recipient with fewer than three parcels in a batch gets them directly and at once: two messages are no
   burst, a digest of them is barely shorter, and a request is not worth paying for. The mailman is shown each parcel whole,
-  up to 16,000 characters of parcel text per request (about 4,000 tokens, counted as quoted in the request); over that,
+  up to 24,000 characters of parcel text per request (about 6,000 tokens, counted as quoted in the request); over that,
   short parcels stay whole and the longest are cut to an equal share of the rest, so a digest is the mailman's summary
   rather than the harness's cut. It runs below every worker's priority, sees a one-line hot view, has a role pin of about
   150 tokens and at most 12 steps, counts against the swarm budget like any agent and can run on a model of its own
-  (`--role-model mailman=<model>`). Bounds: 24 parcels per request (a configured bound is capped at 66, so each parcel is
+  (`--role-model mailman=<model>`). Bounds: 24 parcels per request (a configured bound is capped at 100, so each parcel is
   shown at least 240 characters), 200 in the ledger (beyond that mail is delivered directly), one digest per recipient per
   request.
 * **A missing mailman costs delay, never mail.** If it is stuck or absent (it could not start, its model failed twice in a row

@@ -102,6 +102,18 @@ func (s *Swarm) spawn(req SpawnReq) (SpawnResult, error) {
 	if err != nil {
 		return SpawnResult{}, err
 	}
+	if req.TaskID != "" {
+		sn := s.Board.Snapshot()
+		if task, ok := sn.Task(strings.TrimSpace(req.TaskID)); ok {
+			role := req.Role
+			if m := s.get(req.Agent); m != nil {
+				role = m.role
+			}
+			if err := s.roleMismatch(sn, task, req.Agent, role); err != nil {
+				return SpawnResult{}, err
+			}
+		}
+	}
 	if s.cfg.PersistentPools {
 		if req.Role == "" && req.TaskID != "" {
 			if task, ok := s.Board.Snapshot().Task(req.TaskID); ok {
@@ -182,6 +194,47 @@ func (s *Swarm) spawn(req SpawnReq) (SpawnResult, error) {
 		return s.spawnReuse(req, files)
 	}
 	return started(s.spawnNew(req, files))
+}
+
+// roleMismatch is the refusal to give task t to agent, of role, when t names another role that the swarm can staff. Roles exist to
+// put each kind of work on the model and the instructions chosen for it (--role-model frontend=…), so a backend task does not go to
+// a frontend or an architect member because that one is free: it waits for its own role (the spawn queue), or the manager changes
+// its role first (task revise role=) when the work really is another role's. nil when t names no role, the role is the agent's, the
+// agent already owns t (its own work, restarted or repaired), or no member of t's role can ever be started (the role is unknown, or
+// the team has no slot for it). sn lists the members of t's role in the refusal. It reads no lock of the swarm, so the board's
+// checks call it inside their critical section.
+func (s *Swarm) roleMismatch(sn *Snapshot, t Task, agent, role string) error {
+	if t.Role == "" || role == "" || t.Role == role || role == "manager" || (agent != "" && t.Owner == agent) {
+		return nil
+	}
+	if _, ok := s.roles[t.Role]; !ok || t.Role == "manager" || s.isService(t.Role) || s.hidden[t.Role] || !s.canStaff(t.Role) {
+		return nil
+	}
+	who := "a " + role + " member"
+	if agent != "" {
+		who = agent + ", a " + role + " member,"
+	}
+	var members []string
+	if sn != nil {
+		for _, a := range sn.Agents {
+			if a.Role != t.Role {
+				continue
+			}
+			if a.Task != "" && a.State != "idle" {
+				members = append(members, a.ID+" works on "+a.Task)
+			} else {
+				members = append(members, a.ID+" "+a.State)
+			}
+		}
+	}
+	of := ""
+	if len(members) > 0 {
+		of = " (" + strings.Join(members, ", ") + ")"
+	}
+	return fmt.Errorf("%s is a %s task, so %s does not take it: each role runs on the model and instructions chosen for its kind of work. "+
+		"Give it to its role%s: spawn task=%s without agent= starts it on the first free %s member, or queues it until one is free. "+
+		"If the work really is %s work, change its role first (task revise id=%s role=%s text=why)",
+		t.ID, t.Role, who, of, t.ID, t.Role, role, t.ID, role)
 }
 
 // namedNotFree is the refusal of a spawn that names a member (req.Agent) the role's pool could not take because it owns an open
@@ -274,7 +327,7 @@ func (s *Swarm) soloMember(req *SpawnReq) error {
 
 // assignFor builds the board operation that gives a task to an agent.
 func (s *Swarm) assignFor(req SpawnReq, agentID string, role Role, files []string) assignReq {
-	r := assignReq{by: req.By, agent: agentID, check: s.claimCheck(agentID, role.ReadOnly), solo: req.Solo}
+	r := assignReq{by: req.By, agent: agentID, check: s.claimCheck(agentID, role), solo: req.Solo}
 	if req.TaskID != "" {
 		r.id = strings.TrimSpace(req.TaskID)
 		if len(files) > 0 {

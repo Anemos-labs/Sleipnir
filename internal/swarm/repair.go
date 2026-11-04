@@ -98,7 +98,16 @@ func reviseOp(id string, spec TaskSpec, reason string) func(d *draft) error {
 		if spec.Title != "" {
 			t.Title = cleanText(spec.Title, maxTitleRunes)
 		}
+		if r := cleanText(spec.Role, maxRoleRunes); r != "" && r != t.Role {
+			if t.Pool != nil || t.Parent != "" {
+				return fmt.Errorf("%s keeps its role, %s: a pool task and a pool's child stay with the pool's role", id, t.Role)
+			}
+			t.Role = r
+		}
 		if spec.Desc != "" {
+			if err := descTooLong(spec.Desc); err != nil {
+				return err
+			}
 			t.Desc = cleanBlock(spec.Desc, maxDescRunes)
 		}
 		if spec.Files != nil {
@@ -163,7 +172,20 @@ func (t *taskTool) reviseTask(ctx context.Context, c *tools.Call, in taskIn) *to
 	if in.Kind != "" && in.Kind != "work" && in.Kind != TaskKindPlan {
 		return tools.Errorf("task kind must be work or plan")
 	}
-	if in.Kind == TaskKindPlan && !s.roles[task.Role].ReadOnly {
+	newRole := strings.TrimSpace(in.Role)
+	if newRole == task.Role {
+		newRole = ""
+	}
+	if newRole != "" {
+		if _, ok := s.roles[newRole]; !ok || newRole == "manager" || s.isService(newRole) || s.hidden[newRole] {
+			return tools.Errorf("unknown role %q (roles: %s)", cleanText(newRole, 40), strings.Join(s.spawnableRoles(), ", "))
+		}
+	}
+	planRole := task.Role
+	if newRole != "" {
+		planRole = newRole
+	}
+	if (in.Kind == TaskKindPlan || newRole != "" && in.Kind == "" && task.Kind == TaskKindPlan) && !s.roles[planRole].ReadOnly {
 		return tools.Errorf("a planning task requires a read-only role")
 	}
 	if r := t.widenInPlace(c, in, task); r != nil {
@@ -178,7 +200,7 @@ func (t *taskTool) reviseTask(ctx context.Context, c *tools.Call, in taskIn) *to
 	}
 	// A change the board would refuse (a parent with an unfinished child, a bad dependency) is refused before anyone is
 	// stopped: stopping first cancelled a pool's three members mid-request for a resolve that then failed.
-	op := reviseOp(in.ID, TaskSpec{Title: in.Title, Desc: in.Description, Kind: in.Kind, Files: in.Files, Deps: in.Deps}, in.Text)
+	op := reviseOp(in.ID, TaskSpec{Title: in.Title, Desc: in.Description, Role: newRole, Kind: in.Kind, Files: in.Files, Deps: in.Deps}, in.Text)
 	if in.Action == "resolve" {
 		op = resolveOp(in.ID, in.Text)
 	}
@@ -233,7 +255,7 @@ func (t *taskTool) reviseTask(ctx context.Context, c *tools.Call, in taskIn) *to
 		s.wakeBlockedOnResolved(in.ID, in.Text)
 		return text("%s complete: no longer needed (%s)", in.ID, in.Text)
 	}
-	if err := s.Board.revise(c.Env.Agent, in.ID, TaskSpec{Title: in.Title, Desc: in.Description, Kind: in.Kind, Files: in.Files, Deps: in.Deps}, in.Text); err != nil {
+	if err := s.Board.revise(c.Env.Agent, in.ID, TaskSpec{Title: in.Title, Desc: in.Description, Role: newRole, Kind: in.Kind, Files: in.Files, Deps: in.Deps}, in.Text); err != nil {
 		return tools.Errorf("%v", err)
 	}
 	// Accepted dependents must be checked again against the revised prerequisite.
@@ -256,6 +278,9 @@ func (t *taskTool) reviseTask(ctx context.Context, c *tools.Call, in taskIn) *to
 		s.review.mu.Lock()
 		s.review.landLocked(task.ID, append(slices.Clone(task.Files), in.Files...), 0)
 		s.review.mu.Unlock()
+	}
+	if newRole != "" {
+		return text("%s revised in place and is now a %s task: start it on a %s member (spawn task=%s)", in.ID, newRole, newRole, in.ID)
 	}
 	return text("%s revised in place; its existing worker will retry", in.ID)
 }

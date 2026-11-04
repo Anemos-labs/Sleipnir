@@ -619,13 +619,6 @@ func (s *Swarm) staffingLines(snap *Snapshot) []string {
 		out, roleLines = offerLines(ready, idle, held, slots, used, order)
 	}
 	q := queuedLines(waiting, maxStaffingLines-roleLines)
-	for i, r := range roleKeys(waiting) {
-		if i < len(q) && len(waiting[r]) > 0 {
-			if line := spillLine(s.freeWriters(r), r, waiting[r][0]); line != "" {
-				q[i] += "; " + line
-			}
-		}
-	}
 	out = append(out, q...)
 	if roleLines+len(q) < maxStaffingLines && openTask(snap) {
 		if line := unplannedLine(s.unplannedIdle(snap, idle, held, ready, waiting), s.freeSlots(slots, used, order, ready, waiting)); line != "" {
@@ -887,9 +880,9 @@ func roleKeys(m map[string][]string) []string {
 }
 
 // freeWriters are the roles of the team, other than except, in team order, with a slot or an idle member free for a task now:
-// roles that write code, so neither a read-only role, nor docs, nor the tester, whose tasks are tests of their own. A task queued
-// behind the one member of its role can start on one of them. A manager that gave four independent modules to backend, the team's
-// one backend slot, ran them one after another while the frontend and devops slots stayed empty.
+// roles that write code, so neither a read-only role, nor docs, nor the tester, whose tasks are tests of their own. It tells a
+// manager that edits files itself that writer roles could take that work as tasks of their own (handoffLine); it never offers one
+// role's queued task to another, since each role runs on the model chosen for its kind of work (roleMismatch).
 func (s *Swarm) freeWriters(except string) []string {
 	if !s.teamLimited() || !s.isolated() && s.activeWriters() >= s.cfg.MaxWriters {
 		return nil // at the writer limit no writer is admitted, whatever its role's slots
@@ -922,15 +915,6 @@ func (s *Swarm) freeWriters(except string) []string {
 		}
 	}
 	return out
-}
-
-// spillLine is what a queued task's spawn and the live view add when other writer roles are free (freeWriters): "" when none is.
-func spillLine(free []string, role, id string) string {
-	if len(free) == 0 {
-		return ""
-	}
-	return fmt.Sprintf("free now: %s: one of them can take %s at once if it needs nothing only %s knows (spawn role=%s task=%s)",
-		strings.Join(free, ", "), id, role, free[0], id)
 }
 
 // reviewerModelHint is a one-line suggestion for a team whose reviewers all run on a model its writers use while the team has another

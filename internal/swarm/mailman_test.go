@@ -417,7 +417,7 @@ func TestParcelViewKeepsShortParcelsWholeWithinTheBudget(t *testing.T) {
 	}
 	// A batch bound above the cap is lowered to it: a raised MailmanBatch cannot push a
 	// request past its budget.
-	for _, batch := range []int{67, 1000} {
+	for _, batch := range []int{mailmanMaxBatch + 1, 1000} {
 		if got := New(Config{Mailman: true, MailmanBatch: batch}, Deps{}, nil).cfg.MailmanBatch; got != mailmanMaxBatch {
 			t.Fatalf("MailmanBatch %d became %d, want the cap %d", batch, got, mailmanMaxBatch)
 		}
