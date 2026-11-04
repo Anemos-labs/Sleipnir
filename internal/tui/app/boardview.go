@@ -137,6 +137,9 @@ func taskTable(s Scene, w, limit int) []cell.Line {
 		if sp := t.Spend(); sp.Shown() > 0 { // what the agents that held it spent on it
 			tail = strings.TrimPrefix(tail+" · "+widget.Spend(sp.Shown(), sp.Plan), " · ")
 		}
+		if n := t.SentBack(); n > 0 { // how many times its work was returned, as the web card's strip says it
+			tail = strings.TrimPrefix(tail+" · "+fmt.Sprintf("↩%d", n), " · ")
+		}
 		if a := taskAge(t, s.Snap.Now); a != "" { // its time in its column, as the web board's card says it
 			tail = strings.TrimPrefix(tail+" · "+a, " · ")
 		}
