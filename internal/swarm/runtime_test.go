@@ -74,6 +74,24 @@ type rig struct {
 
 func newRig(t *testing.T, cfg swarm.Config, mcfg mock.Config, r mock.Responder) *rig {
 	t.Helper()
+	return newRigWithRoles(t, cfg, mcfg, r, nil)
+}
+
+// readOnlyRoles is the built-in role table with the named roles made read-only: every built-in role writes, and a test of the
+// read-only policy takes one of them as a project's read-only role would be.
+func readOnlyRoles(names ...string) swarm.Roles {
+	rs := swarm.BuiltinRoles()
+	for _, n := range names {
+		r := rs[n]
+		r.ReadOnly = true
+		rs[n] = r
+	}
+	return rs
+}
+
+// newRigWithRoles is newRig with a role table of its own (nil: the built-in roles).
+func newRigWithRoles(t *testing.T, cfg swarm.Config, mcfg mock.Config, r mock.Responder, roles swarm.Roles) *rig {
+	t.Helper()
 	agent.RetryBase = time.Millisecond
 	srv := mock.New(mcfg, r)
 	ts := srv.Start()
@@ -91,7 +109,7 @@ func newRig(t *testing.T, cfg swarm.Config, mcfg mock.Config, r mock.Responder) 
 		Files: tools.NewFileState(), Handles: tools.NewHandles(),
 		Perm: perm.AllowAll{}, // these tests are about the swarm, not the permission policy
 	}
-	sw := swarm.New(cfg, deps, nil)
+	sw := swarm.New(cfg, deps, roles)
 	reg := tools.NewRegistry()
 	for _, f := range []fake{editTool(), bashTool(), {name: "read", ro: true, run: func(context.Context, *tools.Call) *tools.Result { return &tools.Result{Text: "contents"} }}} {
 		reg.Register(f)
@@ -268,10 +286,10 @@ func TestManagerDispatchesWorkersAndCollectsResults(t *testing.T) {
 }
 
 func TestWriterCapAndScopeOverlap(t *testing.T) {
-	r := newRig(t, swarm.Config{SessionID: "s2", MaxWriters: 1}, mock.Config{}, func(c *mock.Call) mock.Reply {
+	r := newRigWithRoles(t, swarm.Config{SessionID: "s2", MaxWriters: 1}, mock.Config{}, func(c *mock.Call) mock.Reply {
 		time.Sleep(200 * time.Millisecond) // keep the first worker busy
 		return mock.Reply{Text: "ok"}
-	})
+	}, readOnlyRoles("reviewer"))
 	if _, err := r.sw.StartManager(); err != nil {
 		t.Fatal(err)
 	}
@@ -295,10 +313,11 @@ func TestWriterCapAndScopeOverlap(t *testing.T) {
 	}
 }
 
-func TestReviewerIsReadOnly(t *testing.T) {
+// A read-only role (here the reviewer made one, as a project's agent definition can) has its writes refused by role.
+func TestAReadOnlyRoleIsReadOnly(t *testing.T) {
 	var mu sync.Mutex
 	var denial string
-	r := newRig(t, swarm.Config{SessionID: "s3"}, mock.Config{}, func(c *mock.Call) mock.Reply {
+	r := newRigWithRoles(t, swarm.Config{SessionID: "s3"}, mock.Config{}, func(c *mock.Call) mock.Reply {
 		mu.Lock()
 		defer mu.Unlock()
 		id, role := who(c)
@@ -317,7 +336,7 @@ func TestReviewerIsReadOnly(t *testing.T) {
 			return mock.Reply{ToolCalls: []mock.ToolCall{call("r2", "task", map[string]any{"action": "done", "id": taskOf(c), "text": "reviewed " + id})}}
 		}
 		return mock.Reply{Text: "review complete"}
-	})
+	}, readOnlyRoles("reviewer"))
 	r.sw.StartManager()
 	id, err := r.sw.Spawn(swarm.SpawnReq{Role: "reviewer", Title: "Review", By: "mgr"})
 	if err != nil {

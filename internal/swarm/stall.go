@@ -674,7 +674,7 @@ func stallNudge(f Stall, k int64, pools bool) string {
 	return "Stall check: " + f.Detail
 }
 
-// verdictPhase reports whether every running worker is a read-only role or on a docs task: the team waits for a verdict on finished
+// verdictPhase reports whether every running worker is a role that reports (Role.Reports) or on a docs or planning task: the team waits for a verdict on finished
 // work (a review, an agreement, the docs catch-up), not for work, and idle writers are expected. Told of idle capacity then, a
 // manager invented work to fill it (an adversarial test task after the review had started) and the run waited on that too.
 func (s *Swarm) verdictPhase(snap *Snapshot, views map[string]memberView) bool {
@@ -682,7 +682,7 @@ func (s *Swarm) verdictPhase(snap *Snapshot, views map[string]memberView) bool {
 		if !v.running || v.manager || v.service {
 			continue
 		}
-		if s.roles[v.role].ReadOnly {
+		if s.roles[v.role].Reports() {
 			continue
 		}
 		task := currentTask(snap, id)
@@ -690,7 +690,7 @@ func (s *Swarm) verdictPhase(snap *Snapshot, views map[string]memberView) bool {
 			// a writer finishing its turn after its task was accepted (or failed): not work the team waits on
 			continue
 		}
-		if t, ok := snap.Task(task); ok && s.isDocsTask(t) {
+		if t, ok := snap.Task(task); ok && (s.isDocsTask(t) || t.Kind == TaskKindPlan) {
 			continue
 		}
 		return false

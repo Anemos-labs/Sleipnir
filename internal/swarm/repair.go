@@ -189,13 +189,6 @@ func (t *taskTool) reviseTask(ctx context.Context, c *tools.Call, in taskIn) *to
 			return tools.Errorf("unknown role %q (roles: %s)", cleanText(newRole, 40), strings.Join(s.spawnableRoles(), ", "))
 		}
 	}
-	planRole := task.Role
-	if newRole != "" {
-		planRole = newRole
-	}
-	if (in.Kind == TaskKindPlan || newRole != "" && in.Kind == "" && task.Kind == TaskKindPlan) && !s.roles[planRole].ReadOnly {
-		return tools.Errorf("a planning task requires a read-only role")
-	}
 	if r := t.widenInPlace(c, in, task); r != nil {
 		return r
 	}

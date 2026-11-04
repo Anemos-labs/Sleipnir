@@ -14,13 +14,13 @@ const (
 	RigorReviewed = "reviewed"
 )
 
-// rigorPlanner is the read-only role that writes a rigor plan: the architect, else the scout, else the first other
-// read-only role the team can staff (not the reviewer, which checks the plan, nor the mailman). "" when there is none.
+// rigorPlanner is the role that writes a rigor plan: the architect, else the scout, else the first read-only role the
+// team can staff (not the reviewer, which checks the plan, nor the mailman). "" when there is none.
 func (s *Swarm) rigorPlanner() string {
 	order := append([]string{"architect", "scout"}, workerRolesSorted(s.roles)...)
 	for _, n := range order {
 		r, ok := s.roles[n]
-		if !ok || !r.ReadOnly || n == ReviewerRole || n == MailmanRoleName || n == "manager" || !s.canStaff(n) {
+		if !ok || !r.ReadOnly && n != "architect" && n != "scout" || n == ReviewerRole || n == MailmanRoleName || n == "manager" || !s.canStaff(n) {
 			continue
 		}
 		return n
@@ -75,7 +75,7 @@ func (s *Swarm) createRigorous(by string, spec TaskSpec, rigor string) ([]Task, 
 	}
 	planner := s.rigorPlanner()
 	if planner == "" {
-		return nil, fmt.Errorf("rigor=%s needs a read-only role to plan (architect or scout) that this team can staff: create the task without rigor, or plan it yourself and put the plan in its description", rigor)
+		return nil, fmt.Errorf("rigor=%s needs a role to plan (the architect, a scout or a read-only role) that this team can staff: create the task without rigor, or plan it yourself and put the plan in its description", rigor)
 	}
 	if _, ok := s.roles[ReviewerRole]; rigor == RigorReviewed && (!ok || !s.canStaff(ReviewerRole)) {
 		return nil, fmt.Errorf("rigor=reviewed needs a reviewer slot to check the plan: use rigor=plan, or add a reviewer to the team")

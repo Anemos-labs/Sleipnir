@@ -82,7 +82,7 @@ func (t *taskTool) Spec() core.ToolSpec {
 		Description: "Shared task board. Manager: deliver (text=commit message) verifies direct changes and commits the integrated result to the original checkout without creating a task; then use bash for push and PR commands. Manager: revise (id, text=reason, optional title, description, role, kind, files, deps) repairs a task in place (role= moves a top-level task to another role); resolve (id, text=explanation) completes work no longer needed. Pool leaders: create with parent=id (inherits the parent's kind unless specified) and accept their child tasks. Actions: list, get (id: full task and agreement), claim (id), update (id, text = one-line status), " +
 			"done (id, text = one-line result, optional agreement = full shared contract, at most 16000 bytes/400 lines, optional assumptions = choices you made that the task left open, one line each, at most 8, optional commit = the message of the commit that records your change, in the project's commit convention (Conventional Commits, type(scope): summary, when it has none), saying what the code now does and why, never task ids or agent names: the harness verifies the work before review). Accepted agreements are inherited by dependent tasks and preserved through compaction. " +
 			"block (id, text = reason, optional target = the id of the task it waits for), resume (id), " +
-			"handover (id, text = a short summary for your successor: what is done, what is left, what you learned; the harness gives your task, your work and the summary to a fresh worker of your role; the manager may hand over a worker's task). Manager only: create (title, description, role, deps, files = scope, kind = work or plan; plans require a read-only role and an agreement, not code verification; rigor = plan adds a read-only plan task the work waits for and inherits, rigor = reviewed also a reviewer's check of that plan, for work that is risky or hard to undo), " +
+			"handover (id, text = a short summary for your successor: what is done, what is left, what you learned; the harness gives your task, your work and the summary to a fresh worker of your role; the manager may hand over a worker's task). Manager only: create (title, description, role, deps, files = scope, kind = work or plan; a plan's deliverable is an agreement, not code: its owner changes no file while it plans; rigor = plan adds a plan task the work waits for and inherits, rigor = reviewed also a reviewer's check of that plan, for work that is risky or hard to undo), " +
 			"update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback the worker can act on alone: what is wrong and how you saw it, what to keep, what will show it is fixed) or reopen, " +
 			"fail (id, reason = blocked_on, superseded, canceled, denied or verifier; target = the task id for blocked_on and superseded; text = one-line note).",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{
@@ -440,9 +440,6 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 	if task.Pool != nil {
 		evidence := "pool reconciled and verified"
 		if task.Kind == TaskKindPlan {
-			if !s.roles[c.Env.Role].ReadOnly {
-				return tools.Errorf("a planning task can only be submitted by a read-only role")
-			}
 			evidence = "pool reconciled; read-only planning; manager reviews the agreement"
 		} else if vr := s.verifyFor(ctx, task, s.deps.Workdir, task.Files); !vr.ok {
 			return s.poolGateFailed(me, task, vr)
@@ -457,9 +454,6 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		return text("%s consolidated pool result is in review", task.ID)
 	}
 	if task.Kind == TaskKindPlan {
-		if !s.roles[c.Env.Role].ReadOnly {
-			return tools.Errorf("a planning task can only be submitted by a read-only role")
-		}
 		result, report := readOnlyReport(task.ID, in.Text)
 		if err := s.Board.submitReportAt(me, task.ID, task.Rev, submission{result: result, report: report, evidence: "read-only planning; manager reviews the agreement", agreement: in.Agreement, assumptions: in.Assumptions}, taskGateCheck(task), s.reviewSubmission(task)); err != nil {
 			return tools.Errorf("%v", err)
@@ -492,7 +486,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 			cmd, vr.code, s.isolatedVerifyHint(m), tail)}
 	}
 	result, report := oneLine(in.Text, 120), ""
-	readOnly := s.roles[c.Env.Role].ReadOnly
+	readOnly := s.roles[c.Env.Role].Reports()
 	if readOnly {
 		result, report = readOnlyReport(task.ID, in.Text)
 	}
@@ -1075,7 +1069,7 @@ func (s *Swarm) stalledWaitReason(agentID string) string {
 		return ""
 	}
 	return "Cannot wait: no workers are running and work needs manager action (" + u.summary(holdListCap) + "). " +
-		"Use spawn to start or reuse a worker on an unstarted task; planning tasks need the architect, a scout, a reviewer, or a custom read-only role. " +
+		"Use spawn to start or reuse a worker on an unstarted task of its role; a planning task goes to the role it names (the architect by default). " +
 		"Review submissions with task get and accept or reject them; resolve blocked tasks or fail abandoned work."
 }
 

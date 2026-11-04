@@ -266,7 +266,7 @@ func TestRoster(t *testing.T) {
 	if len(r) != 12 || r[0].ID != "mgr" || r[0].Scope != "**" || r[0].Model != "m1" || r[0].Leg != -1 {
 		t.Fatalf("roster: %+v", r)
 	}
-	if sc := r[1]; sc.ID != "sc-1" || !sc.RO || sc.Scope != "- (read-only)" || sc.K != 1 || sc.Leg != 1 || sc.Code != "sc" || sc.Nth != 1 || sc.Model != "m2" || sc.Spawn != 2 {
+	if sc := r[1]; sc.ID != "sc-1" || sc.RO || sc.Scope != "**" || sc.K != 1 || sc.Leg != 1 || sc.Code != "sc" || sc.Nth != 1 || sc.Model != "m2" || sc.Spawn != 2 {
 		t.Fatalf("scout: %+v", sc)
 	}
 	if be := r[2]; be.ID != "be-1" || be.Scope != "api/catalog/**, api/server.go" || be.K != 2 || be.Leg != 2 {
