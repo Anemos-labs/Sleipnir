@@ -769,3 +769,36 @@ func judgeBlocks(t core.Turn) []string {
 	}
 	return out
 }
+
+// restorePlans sets each agent's plan in store to the last one its log says it saved: the plan tool keeps plans in memory, and a
+// resumed session would otherwise show its agents, the goal's judge and the plan tool's checks no plan at all, while the page,
+// which reads the log, still shows the old one. A goal started after a plan clears the main agent's, as ClearGoalPlan did.
+func restorePlans(log string, store *plan.Store) {
+	_ = events.Scan(log, func(e events.Event) error {
+		switch e.Type {
+		case "goal.start":
+			for _, id := range []string{"main", "mgr"} {
+				store.Set(id, nil)
+			}
+		case events.TypeToolCall:
+			var c struct {
+				Name  string          `json:"name"`
+				As    string          `json:"as"`
+				Input json.RawMessage `json:"input"`
+			}
+			if json.Unmarshal(e.Data, &c) != nil || firstNonEmpty(c.As, c.Name) != "plan" || e.Agent == "" {
+				return nil
+			}
+			var in struct {
+				Items []plan.Item `json:"items"`
+			}
+			if json.Unmarshal(c.Input, &in) != nil {
+				return nil
+			}
+			if items, err := plan.Normalize(in.Items); err == nil {
+				store.Set(e.Agent, items)
+			}
+		}
+		return nil
+	})
+}
