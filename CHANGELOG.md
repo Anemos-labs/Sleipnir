@@ -7,6 +7,20 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A goal's plan shows how much of the work is left, not how many steps are
+  ticked. A plan step takes an `effort` estimate in hours (a number, or text
+  such as "90m" or "2d") and the `milestone` it serves, and a plan holds 24
+  steps (it held 12). The Goal plan box, the Goal sheet, `/goal` and the
+  plan tool's result weigh progress by the estimates; a step marked done
+  whose milestone the judge has ruled unmet is shown as claimed and counted
+  open; a milestone no step names holds a share of its own. The plan tool,
+  for the main agent of a goal, and each continuation say which milestones
+  have no step, which done steps the judge has not confirmed, and which
+  steps lack an estimate or are too big, and ask for a step for each item
+  the judge found missing. The `plan` web event carries `eff` and `mile`.
+  Prompt-cache change: the `plan` tool's description and schema, and a
+  goal's first message, change bytes.
+
 - Every built-in role writes. The architect, the scout and the reviewer are no
   longer read-only: on a work task they write files and run programs like any
   worker (the architect a contract file or a scaffold, the reviewer a failing

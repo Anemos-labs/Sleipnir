@@ -68,7 +68,7 @@
    *  first `plan` event (its steps); the counters of the additive vocabulary start at zero. */
   function newModel(S, opts) {
     const m = { sid: S.id, t: 0, ver: 0, nid: 0, chat: !(opts && opts.noChat), ag: {}, order: [], tasks: {}, torder: [], q: null, merged: [], conflicts: 0, bounced: 0,
-      mail: [], marks: [], plan: [], planText: null, verdict: '', verdictKind: '', left: [], goal: { state: S.meta.goalText ? 'active' : 'none' }, qs: [], anomalies: [], compactions: [], ncompactions: 0, nanom: 0, nloud: 0, nmail: 0, nMgrDec: 0, nMgrDen: 0, decMark: { n: 0, d: 0 }, ckpts: [],
+      mail: [], marks: [], plan: [], planEff: [], planMs: [], planText: null, verdict: '', verdictKind: '', left: [], goal: { state: S.meta.goalText ? 'active' : 'none' }, qs: [], anomalies: [], compactions: [], ncompactions: 0, nanom: 0, nloud: 0, nmail: 0, nMgrDec: 0, nMgrDen: 0, decMark: { n: 0, d: 0 }, ckpts: [],
       reqLog: [], flash: { t: -999, id: null }, lastReq: -9999, lastBreakT: -9999, streams: {}, diff: {}, rpm: 0, rpmHist: [], final: null, chan: { mgr: [], mail: [] }, folded: {}, steps: 0, refused: 0, mem: 0,
       mids: {}, midOrder: [], stalls: {}, handovers: [], alerts: {}, mailstat: null, svc: null, mgrDec: [], ttl: 0, r429: 0, retries: 0, inflight: 0, queued: 0, turn: false };
     (S.roster || []).forEach(r => addAgent(m, r));
@@ -159,7 +159,12 @@
         break;
       }
       case 'plan': {
-        if (Array.isArray(ev.steps)) { m.planText = ev.steps.map(String); m.plan = ev.steps.map((_, i) => SL.u.own(PLAN_ST, (ev.st || [])[i]) || 'pending'); }
+        if (Array.isArray(ev.steps)) {
+          m.planText = ev.steps.map(String); m.plan = ev.steps.map((_, i) => SL.u.own(PLAN_ST, (ev.st || [])[i]) || 'pending');
+          /* each step's estimate (hours, 0 for none) and the milestone it serves: what the goal's progress is weighed by (calc.plan) */
+          m.planEff = ev.steps.map((_, i) => { const e = Array.isArray(ev.eff) ? +ev.eff[i] : 0; return isFinite(e) && e > 0 ? Math.min(e, 200) : 0; });
+          m.planMs = ev.steps.map((_, i) => Array.isArray(ev.mile) && typeof ev.mile[i] === 'string' ? ev.mile[i] : '');
+        }
         else if (Number.isInteger(ev.n) && ev.n >= 0 && ev.n < 1000) m.plan[ev.n] = SL.u.own(PLAN_ST, ev.s) || 'pending';
         break;
       }
@@ -307,6 +312,25 @@
 
   /* ---------------- derived numbers: the only place tokens become percentages and dollars ---------------- */
   const calc = {
+    /** How far the goal plan is, weighed as the server weighs it (internal/plan Progress): each step by its estimate (a step
+     *  without one by the mean of those with one, or 1 when none has), a done step counted open while the judge has ruled its
+     *  milestone unmet (claimed), and a share of the mean for each open milestone no step names (missing). Returns
+     *  {done, claimed, total, pct, hours, missing, w: [weight of each step], unmet: [whether each step's milestone was ruled unmet]}. */
+    plan(m) {
+      const st = m.plan || [], eff = m.planEff || [], msOf = m.planMs || [], ms = (m.goal && m.goal.milestones) || [];
+      const given = eff.filter(e => e > 0), mean = given.length ? given.reduce((a, b) => a + b, 0) / given.length : 1;
+      const ruled = !!(m.verdictKind && m.verdictKind !== 'checking') || ms.some(x => x.met), met = {};
+      ms.forEach(x => { met[x.id] = !!x.met; });
+      const r = { done: 0, claimed: 0, total: 0, pct: 0, hours: given.length > 0, missing: [], w: [], unmet: [] }, named = {};
+      st.forEach((s, i) => {
+        const w = eff[i] > 0 ? eff[i] : mean, id = msOf[i] || '', unmet = !!id && ruled && id in met && !met[id];
+        r.w.push(w); r.unmet.push(unmet); r.total += w; named[id] = true;
+        if (s === 'done') { if (unmet) r.claimed += w; else r.done += w; }
+      });
+      ms.forEach(x => { if (!named[x.id] && !x.met) { r.missing.push(x.id); r.total += mean; } });
+      r.pct = r.total > 0 ? Math.floor(100 * r.done / r.total) : 0;
+      return r;
+    },
     /** {prompt, read, un, out, hit (0..1), pct (rounded %), cost, saved, list, plan} for one agent. cost is what was billed; list what a
      *  subscription plan covered at the API list price, and plan whether there was any (SL.u.fmtSpend shows the two together). */
     agent(a) {

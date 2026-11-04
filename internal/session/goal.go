@@ -680,12 +680,40 @@ const goalEvent = "goal.state"
 // SaveGoal records a resumable goal. Call it before its first turn to establish
 // the objective boundary; JudgeGoal refuses a goal whose boundary was not saved.
 func (s *Session) SaveGoal(g *goal.State) {
+	s.noteMarks(g)
 	if g != nil && g.StartSeq == 0 {
 		g.StartSeq, _ = s.Log.Emit("", "goal.start", map[string]any{"objective": g.Objective})
 	}
 	if _, err := s.Log.Emit("", goalEvent, map[string]any{"goal": g}); err == nil {
 		s.noteObjective(g)
 	}
+}
+
+// noteMarks remembers the milestones of the goal (none when it is cleared or met) for the plan tool's check.
+func (s *Session) noteMarks(g *goal.State) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.goalOn = g != nil && !g.Done
+	s.goalMarks = nil
+	if s.goalOn {
+		s.goalMarks = g.Marks()
+	}
+}
+
+// planCheck is what the plan tool adds to a plan the main agent saves while a goal is set: how it stands against the goal's
+// milestones and estimates (goal.PlanAdvice). Other agents' plans, and plans without a goal, get nothing.
+func (s *Session) planCheck(agent string, items []plan.Item) string {
+	a := s.Main()
+	if a == nil || a.ID() != agent {
+		return ""
+	}
+	s.mu.Lock()
+	on, marks := s.goalOn, s.goalMarks
+	s.mu.Unlock()
+	if !on {
+		return ""
+	}
+	return goal.PlanAdvice(items, marks)
 }
 
 // LoadGoal is the goal this session had when its log last said so, made paused ("the chat was restarted"): nothing runs until the person
@@ -716,6 +744,7 @@ func (s *Session) LoadGoal() *goal.State {
 	})
 	if last != nil && last.Objective != "" && !last.Done {
 		s.noteObjective(last)
+		s.noteMarks(last)
 		if last.Paused == "" {
 			last.Paused, last.Unjudged = "the chat was restarted", true // a turn may have been cut short, and was not judged
 		}

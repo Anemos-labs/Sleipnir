@@ -3,6 +3,7 @@ package goal
 import (
 	"errors"
 	"fmt"
+	"github.com/anemos-labs/sleipnir/internal/plan"
 	"os"
 	"path/filepath"
 	"strings"
@@ -250,10 +251,11 @@ func TestParseVerdictReadsMilestoneRulings(t *testing.T) {
 	}
 }
 
-// Goals without milestones send the judge and the agent exactly what they did before milestones existed.
+// Goals without milestones send the judge and the agent nothing about milestones.
 func TestNoMilestonesNoChange(t *testing.T) {
 	g := New("make the tests pass")
-	if s := Start(g); s != "make the tests pass\n\n[standing goal: before you begin, write what it requires as steps with the plan tool, and keep them current. The harness checks the goal against evidence after each turn and sends you on with what is missing until it is met.]" {
+	if s := Start(g); !strings.HasPrefix(s, "make the tests pass\n\n[standing goal: before you begin, write what it requires as steps with the plan tool, and keep them current.") ||
+		!strings.HasSuffix(s, "never when it is handed out.]") || strings.Contains(s, "milestone") {
 		t.Errorf("Start changed: %q", s)
 	}
 	if p := JudgePrompt(g, nil, "", nil); strings.Contains(p, "MILESTONES") || strings.Contains(p, "SPEC") {
@@ -383,5 +385,38 @@ func TestEndToEndRule(t *testing.T) {
 	}
 	if s := Start(g); !strings.Contains(s, "needs an end-to-end run of the assembled program") {
 		t.Fatalf("a goal with milestones is not told the end-to-end rule: %s", s)
+	}
+}
+
+// The agent is told how its plan stands against the goal's milestones: a milestone with no step, a step marked done whose milestone
+// the judge ruled unmet, steps with no estimate or too big to show progress; and the continuation carries the weighed progress.
+func TestPlanAdviceHoldsThePlanToTheMilestones(t *testing.T) {
+	g := New("ship it")
+	g.Milestones = []Milestone{{ID: "M1", Text: "api", Met: true}, {ID: "M2", Text: "ui"}, {ID: "M3", Text: "docs"}}
+	g.NoteVerdict(Verdict{Kind: Continue, Reason: "ui missing"})
+	steps := []plan.Item{
+		{Step: "api", Status: plan.Done, Effort: 2, Milestone: "M1"},
+		{Step: "ui shell", Status: plan.Done, Effort: 2, Milestone: "M2"},
+		{Step: "ui flows", Status: plan.Pending, Effort: 12, Milestone: "M2"},
+		{Step: "release", Status: plan.Pending},
+	}
+	a := PlanAdvice(steps, g.Marks())
+	for _, want := range []string{"names milestone M3", "milestone M2 are marked done", "Step 4 has no effort", "Step 3 is estimated at more than 8 hours"} {
+		if !strings.Contains(a, want) {
+			t.Errorf("advice lacks %q: %s", want, a)
+		}
+	}
+	if PlanAdvice(nil, g.Marks()) != "" {
+		t.Error("no plan, no advice")
+	}
+	ok := []plan.Item{{Step: "a", Status: plan.Done, Effort: 1, Milestone: "M1"}, {Step: "b", Effort: 3, Milestone: "M2"}, {Step: "c", Effort: 1, Milestone: "M3"}}
+	if a := PlanAdvice(ok, g.Marks()); a != "" {
+		t.Errorf("a sound plan: %s", a)
+	}
+	c := Continuation(g, steps, Verdict{Kind: Continue, Reason: "ui missing", Left: []string{"ui flows"}})
+	// done: the api's 2h (M2's done step is claimed, not done) of 16h, plus the mean of 16/3 for step 4 and again for M3
+	if !strings.Contains(c, "Your plan: 2 of 4 steps done, about 7% of 26.7h estimated.") || !strings.Contains(c, "names milestone M3") ||
+		!strings.Contains(c, "Add a step to your plan for each missing item") {
+		t.Errorf("continuation: %s", c)
 	}
 }
