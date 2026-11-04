@@ -161,7 +161,7 @@
         T.closure = ev.closure || ''; T.failed = !!ev.failed; T.attempts = typeof ev.attempts === 'number' ? ev.attempts : 0;
         T.cost = typeof ev.cost === 'number' && isFinite(ev.cost) && ev.cost > 0 ? ev.cost : 0; T.onPlan = !!ev.plan; T.reqs = typeof ev.reqs === 'number' ? ev.reqs : 0;
         /* its life as stretches (column, owner, from when), oldest first: the card's history strip */
-        T.hist = Array.isArray(ev.hist) ? ev.hist.slice(-HIST_CAP).filter(x => x && typeof x.t === 'number' && typeof x.s === 'string').map(x => ({ t: x.t, s: x.s, owner: typeof x.owner === 'string' ? x.owner : '' })) : [];   /* what the agents that held it spent on it */
+        T.hist = Array.isArray(ev.hist) ? ev.hist.slice(-HIST_CAP).filter(x => x && typeof x.t === 'number' && typeof x.s === 'string').map(x => ({ t: x.t, s: x.s, owner: typeof x.owner === 'string' ? x.owner : '', why: typeof x.why === 'string' ? x.why : '', cost: typeof x.cost === 'number' && isFinite(x.cost) && x.cost > 0 ? x.cost : 0, reqs: typeof x.reqs === 'number' && x.reqs > 0 ? Math.floor(x.reqs) : 0 })) : [];   /* what the agents that held it spent on it */
         break;
       }
       case 'plan': {

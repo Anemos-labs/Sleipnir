@@ -97,3 +97,62 @@ test('on the Board view a task that moved has a history strip: a segment per str
   assert.deepEqual(S.m.tasks.T6.hist.length, 0, 'an event without hist clears it, as for every field of a task event');
   assert.equal(card(L, 'T6').querySelector('.thist'), null);
 });
+
+test('a strip segment says what its stretch cost and how it ended: passed or failed verification, and why it was sent back', async () => {
+  const L = await boot(), S = L.SL.sessions.active;
+  await L.step(1); const t0 = S.vt;
+  const hist = [{ t: t0, s: 'todo' }, { t: t0 + 1, s: 'running', owner: 'be-1', cost: 0.12, reqs: 8 }, { t: t0 + 2, s: 'verify', owner: 'be-1', cost: 0.01, reqs: 1 },
+    { t: t0 + 3, s: 'running', owner: 'be-1', why: 'tests failed in cart_test.go' }, { t: t0 + 4, s: 'verify', owner: 'be-1' }, { t: t0 + 5, s: 'merged', owner: 'be-1' }];
+  await L.event('task', { id: 'T6', title: 'pager', s: 'merged', owner: 'be-1', t: t0 + 5, hist });
+  await L.event('task', { id: 'T9', title: 'flaky', s: 'todo', failed: true, closure: 'exhausted', attempts: 2, t: t0 + 5,
+    hist: [{ t: t0, s: 'running', owner: 'fe-1', cost: 0.5 }, { t: t0 + 2, s: 'failed', owner: 'fe-1', why: 'its workers kept stopping', cost: -3, reqs: 'x' }] });
+  await L.step(2); L.SL.views.show('board'); await L.settle(); await L.step(1);
+  const segs = card(L, 'T6').querySelectorAll('.thbar i');
+  assert.match(segs[1].title, /^running · be-1 · 1s · \$0\.12 in 8 requests$/);
+  assert.match(segs[2].title, /· failed verification, sent back: tests failed in cart_test\.go$/, 'a verify stretch followed by running was sent back, with the reason');
+  assert.match(segs[4].title, /· passed verification$/);
+  const f = card(L, 'T9').querySelectorAll('.thbar i');
+  assert.match(f[0].title, /\$0\.50 · then failed: its workers kept stopping$/);
+  assert.equal(S.m.tasks.T9.hist[1].cost, 0, 'a negative cost is dropped');
+  assert.equal(S.m.tasks.T9.hist[1].reqs, 0);
+});
+
+test('a failed card on the Board view says what to do, and its buttons take the step', async () => {
+  const L = await boot(), S = L.SL.sessions.active;
+  await L.event('task', { id: 'T3', title: 'pager', s: 'todo', failed: true, closure: 'verifier', attempts: 3, owner: 'be-1' });
+  await L.event('task', { id: 'T4', title: 'old pager', s: 'todo', failed: true, closure: 'superseded(T3)' });
+  await L.event('task', { id: 'T5', title: 'flaky', s: 'todo', failed: true, closure: 'exhausted', attempts: 4, owner: 'fe-1' });
+  await L.event('task', { id: 'T8', title: 'stopped', s: 'running', failed: true, closure: 'canceled' });
+  await L.step(1); L.SL.views.show('board'); await L.settle();
+  const d3 = card(L, 'T3').querySelector('.tdo');
+  assert.ok(d3, 'a failed card has a What to do line');
+  assert.match(d3.textContent, /What to do: Read why verification failed/);
+  assert.deepEqual([...d3.querySelectorAll('[data-tdo]')].map(b => b.dataset.tdo + ':' + (b.dataset.arg || '')), ['agent:be-1', 'ask:'], 'a team without worktrees has no verify output: the worker that ran the tests');
+  S.meta.isolation = 'worktree';
+  await L.event('task', { id: 'T3', title: 'pager', s: 'todo', failed: true, closure: 'verifier', attempts: 3, owner: 'be-1' }); await L.step(1);
+  assert.deepEqual([...d3.querySelectorAll('[data-tdo]')].map(b => b.dataset.tdo), ['verify', 'ask'], 'with worktrees, the merge queue\'s verify output');
+  assert.deepEqual([...card(L, 'T4').querySelectorAll('[data-tdo]')].map(b => b.dataset.tdo + ':' + (b.dataset.arg || '')), ['go:T3'], 'a replaced task points at the one that replaced it');
+  assert.deepEqual([...card(L, 'T5').querySelectorAll('[data-tdo]')].map(b => b.dataset.tdo + ':' + (b.dataset.arg || '')), ['agent:fe-1', 'ask:'], 'out of attempts: its last worker, then the manager');
+  assert.equal(card(L, 'T8').querySelector('.tdo'), null, 'a task the person canceled needs nothing');
+  /* the buttons: ask the manager puts the question in the message box; go flashes the card it names */
+  let composed = ''; L.SL.ui.compose = text => { composed = text; };
+  d3.querySelector('[data-tdo="ask"]').click();
+  assert.equal(composed, 'About task T3 (it failed: verification kept failing): ');
+  let verified = ''; const ws = L.SL.ui.ws.verify; L.SL.ui.ws.verify = id => { verified = id; };
+  d3.querySelector('[data-tdo="verify"]').click(); L.SL.ui.ws.verify = ws;
+  assert.equal(verified, 'T3');
+  card(L, 'T4').querySelector('[data-tdo="go"]').click();
+  assert.ok(card(L, 'T3').classList.contains('tflash'), 'go flashes the card of the task it names');
+  /* a card back to work loses it */
+  await L.event('task', { id: 'T3', title: 'pager', s: 'running', owner: 'be-1' }); await L.step(1);
+  assert.equal(card(L, 'T3').querySelector('.tdo'), null);
+  assert.equal(S.m.tasks.T3.failed, false);
+});
+
+test('the Board view has a legend of what the marks on its cards mean', async () => {
+  const L = await boot();
+  L.SL.views.show('board'); await L.settle();
+  const lg = L.$('.blegend');
+  assert.ok(lg, 'a legend under the board');
+  for (const w of ['live', 'stalled', 'failed', '↩ N', 'time in its column', 'try 2']) assert.ok(lg.textContent.includes(w), 'the legend names ' + w);
+});

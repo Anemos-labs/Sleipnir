@@ -388,3 +388,28 @@ func TestATaskIsChargedWhatItsHoldersSpend(t *testing.T) {
 		t.Fatalf("after the move: T1 %v in %d, T2 %v in %d", t1.CostUSD, t1.Requests, t2.CostUSD, t2.Requests)
 	}
 }
+
+// Each stretch of a task's life is charged what was spent during it, so the attempts can be told apart, and a stretch that began
+// when the task was sent back to todo keeps the reason.
+func TestEachStretchIsChargedItsOwnSpendAndKeepsWhy(t *testing.T) {
+	b, st := newB(), New()
+	apply(t, st, b.Emit("mgr", events.TypeBoardOp, taskOp("create", "T1", "todo", "", 1, map[string]any{"title": "one"})))
+	apply(t, st, b.Spawn("be-1", "backend", "T1", "mgr"))
+	apply(t, st, b.Emit("mgr", events.TypeBoardOp, taskOp("assign", "T1", "doing", "be-1", 2, nil)))
+	apply(t, st, b.Request("be-1", "r1", "m", "pk"))
+	apply(t, st, b.Response("be-1", "r1", "m", 100, 0, 0, 10, 0.25))
+	apply(t, st, b.Emit("harness", events.TypeBoardOp, taskOp("requeue", "T1", "todo", "", 3, map[string]any{"line": "tests failed in cart_test.go"})))
+	apply(t, st, b.Emit("mgr", events.TypeBoardOp, taskOp("assign", "T1", "doing", "be-1", 4, nil)))
+	apply(t, st, b.Request("be-1", "r2", "m", "pk"))
+	apply(t, st, b.Response("be-1", "r2", "m", 100, 0, 0, 10, 0.5))
+	h := taskByID(t, st.Snapshot(), "T1").History
+	if len(h) != 4 {
+		t.Fatalf("history = %+v, want todo, running, todo, running", h)
+	}
+	if h[1].CostUSD != 0.25 || h[1].Requests != 1 || h[3].CostUSD != 0.5 || h[3].Requests != 1 || h[0].CostUSD != 0 {
+		t.Fatalf("stretch spend = %+v", h)
+	}
+	if h[2].State != TaskTodo || h[2].Why != "tests failed in cart_test.go" || h[3].Why != "" {
+		t.Fatalf("the stretch it was sent back in: %+v", h[2])
+	}
+}
