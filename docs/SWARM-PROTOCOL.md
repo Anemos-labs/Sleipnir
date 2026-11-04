@@ -50,11 +50,17 @@ members are all busy spares none. A `spawn` of an existing task by the manager i
 queued: the answer names what holds the members (`be-1 leads T2, be-2 leads T3`), and the
 harness starts the task on the first member of the role that is free, on the supervisor's
 pass, and tells the manager; a queued task that is assigned, revised or closed meanwhile is
-dropped from the queue, and a resumed session starts with none. When other roles that write code
-(not a read-only role, docs or the tester) have a slot or an idle member free, the answer and the live view's queued line
-name them (`free now: frontend, devops: one of them can take T2 at once if it needs nothing only backend knows (spawn
-role=frontend task=T2)`); a spawn of the task on one of them starts it there. Any other caller is refused
+dropped from the queue, and a resumed session starts with none. Any other caller is refused
 with what to do (wait, or have the busy parent's leader take the work as a child).
+
+A task goes to a member of its own role. Roles exist to run each kind of work on the model and instructions chosen for it
+(`--role-model frontend=<model>`), so a task whose `role` names a role the team can staff is refused to every agent of
+another role: a `spawn` with another `role`, a `spawn agent=` naming a member of another role, that member's own `task
+claim` and a handover. The refusal names the task's role and its members, and says how to go on: `spawn task=<id>` without
+`agent=` starts it on the first free member of its role or queues it, and `task revise id=<id> role=<role>` moves a
+top-level task outside any pool to another role when the work really is that role's. Neither the queued answer nor the live
+view offers a queued task to a member of another role that happens to be free. A task that names no role, or a role the team
+has no slot for, can go to any role; an agent continuing a task it already owns is not refused.
 The first configured member leads, including after resume. `pool propose` records a
 shared agreement covering conventions, interfaces, work division and acceptance.
 Every member calls `pool agree` with its current revision before `pool execute` can

@@ -105,9 +105,6 @@ func reviseOp(id string, spec TaskSpec, reason string) func(d *draft) error {
 			t.Role = r
 		}
 		if spec.Desc != "" {
-			if err := descTooLong(spec.Desc); err != nil {
-				return err
-			}
 			t.Desc = cleanBlock(spec.Desc, maxDescRunes)
 		}
 		if spec.Files != nil {

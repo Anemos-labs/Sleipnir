@@ -7,10 +7,9 @@ import (
 )
 
 const (
-	maxAgreementBytes          = 12000
-	maxAgreementLines          = maxBlockLines
-	maxInheritedAgreementBytes = 36000
-	maxClaimedAssignmentBytes  = 48000
+	maxAgreementBytes          = 6000
+	maxInheritedAgreementBytes = 12000
+	maxClaimedAssignmentBytes  = 24000
 )
 
 // TaskAgreement is an accepted prerequisite's contract, copied into an assignment.
@@ -24,12 +23,12 @@ type TaskAgreement struct {
 // Input that would lose lines or bytes is rejected with an actionable error.
 func cleanAgreement(text string) (string, error) {
 	text = strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n"))
-	if n, lines := len(text), strings.Count(text, "\n")+1; n > maxAgreementBytes || lines > maxAgreementLines {
-		return "", fmt.Errorf("agreement is %d bytes and %d lines, over the limit of %d bytes and %d lines: keep the shared decisions in it and put long detail in a file it names", n, lines, maxAgreementBytes, maxAgreementLines)
+	if len(text) > maxAgreementBytes || strings.Count(text, "\n") >= 40 {
+		return "", fmt.Errorf("agreement exceeds 6000 bytes or 40 lines: keep the shared decisions concise and reference files for detail")
 	}
 	text = cleanBlock(text, 0)
 	if len(text) > maxAgreementBytes {
-		return "", fmt.Errorf("escaped agreement exceeds %d bytes: shorten it before submitting", maxAgreementBytes)
+		return "", fmt.Errorf("escaped agreement exceeds 6000 bytes: shorten it before submitting")
 	}
 	return text, nil
 }
@@ -147,7 +146,7 @@ func (s *Swarm) claimCheck(agent string, role Role) TaskCheck {
 			card += isolationCard(s.integrationRef())
 		}
 		if len(card) > maxClaimedAssignmentBytes {
-			return fmt.Errorf("assignment context exceeds %d bytes: finish an owned task or assign another worker", maxClaimedAssignmentBytes)
+			return fmt.Errorf("assignment context exceeds 24000 bytes: finish an owned task or assign another worker")
 		}
 		return nil
 	}
