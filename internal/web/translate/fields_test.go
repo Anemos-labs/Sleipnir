@@ -153,7 +153,7 @@ var absent = map[string]string{
 	"tool.refused": "refusals only", "tool.reason": "refusals only", "tool.file": "file tools only", "tool.add": "file tools only",
 	"tool.del": "file tools only", "tool.mem": "changes of the agents' notes only (TestAMemoryChangeIsMarked)", "tool.task": "an agent with a task only", "tool.ok": "",
 	"note.task": "optional", "task.title": "the creating event", "task.parent": "pool children (TestPoolTaskMapping)", "task.poolPhase": "pool parents (TestPoolTaskMapping)", "task.poolMembers": "pool parents (TestPoolTaskMapping)", "task.owner": "an owned task", "task.deps": "a task with deps",
-	"task.scope": "", "task.s": "", "plan.n": "the single-index form is not produced", "plan.s": "the single-index form is not produced",
+	"task.scope": "", "task.s": "", "plan.n": "the single-index form is not produced", "plan.eff": "a plan with estimates only (omitempty; TestAPlanCarriesItsEstimatesAndMilestones)", "plan.mile": "a plan whose steps name milestones only (omitempty; TestAPlanCarriesItsEstimatesAndMilestones)", "plan.s": "the single-index form is not produced",
 	"req.p": "live requests only", "req.o": "live requests only", "req.hist": "keyframes and history only",
 	"ckpt.step": "pack change sets are not produced", "ckpt.id": "the cid form is sent", "ckpt.skipped": "optional (false)", "ckpt.safety": "optional (false)",
 	"break.layer": "a break of a layer of the prompt only (omitempty: the endpoint's own miss has none)", "break.missUsd": "a miss at a known price only (omitempty)", "break.quiet": "omitempty",

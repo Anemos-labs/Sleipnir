@@ -15,6 +15,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/goal"
+	"github.com/anemos-labs/sleipnir/internal/plan"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
@@ -55,8 +56,11 @@ func goalCommandTo(ctx context.Context, s *session.Session, gp **goal.State, arg
 			fmt.Fprintf(out, "; the judge's last word: %s", tools.SanitizeForTerminal(g.Reason))
 		}
 		fmt.Fprintln(out)
-		for _, st := range s.GoalPlan() {
-			fmt.Fprintf(out, "  [%s] %s\n", st.Status, tools.SanitizeForTerminal(st.Step))
+		if steps := s.GoalPlan(); len(steps) > 0 {
+			fmt.Fprintf(out, "plan: %s\n", plan.Summary(steps, g.Marks()))
+			for _, st := range steps {
+				fmt.Fprintf(out, "  [%s] %s%s\n", st.Status, tools.SanitizeForTerminal(st.Step), tools.SanitizeForTerminal(plan.Tag(st)))
+			}
 		}
 		writeMilestones(g, out)
 		writeRubric(g, out)
