@@ -920,6 +920,22 @@
   {"name":"verbose","arg":"bool","default":null,"repeatable":false,"desc":"print notices and tool errors"},
   {"name":"verify","arg":"string","default":null,"repeatable":false,"desc":"swarm: command the harness runs before a worker's task may leave 'doing' (with --isolation worktree, also on every merge). {dirs} in it stands for the directories the task may touch (./... without a scope), so that each task is verified on its own work: 'go test {dirs}'"}
  ]},
+{"path":["tooleval"],"usage":"sleipnir tooleval [flags]","summary":"sleipnir tooleval --model M [--model M...] measures how well models use the harness's tools in situations where models went wrong before.","positional":[],"source":"docs/CLI.md § sleipnir tooleval","mode":"net","when":[{"flag":"trust-project","mode":"priv"}],"flags":[
+  {"name":"case","arg":"string","default":null,"repeatable":true,"desc":"run only this case, or the cases whose id starts with it and a dash (repeat)"},
+  {"name":"cases","arg":"string","default":null,"repeatable":false,"desc":"a case file (JSON, a JSON array, or JSON lines) or a directory of them, in place of the shipped suite"},
+  {"name":"harvest","arg":"string","default":null,"repeatable":true,"desc":"a session directory kept with --training-logs: write its failed calls as cases to --out (repeat)"},
+  {"name":"json","arg":"bool","default":null,"repeatable":false,"desc":"print the report as JSON"},
+  {"name":"max-tokens","arg":"int","default":8192,"repeatable":false,"desc":"the longest answer, in tokens"},
+  {"name":"min-pass","arg":"float","default":null,"repeatable":false,"desc":"the pass rate, from 0 to 1, each model must reach under the build's descriptions (exit 3 below it)"},
+  {"name":"model","arg":"string","default":null,"repeatable":true,"desc":"a model to ask, provider/model (repeat, or separate with commas)"},
+  {"name":"out","arg":"string","default":null,"defaultNote":"standard output","repeatable":false,"desc":"with --harvest: the file the cases are written to (default: standard output)"},
+  {"name":"parallel","arg":"int","default":4,"repeatable":false,"desc":"how many requests are in flight at once"},
+  {"name":"samples","arg":"int","default":3,"repeatable":false,"desc":"how many times each case is asked of each model under each variant"},
+  {"name":"sizes","arg":"bool","default":null,"repeatable":false,"desc":"also print the size of each tool's name, description and schema under each variant"},
+  {"name":"timeout","arg":"duration","default":"5m0s","repeatable":false,"desc":"how long one answer may take; one that has not come counts as no answer"},
+  {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"read the project's own config file, including its provider settings"},
+  {"name":"variants","arg":"string","default":null,"repeatable":false,"desc":"a JSON file of variants to try beside the build's descriptions: {\"name\": {\"tool\": \"description\"}}"}
+ ]},
 {"path":["trust"],"usage":"sleipnir trust [--cwd DIR]","summary":"Shows what in this directory's project trust would unlock, and whether you said yes to exactly that.","positional":[],"source":"docs/CLI.md § sleipnir trust","mode":"run","parent":"trust","flags":[
   {"name":"cwd","arg":"string","default":null,"defaultNote":"the current one","repeatable":false,"desc":"the directory to look at"}
  ]},
