@@ -23,6 +23,23 @@ they do not indicate whether a change has been released.
   storage` shows the room each area takes, and `sleipnir storage clean` cleans
   on demand. No prompt bytes change.
 
+- What the person types while an agent works (a steer) reaches the model
+  inside a fixed frame that names it as the person's message, says that it
+  outranks the plan, the board and harness notes (not the session's
+  permissions) and asks for an answer before any other step; compaction
+  keeps the person's words without the frame. A manager in `wait` wakes
+  with "the person wrote to you" instead of "mail arrived". In a tab of
+  `sleipnir web` whose session is a team, a message sent while the
+  manager's turn runs steers it (as one sent during a goal's turn already
+  did) instead of waiting in the queue for the end of a turn that lasts
+  while the members work; the composer's hint says "Enter tells the
+  manager now". The manager's role pin says that the person's messages
+  come first. A manager answered nothing to the person for the length of
+  a build: their messages waited behind its turn, or arrived unmarked
+  among tool results and were read as one more line of them. Prompt
+  bytes: about 150 tokens more in the manager's role pin; a steer carries
+  about 110 tokens of frame in the turn it rides with, outside the cached
+  layers. No tool spec changed.
 - A goal's plan shows how much of the work is left, not how many steps are
   ticked. A plan step takes an `effort` estimate in hours (a number, or text
   such as "90m" or "2d") and the `milestone` it serves, and a plan holds 24

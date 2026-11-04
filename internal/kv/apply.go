@@ -936,7 +936,7 @@ func userEntries(tr core.Turn, est core.Estimator, pol ApplyPolicy) (entries, cu
 	default:
 		for _, b := range tr.Blocks {
 			if IsSteer(b) {
-				add(b.Text, pol.UserInstructionMaxTokens)
+				add(SteerText(b), pol.UserInstructionMaxTokens)
 			}
 		}
 	}

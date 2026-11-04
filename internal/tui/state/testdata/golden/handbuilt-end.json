@@ -323,6 +323,11 @@
         "seq": 79,
         "updated": "2026-01-02T03:04:27Z",
         "since": "2026-01-02T03:04:25.002Z",
+        "history": [
+          {"at": "2026-01-02T03:04:06.605Z", "state": "todo"},
+          {"at": "2026-01-02T03:04:07Z", "state": "running", "owner": "be-1"},
+          {"at": "2026-01-02T03:04:25.002Z", "state": "merged", "owner": "be-1"}
+        ],
         "cost_usd": 0.024,
         "requests": 2
       },
@@ -338,6 +343,10 @@
         "seq": 19,
         "updated": "2026-01-02T03:04:07.01Z",
         "since": "2026-01-02T03:04:07.01Z",
+        "history": [
+          {"at": "2026-01-02T03:04:06.615Z", "state": "todo"},
+          {"at": "2026-01-02T03:04:07.01Z", "state": "running", "owner": "fe-1"}
+        ],
         "cost_usd": 0.007,
         "requests": 2
       },
@@ -353,6 +362,11 @@
         "seq": 80,
         "updated": "2026-01-02T03:04:27.5Z",
         "since": "2026-01-02T03:04:27.5Z",
+        "history": [
+          {"at": "2026-01-02T03:04:06.625Z", "state": "todo"},
+          {"at": "2026-01-02T03:04:07.02Z", "state": "running", "owner": "sc-1"},
+          {"at": "2026-01-02T03:04:27.5Z", "state": "verifying", "owner": "sc-1"}
+        ],
         "cost_usd": 0.004,
         "requests": 1
       }

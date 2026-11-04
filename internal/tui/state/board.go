@@ -220,6 +220,7 @@ func (s *State) taskOp(e events.Event, t time.Time, p *boardWire) {
 					s.setStatus(ts, "todo", t, e.Seq)
 					ts.Owner, ts.Line = clip(p.Owners[tid], textID), clean(p.Line, textShort)
 					ts.Since = t
+					ts.stretch(t)
 					ts.Rev = p.Version
 				}
 			}
@@ -291,6 +292,7 @@ func (s *State) taskOp(e events.Event, t time.Time, p *boardWire) {
 	ts.Seq, ts.Updated = e.Seq, t
 	if ts.Since.IsZero() || deriveTask(ts) != prevCol || ts.Owner != prevOwner {
 		ts.Since = t
+		ts.stretch(t)
 	}
 	s.touchAgent(prevOwner) // the scope of the one who held it, and of the one who holds it, may have changed
 	s.touchAgent(ts.Owner)
@@ -300,6 +302,14 @@ func (s *State) taskOp(e events.Event, t time.Time, p *boardWire) {
 		}
 	}
 	s.boardLine(e, t, ts, prev, p.Op)
+}
+
+// stretch begins a stretch of the task's life at t, in its column and with its owner; the oldest go past MaxStretches.
+func (ts *taskState) stretch(t time.Time) {
+	ts.History = append(ts.History, Stretch{At: t, State: deriveTask(ts), Owner: ts.Owner})
+	if n := len(ts.History) - MaxStretches; n > 0 {
+		ts.History = append([]Stretch(nil), ts.History[n:]...)
+	}
 }
 
 // setStatus sets the board's status word. A task that goes back to work (todo, doing, blocked) starts a new assignment, which
@@ -371,6 +381,7 @@ func (s *State) sortedTasks() []Task {
 		t := ts.Task
 		t.State = deriveTask(ts)
 		t.Deps, t.Files = append([]string(nil), t.Deps...), append([]string(nil), t.Files...)
+		t.History = append([]Stretch(nil), t.History...)
 		out = append(out, t)
 	}
 	sort.Slice(out, func(i, j int) bool { return taskLess(out[i].ID, out[j].ID) })
