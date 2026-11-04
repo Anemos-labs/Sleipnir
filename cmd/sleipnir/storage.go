@@ -35,8 +35,8 @@ func cmdStorage(stdout, stderr io.Writer, args []string) error {
 		printHelp(stderr, `usage: sleipnir storage [clean [flags]]
 
 Shows where the harness keeps its data ($SLEIPNIR_HOME, else ~/.sleipnir) and the room each part of it takes: the recorded
-sessions, their scratch directories, the worktrees of isolated teams, the RL work directories and the rest (settings, credentials,
-memories, plugins). `+"`storage clean`"+` removes what is old; sleipnir web does that by itself once a day unless storage.clean is "off".
+sessions, their scratch directories, the worktrees of isolated teams, the RL work directories and the rest. Settings, credentials,
+notes, teams and plugins are always in ~/.sleipnir. `+"`storage clean`"+` removes what is old; sleipnir web does that by itself once a day unless storage.clean is "off".
 `)
 		printFlags(fset)
 	}

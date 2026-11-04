@@ -131,9 +131,10 @@ flags:
 
 ### `sleipnir storage`
 
-Shows where the data directory is and the room each part of it takes. Everything the harness keeps for itself is in that one
-directory, `$SLEIPNIR_HOME`, else `~/.sleipnir` (`docs/STORAGE.md`): the recorded sessions, their scratch directories (each session's
-`$TMPDIR`), the worktrees of isolated teams, the RL work directories and the rest (settings, credentials, memories, plugins). The
+Shows where the data directory is and the room each part of it takes. The state the harness keeps is in that one directory,
+`$SLEIPNIR_HOME`, else `~/.sleipnir` (`docs/STORAGE.md`): the recorded sessions, their scratch directories (each session's
+`$TMPDIR`), the worktrees of isolated teams, the RL work directories and the rest. Your settings, credentials, notes, teams and
+plugins are always read from `~/.sleipnir`, whatever `SLEIPNIR_HOME` says. The
 worktrees that earlier versions kept in the cache directory are listed too while any are left. It also says whether the automatic
 cleanup is on; that cleanup never deletes a session.
 
@@ -142,8 +143,8 @@ cleanup is on; that cleanup never deletes a session.
 usage: sleipnir storage [clean [flags]]
 
 Shows where the harness keeps its data ($SLEIPNIR_HOME, else ~/.sleipnir) and the room each part of it takes: the recorded
-sessions, their scratch directories, the worktrees of isolated teams, the RL work directories and the rest (settings, credentials,
-memories, plugins). `storage clean` removes what is old; sleipnir web does that by itself once a day unless storage.clean is "off".
+sessions, their scratch directories, the worktrees of isolated teams, the RL work directories and the rest. Settings, credentials,
+notes, teams and plugins are always in ~/.sleipnir. `storage clean` removes what is old; sleipnir web does that by itself once a day unless storage.clean is "off".
 ```
 <!-- /flags -->
 
