@@ -74,7 +74,8 @@ func (t *Translator) syncTask(id string, ts float64, force bool) {
 		ev.Deps = nil
 	}
 	for _, h := range tk.History {
-		ev.Hist = append(ev.Hist, Stretch{T: t.sessT(h.At), S: stretchCol(h.State), Owner: uiID(h.Owner)})
+		ev.Hist = append(ev.Hist, Stretch{T: t.sessT(h.At), S: stretchCol(h.State), Owner: uiID(h.Owner), Why: line(h.Why, capArg),
+			Cost: h.CostUSD + h.ListUSD, Reqs: h.Requests})
 	}
 	if !t.isolated() && tk.VerificationFailures != t.d.queue.vfails[id] {
 		if n := tk.VerificationFailures - t.d.queue.vfails[id]; n > 0 && !t.d.history && !force { // a history's are not counted

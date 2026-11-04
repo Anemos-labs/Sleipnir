@@ -48,6 +48,7 @@
     scope.listen(host, 'click', e => {
       const toggle = e.target.closest('[data-pool-toggle]');
       if (toggle) { const id = toggle.dataset.poolToggle; B.open.set(id, !B.isOpen(id)); if (B.model) update(B, B.model, B.S); return; }
+      const step = e.target.closest('[data-tdo]'); if (step) { ui.doStep(step); return; }
       const c = e.target.closest('.tcard'); if (c && c.dataset.owner) ui.focusAgent(c.dataset.owner, e);
     });
     return B;
@@ -160,6 +161,19 @@
    *  column and an owner; Task.hist, from the server), as wide as it lasted and coloured by column (a running stretch in its owner's
    *  colour, a failed one red), then how many times the task was sent back. A task sent back three times draws its struggle where it sits. Returns the
    *  strip's HTML, or '' for none. */
+  /** The rest of a stretch's title: what was spent on it, how it ended (a verify stretch passed or was sent back, a stretch that sent
+   *  the task back says why), and why it failed. */
+  function stretchMore(h, i, plan) {
+    const x = h[i], nx = h[i + 1], rank = { todo: 0, running: 1, verify: 2, merged: 3 }; let out = '';
+    if (x.cost > 0) out += ' · ' + (plan ? '≈' : '') + U.fmtUsd(x.cost) + (x.reqs ? ' in ' + x.reqs + ' request' + (x.reqs === 1 ? '' : 's') : '');
+    else if (x.reqs) out += ' · ' + x.reqs + ' request' + (x.reqs === 1 ? '' : 's');
+    if (x.s === 'failed') return out + (x.why ? ' · failed: ' + x.why : ' · failed');
+    if (!nx) return out;
+    if (nx.s === 'failed') return out + ' · then failed' + (nx.why ? ': ' + nx.why : '');
+    if (x.s in rank && nx.s in rank && rank[nx.s] < rank[x.s]) return out + ' · ' + (x.s === 'verify' ? 'failed verification, sent back' : 'sent back') + (nx.why ? ': ' + nx.why : '');
+    if (x.s === 'verify' && nx.s === 'merged') return out + ' · passed verification';
+    return out;
+  }
   function histHtml(t, vt) {
     const h = t.hist; if (!Array.isArray(h) || h.length < 2 || typeof vt !== 'number') return '';
     const order = { todo: 0, running: 1, verify: 2, merged: 3 }; let back = 0;
@@ -167,7 +181,7 @@
       const end = i + 1 < h.length ? h[i + 1].t : (x.s === 'merged' || x.s === 'failed' ? x.t : vt), d = Math.max(0, end - x.t);
       if (i > 0 && x.s in order && h[i - 1].s in order && order[x.s] < order[h[i - 1].s]) back++;
       const col = x.s === 'failed' ? 'var(--err)' : x.s === 'running' && x.owner ? agCol(x.owner) : HIST_COL[x.s] || 'var(--dim)';
-      const what = x.s + (x.owner ? ' · ' + x.owner : '') + (end > x.t || i + 1 < h.length ? ' · ' + U.dur(d) : '');
+      const what = x.s + (x.owner ? ' · ' + x.owner : '') + (end > x.t || i + 1 < h.length ? ' · ' + U.dur(d) : '') + stretchMore(h, i, t.onPlan);
       /* a closed task's last stretch is a mark, not a span; stretches of an earlier run all start at 0 and share the bar evenly */
       const closed = i + 1 === h.length && (x.s === 'merged' || x.s === 'failed');
       return '<i style="flex-grow:' + (closed ? 0 : Math.max(1, Math.round(d))) + ';background:' + col + '" title="' + esc(what) + '"></i>';
