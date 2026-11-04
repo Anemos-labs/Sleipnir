@@ -19,6 +19,11 @@ they do not indicate whether a change has been released.
   reaches the tool as a list: a JSON array written as text is that array, any
   other string a list of that one string. It was refused before ("files is not
   an array"). The thread keeps the call as the model wrote it.
+- A resumed session keeps each agent's plan: the last plan its log says it
+  saved (a goal started after it clears the main agent's). Plans were kept
+  only in memory, so a resumed manager had none while the page still
+  showed it.
+
 - What the person types while an agent works (a steer) reaches the model
   inside a fixed frame that names it as the person's message, says that it
   outranks the plan, the board and harness notes (not the session's
