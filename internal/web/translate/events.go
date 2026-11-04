@@ -62,6 +62,9 @@ type TaskX struct {
 	Cost float64 `json:"cost,omitempty"`
 	Plan bool    `json:"plan,omitempty"`
 	Reqs int     `json:"reqs,omitempty"`
+	// Since is the session time (seconds) at which the task entered its column or changed hands: what its time in the column counts
+	// from. A keyframe re-dates every event, so the page cannot learn it from the event's own t.
+	Since float64 `json:"since,omitempty"`
 }
 
 // MailX is a mail event with Tok, the estimated size of the text in tokens, and Digest, the number of messages a mailman's digest

@@ -222,7 +222,12 @@ how many it holds (`▾ 2 subtasks`); a subtask in another column is a card of t
 parent's card says where the others are (`+ 6 in todo · 1 merged`). A failed task stays in todo with its `✗` and is counted apart
 (`3 + 1 ✗`). A card shows what the agents that held the task spent on it (`$0.04`, every attempt and owner together, side requests
 such as compaction included; `≈` marks usage a subscription plan covered) and names its number of requests on hover; the terminal's
-Board view ends each task's row with the same figure. A task that cost far more than its neighbours is where the team struggled. Past eight merged tasks, the merged column is one line per task (id, owner, title, time of the merge), the newest merge
+Board view ends each task's row with the same figure. A task that cost far more than its neighbours is where the team struggled. An unfinished card ends its owner line with its time in its column (`12m`; since it last changed column, failed or changed
+hands, at the view clock, so a replay shows the age it had then), and a card says its state at a glance: a running task whose owner is
+thinking, calling a tool or editing right now has a pulsing dot in its owner's colour and a glow around it, a task the stall detector
+raised something about has an amber ring, and a failed task a red one. On the Board view, under its title, a failed card says why in
+words (`✗ verification kept failing`, `✗ replaced by T7`, `✗ out of attempts (4): its workers kept stopping`) and a stalled one what
+the detector said (`⚠ no edit in 10 minutes`). Past eight merged tasks, the merged column is one line per task (id, owner, title, time of the merge), the newest merge
 first, and an empty column is drawn narrower. The Cockpit's merge queue names the twelve newest merges and counts the earlier ones.
 The Board view's dependency graph draws every task when they fit its panel; otherwise the merged tasks that no unfinished task waits
 on are one node (`✓ 118 merged`), a column taller than the panel is wrapped into several, and a graph that still does not fit is
