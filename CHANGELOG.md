@@ -61,6 +61,13 @@ they do not indicate whether a change has been released.
   screenshots of a user interface in each design category, beside reference
   products, and keeps every round in a ledger so that a design can be
   hill-climbed to a target (docs/CLI.md). No prompt of an agent changes.
+- New command `sleipnir tooleval`: measures how well models use the harness's
+  tools in situations where models went wrong in real team runs. Each case is
+  played on the actual first prompt of its role in this build, so a rewritten
+  or shortened tool description is measured by its pass rate beside its size
+  (`--variants`, `--sizes`). `--harvest` turns the failed calls of a session
+  kept with `--training-logs` into cases that replay its exact prompts. No
+  prompt of an agent changes.
 
 - Images a tool returns (a screenshot the read tool opens, an MCP tool's
   picture) reach the model on every wire format. Chat Completions and the

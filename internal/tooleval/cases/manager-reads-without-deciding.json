@@ -1,0 +1,76 @@
+{
+  "id": "manager-reads-without-deciding",
+  "source": "runs/2026-11-01-flagwright, PR #428",
+  "failure": "The manager read submissions for 45 minutes without accepting or rejecting any while workers waited.",
+  "goal": "Build Flagwright, the self-hosted feature-flag service the README describes.",
+  "board": "<live board=\"v77\">\nyou: mgr (manager)\ntasks:\n  T40 review be-1 \"Percentage rollouts in the evaluation engine\" — done: bucketing by murmur3 of flag key and user id\nboard: 3 open, 37 done\nteam (8 others: 1 running, 7 idle)\n</live>",
+  "turns": [
+    {
+      "user": "<notice>T40 (backend) is in review: \"Percentage rollouts in the evaluation engine\".</notice>"
+    },
+    {
+      "calls": [
+        {
+          "tool": "task",
+          "args": {
+            "action": "get",
+            "id": "T40"
+          }
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "text": "T40 review be-1 \"Percentage rollouts in the evaluation engine\"\nacceptance: a rule with rollout 25 serves the variation to 25% ± 2% of 10,000 user ids; the same user always gets the same answer; tests beside the code.\nresult: bucketing by murmur3(flag key + \":\" + user id) mod 10000; RolloutTest checks 10,000 ids land at 24.6%, and stability over 3 runs.\nevidence: mvn -q test -pl engine → Tests run: 58, Failures: 0, Errors: 0\nverified by the harness: build and tests pass on the merged tree (rev 3)\nassumptions: none"
+        }
+      ]
+    },
+    {
+      "calls": [
+        {
+          "tool": "bash",
+          "args": {
+            "command": "git diff --stat sleipnir/T40~1 sleipnir/T40"
+          }
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "text": " engine/src/main/java/flagwright/eval/Rollout.java     | 48 ++++\n engine/src/test/java/flagwright/eval/RolloutTest.java | 71 ++++++\n 2 files changed, 119 insertions(+)"
+        }
+      ]
+    },
+    {
+      "calls": [
+        {
+          "tool": "read",
+          "args": {
+            "path": "engine/src/main/java/flagwright/eval/Rollout.java"
+          }
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "text": "package flagwright.eval;\n\n/** Buckets a user into a rollout percentage. */\nfinal class Rollout {\n  static boolean in(String flag, String user, int percent) {\n    int b = Math.floorMod(Murmur3.hash32(flag + \":\" + user), 10000);\n    return b < percent * 100;\n  }\n}"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "any": [
+      {
+        "tool": "task",
+        "args": {
+          "action": "^(accept|reject)$",
+          "id": "^T40$"
+        },
+        "why": "the evidence is in: decide the submission"
+      }
+    ]
+  }
+}

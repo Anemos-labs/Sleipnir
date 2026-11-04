@@ -1,0 +1,146 @@
+{
+  "id": "manager-explores-itself",
+  "source": "runs/2026-10-26-ravenwatch-small, friction 6",
+  "failure": "The manager spent 11 turns running bash exploration itself before making any task, though the goal says to delegate.",
+  "goal": "Add a Prometheus /metrics endpoint to the collector service and a dashboard page that charts its numbers. Use the team.",
+  "turns": [
+    {
+      "assistant": "Let me look at the project first.",
+      "calls": [
+        {
+          "tool": "ls",
+          "args": {
+            "path": "."
+          }
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "text": "README.md\ngo.mod\ngo.sum\ncmd/\ninternal/\nweb/\nMakefile\n.github/"
+        }
+      ]
+    },
+    {
+      "calls": [
+        {
+          "tool": "bash",
+          "args": {
+            "command": "find . -name '*.go' | wc -l; find web -name '*.tsx' | wc -l"
+          }
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "text": "412\n96"
+        }
+      ]
+    },
+    {
+      "calls": [
+        {
+          "tool": "grep",
+          "args": {
+            "pattern": "http.Handle|mux.Handle",
+            "path": "internal"
+          }
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "text": "internal/collector/server.go:41: mux.Handle(\"/healthz\", health)\ninternal/collector/server.go:42: mux.Handle(\"/api/v1/\", api)\ninternal/proxy/proxy.go:88: mux.Handle(\"/\", p)"
+        }
+      ]
+    },
+    {
+      "calls": [
+        {
+          "tool": "bash",
+          "args": {
+            "command": "ls internal/ && ls web/app"
+          }
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "text": "alert  collector  cp  proxy  sim  topology  tsdb\nlayout.tsx  page.tsx  hosts  incidents  settings"
+        }
+      ]
+    },
+    {
+      "calls": [
+        {
+          "tool": "read",
+          "args": {
+            "path": "internal/collector/server.go"
+          }
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "text": "package collector\n\n// Server serves the collector's HTTP API.\ntype Server struct {\n\tdb  *tsdb.DB\n\tmux *http.ServeMux\n}\n... (180 lines)"
+        }
+      ]
+    },
+    {
+      "calls": [
+        {
+          "tool": "bash",
+          "args": {
+            "command": "grep -rn 'prometheus' go.mod internal | head"
+          }
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "text": ""
+        }
+      ]
+    }
+  ],
+  "board": "<live board=\"v1\">\nyou: mgr (manager)\nboard: 0 open, 0 done\nteam: architect 0/1 · scout 0/1 · backend 0/1 · frontend 0/1 · devops 0/1 · tester 0/1 · docs 0/1 · reviewer 0/1\n</live>",
+  "expect": {
+    "any": [
+      {
+        "tool": "spawn",
+        "why": "the scout maps the code, or the parts go to their roles"
+      },
+      {
+        "tool": "task",
+        "args": {
+          "action": "^create$"
+        },
+        "why": "split the goal into tasks"
+      },
+      {
+        "tool": "plan",
+        "why": "plan the split"
+      }
+    ],
+    "none": [
+      {
+        "tool": "bash",
+        "why": "six exploration calls in a large codebase: the next is the team's"
+      },
+      {
+        "tool": "grep",
+        "why": "six exploration calls in a large codebase: the next is the team's"
+      },
+      {
+        "tool": "read",
+        "why": "six exploration calls in a large codebase: the next is the team's"
+      }
+    ]
+  }
+}
