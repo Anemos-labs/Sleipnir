@@ -279,6 +279,7 @@ Look at a session, or measure:
   inspect   the cache inspector: a dashboard of a session, live or recorded
   friction  rank what slowed recorded sessions down: refusals, errors, retries
   council   score screenshots with a council of models, round after round
+  tooleval  measure how models use the tools, in situations they got wrong
   doctor    probe an endpoint: streaming, tools, prefix cache, warm-up
   demo      a scripted team on a mock endpoint: the shared cache and the bill
   sim       simulate cache policies: what layering buys, and where it stops
