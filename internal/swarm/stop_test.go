@@ -227,3 +227,36 @@ func TestAStoppedWorkerIsNotRepairedOntoItsTask(t *testing.T) {
 		t.Fatalf("the manager was not handed the task: %q", told)
 	}
 }
+
+// The team's task bound counts the time the work ran, not the time its task waited blocked on another: a worker that blocked T1
+// for 40 minutes while it waited, and worked 25 minutes on it in all, is not overrun at a 30 minute bound until it has worked 30.
+func TestATaskBlockedOnAnotherIsNotOverrunByTheWait(t *testing.T) {
+	clock := newFakeClock()
+	cfg := stallCfg()
+	cfg.StallTurns = 100 // the turn-based kinds stay quiet: only the clock decides here
+	cfg.TaskTimeout = 30 * time.Minute
+	r := newRVRigWith(t, cfg, gatedWorkers(nil), func(d *Deps) { d.Now = clock.Now })
+	r.sw.StartManager()
+	id, task := spawnWorker(t, r, "build the importer", 1)
+	tool := secRevTool(t, r.sw, "task")
+	call := func(action string) {
+		t.Helper()
+		if res := secRevCall(t, tool, id, "backend", map[string]any{"action": action, "id": task.ID, "text": "waits for the schema"}); res.IsError {
+			t.Fatalf("%s: %s", action, res.Text)
+		}
+	}
+	clock.Advance(20 * time.Minute)
+	call("block")
+	clock.Advance(40 * time.Minute)
+	call("resume")
+	clock.Advance(5 * time.Minute)
+	r.sw.sweepStalls()
+	if f, ok := active(r, StallTaskOverrun); ok {
+		t.Fatalf("overrun after 25 minutes of work and a 40 minute wait: %+v", f)
+	}
+	clock.Advance(10 * time.Minute)
+	r.sw.sweepStalls()
+	if f, ok := active(r, StallTaskOverrun); !ok || f.Task != task.ID || !strings.Contains(f.Detail, "for 35 minutes") {
+		t.Fatalf("finding = %+v, %v", f, ok)
+	}
+}
