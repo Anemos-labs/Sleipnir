@@ -260,3 +260,74 @@ func TestATaskBlockedOnAnotherIsNotOverrunByTheWait(t *testing.T) {
 		t.Fatalf("finding = %+v, %v", f, ok)
 	}
 }
+
+// A worker that resumes a task it blocked in an earlier run takes it on in this run: a stop of the run returns that task too. A
+// docs worker on a catch-up task resumed the README it had blocked, overran on it, and the harness's stop for the README returned
+// only the catch-up task, leaving the README with the stopped worker.
+func TestAStopReturnsATaskResumedDuringTheRun(t *testing.T) {
+	cfg := stallCfg()
+	cfg.StallTurns = 100
+	r := newRVRigWith(t, cfg, gatedWorkers(nil), nil)
+	r.sw.StartManager()
+	readme, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "write the README", Role: "backend"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, task := spawnWorker(t, r, "catch up the docs", 1)
+	if err := r.sw.Board.Assign("mgr", id, readme.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.BlockOn(id, readme.ID, "", "waits for the features"); err != nil {
+		t.Fatal(err)
+	}
+	tool := secRevTool(t, r.sw, "task")
+	if res := secRevCall(t, tool, id, "backend", map[string]any{"action": "resume", "id": readme.ID}); res.IsError {
+		t.Fatal(res.Text)
+	}
+	if got := r.sw.get(id).currentTask(); got != readme.ID {
+		t.Fatalf("current task after resume = %q, want %q", got, readme.ID)
+	}
+	if _, err := r.sw.StopAgent(id); err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, id+" to stop", func() bool { return r.idle(id) })
+	for _, want := range []string{task.ID, readme.ID} {
+		if got, _ := r.sw.Board.Snapshot().Task(want); got.Status != StatusTodo || got.Owner != "" {
+			t.Errorf("after the stop %s is %s, owned by %q", want, got.Status, got.Owner)
+		}
+	}
+}
+
+// Resuming the task the worker already holds keeps that assignment as it is: the count of runs peer mail started for it is
+// not reset, so a worker that blocks and resumes its task cannot get past the bound on mail wakes.
+func TestResumingTheHeldTaskKeepsItsMailWakeCount(t *testing.T) {
+	cfg := stallCfg()
+	cfg.StallTurns = 100
+	r := newRVRigWith(t, cfg, gatedWorkers(nil), nil)
+	r.sw.StartManager()
+	id, task := spawnWorker(t, r, "write the README", 1)
+	m := r.sw.get(id)
+	m.mu.Lock()
+	m.mailWakes, m.wakeLimited = 1, true
+	m.mu.Unlock()
+	if err := r.sw.Board.BlockOn(id, task.ID, "", "waits for the features"); err != nil {
+		t.Fatal(err)
+	}
+	tool := secRevTool(t, r.sw, "task")
+	if res := secRevCall(t, tool, id, "backend", map[string]any{"action": "resume", "id": task.ID}); res.IsError {
+		t.Fatal(res.Text)
+	}
+	m.mu.Lock()
+	wakes, limited := m.mailWakes, m.wakeLimited
+	m.mu.Unlock()
+	if wakes != 1 || !limited {
+		t.Fatalf("after the resume the mail wake count is %d (limited %v), want 1 (limited true)", wakes, limited)
+	}
+	if _, err := r.sw.StopAgent(id); err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, id+" to stop", func() bool { return r.idle(id) })
+	if got, _ := r.sw.Board.Snapshot().Task(task.ID); got.Status != StatusTodo || got.Owner != "" {
+		t.Errorf("after the stop %s is %s, owned by %q", task.ID, got.Status, got.Owner)
+	}
+}

@@ -105,6 +105,8 @@ func (s *Swarm) LiftStop() bool {
 }
 
 // setManagerTurn records what ends a turn of the manager that starts now, for StopAll, and returns what forgets it when the turn is over.
+// A turn that starts while the team is stopped is ended at once: a StopAll that landed after the person's goal lifted the stop but
+// before the turn was recorded found no turn to end, and the turn must not then run on a stopped team.
 func (s *Swarm) setManagerTurn(end context.CancelFunc) (done func()) {
 	t := &turnEnd{end: end}
 	s.halt.mu.Lock()
@@ -112,7 +114,11 @@ func (s *Swarm) setManagerTurn(end context.CancelFunc) (done func()) {
 		s.halt.turns = map[*turnEnd]struct{}{}
 	}
 	s.halt.turns[t] = struct{}{}
+	stopped := s.halt.on
 	s.halt.mu.Unlock()
+	if stopped {
+		end()
+	}
 	return func() {
 		s.halt.mu.Lock()
 		delete(s.halt.turns, t)

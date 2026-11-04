@@ -728,6 +728,29 @@ func (s *Swarm) trackClaim(agentID, taskID string) {
 	m.a.QueueAssignment(card)
 }
 
+// trackResumed adds a task the worker resumed to its run's assignments. Resuming the task the worker already holds keeps
+// that assignment as it is (its wake and gate counts, and no new assignment card); resuming another task is a new
+// assignment, tracked as a claim.
+func (s *Swarm) trackResumed(agentID, taskID string) {
+	m := s.get(agentID)
+	if m == nil {
+		return
+	}
+	t, ok := s.Board.Snapshot().Task(taskID)
+	if !ok {
+		return
+	}
+	m.mu.Lock()
+	same := m.task == taskID
+	if same && m.run != nil {
+		m.run.tasks[taskID] = t.Rev
+	}
+	m.mu.Unlock()
+	if !same {
+		s.trackClaim(agentID, taskID)
+	}
+}
+
 // launch starts the run goroutine of a reserved member.
 func (s *Swarm) launch(m *member, rs *runState, ctx context.Context, start runStart) {
 	s.adopt(m, rs)
