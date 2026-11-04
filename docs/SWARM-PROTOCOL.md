@@ -729,6 +729,9 @@ Layered, cheapest first:
    (repository paths only, sanitised; one alert per agent, the newest refusal), so the manager can widen the scope
    without first asking which file it was. A worker cannot widen its own scope (only the manager can,
    through `task update files`; a pool's leader can set the scope of a child of its pool nobody has claimed). An agent with no task, or whose task declares no scope, is not restricted.
+   A write to the session's scratch directory (`$TMPDIR`), or to the system's temporary directory (`/tmp`) outside the
+   workspace, is no edit of the project: no scope, ownership or tree check refuses it and it takes no lease; the permission
+   engine judges it by the session's mode. An isolated writer without a tree (a read-only role) still writes nothing.
 2. **Write leases** with a TTL and conflict alerts (visible in the hot view of the agents involved; the alert names the
    agents, never a file name, and goes away when the lease is released or expires).
 3. **Content-hash staleness** on every edit: an edit is accepted only if the file is what the agent last read, whichever
