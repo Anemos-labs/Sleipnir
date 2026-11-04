@@ -33,6 +33,7 @@ remember the answer), `sleipnir trust add` says it without a session, and the an
 | `swarm` | shorthand for `run --swarm` |
 | `recon` | print the project survey that seeds the shared prompt layer |
 | `inspect` | the cache inspector: a read-only dashboard over a recorded session |
+| `council` | score screenshots with a council of vision models against references, round after round |
 | `doctor` | probe an endpoint: streaming, tools, prefix-cache behaviour, warm-up needs |
 | `models` | list models and prices from a marketplace catalogue |
 | `demo` | a scripted team on a mock endpoint, no key needed |
@@ -1143,6 +1144,61 @@ flags:
         cache model: anthropic (explicit breakpoints, 5m TTL, 1.25x writes) | marketplace (automatic prefix cache, no write premium) (default "anthropic")
   -seed int
         workload seed (default 1)
+```
+<!-- /flags -->
+
+### `sleipnir council`
+
+`sleipnir council --model M [--model M...] SCREENSHOT...` asks a council of models that see images to score screenshots of a
+user interface from 1 to 10 in each category (`--categories`; by default hierarchy, typography, color and contrast, spacing and
+layout, consistency, iconography, clarity and polish), and to name what costs the most points and the change that fixes it.
+It passes when every member gives the candidate `--target` or more in every category, and, with `--beat-refs`, a higher mean
+than every reference. `--ref NAME=PATH[,PATH...]` adds a product scored beside the candidate on the same scale: a competitor,
+or the previous version of the same screen. Scores taken without a reference drift high, because a design seen alone looks
+fine.
+
+Members are not told the target or the names of the products. Each product is shown under a letter, in an order that changes
+every round. With `--staged`, members are asked in the order given, and each only once every member before it gave the target
+in every category, so that a fast model does the early rounds. Each round is appended to `--ledger`
+(`.sleipnir/council/rounds.jsonl`), and the report starts with the climb so far. The exit status is 0 when the round passed,
+3 when it did not, and 1 when it could not be judged. A goal's `--verify` command can therefore hill-climb on it.
+
+<!-- flags: council -->
+```text
+usage: sleipnir council [flags] SCREENSHOT...
+
+Scores screenshots of a user interface with a council of models that see images, one round per call, and says whether every
+member rates the candidate at --target or more in every category. Each round is appended to --ledger, and the report shows the
+climb across rounds, the scores by category and each member's findings with the change that fixes them. Members are told neither
+the target nor which product is which. Exit status 0 means the council passed, 3 that it did not yet (a verify command can
+hill-climb on it), 1 an error.
+
+  sleipnir council --model heimdallm/qwen/qwen3.8-flash-next-abliterated --model heimdallm/z-ai/glm-5.3-flash \
+      --product "a diagram editor for engineers" --ref rival=shots/rival-*.png --staged shots/app-*.png
+
+flags:
+  -beat-refs
+        also require every member to rate the candidate above every reference on average
+  -categories string
+        the categories every member scores from 1 to 10, comma-separated (default "hierarchy,typography,color and contrast,spacing and layout,consistency,iconography,clarity,polish")
+  -json
+        print the round as JSON
+  -ledger string
+        the file each round is appended to, and the climb is read from (default ".sleipnir/council/rounds.jsonl")
+  -model value
+        a council member, provider/model of a model that sees images (repeat, or separate with commas; with --staged, in the order they are asked)
+  -product string
+        what the product is and who uses it: what good design means depends on it
+  -ref value
+        a reference scored beside the candidate on the same scale, NAME=PATH[,PATH...]: a competitor, or the previous version (repeat)
+  -staged
+        ask each member only once every member before it rated the candidate at the target in every category
+  -target float
+        the score every member must give the candidate in every category (default 9)
+  -timeout duration
+        how long one member may take to answer; one that has not is a missing vote (default 5m0s)
+  -trust-project
+        read the project's own config file, including its provider settings
 ```
 <!-- /flags -->
 
