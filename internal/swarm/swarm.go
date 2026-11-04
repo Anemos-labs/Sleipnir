@@ -511,11 +511,13 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	s.Leases = NewLeases(cfg.LeaseTTL, s.Board)
 	s.Leases.SetEmitter(deps.Events)
 	s.Leases.SetRoots(s.roots()...)
+	s.Leases.SetScratch(deps.Tmp)
 	if deps.Owners != nil {
 		s.Leases.SetOwners(deps.Owners, s.roleOf)
 	}
 	if s.isolated() {
 		s.Leases.Isolate()
+		s.Leases.SetTreeParent(deps.Isolation.Manager.Dir)
 	}
 	s.Gov = NewGovernor(GovernorConfig{RPM: cfg.RPM, MaxConcurrent: cfg.MaxConcurrent, Admit: s.budgetErr,
 		OnEvent: func(action string, data map[string]any) {
