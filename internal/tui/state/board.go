@@ -306,7 +306,11 @@ func (s *State) taskOp(e events.Event, t time.Time, p *boardWire) {
 
 // stretch begins a stretch of the task's life at t, in its column and with its owner; the oldest go past MaxStretches.
 func (ts *taskState) stretch(t time.Time) {
-	ts.History = append(ts.History, Stretch{At: t, State: deriveTask(ts), Owner: ts.Owner})
+	st, why := deriveTask(ts), ts.Line
+	if st == TaskFailed && ts.Result != "" {
+		why = ts.Result
+	}
+	ts.History = append(ts.History, Stretch{At: t, State: st, Owner: ts.Owner, Why: clean(why, textShort)})
 	if n := len(ts.History) - MaxStretches; n > 0 {
 		ts.History = append([]Stretch(nil), ts.History[n:]...)
 	}

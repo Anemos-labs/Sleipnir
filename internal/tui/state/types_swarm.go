@@ -68,11 +68,17 @@ type Task struct {
 	Requests int     `json:"requests,omitempty"`
 }
 
-// Stretch is one stretch of a task's life: the column it was in from At, and who held it then.
+// Stretch is one stretch of a task's life: the column it was in from At, and who held it then. Why is the board's word on the task as
+// the stretch began: the reason it went back to todo, or why it failed. CostUSD, ListUSD and Requests are what the agents that held
+// it spent on it during the stretch (the task's Spend, split by stretch), so each attempt's cost can be told apart.
 type Stretch struct {
-	At    time.Time `json:"at"`
-	State TaskState `json:"state"`
-	Owner string    `json:"owner,omitempty"`
+	At       time.Time `json:"at"`
+	State    TaskState `json:"state"`
+	Owner    string    `json:"owner,omitempty"`
+	Why      string    `json:"why,omitempty"`
+	CostUSD  float64   `json:"cost_usd,omitempty"`
+	ListUSD  float64   `json:"list_usd,omitempty"`
+	Requests int       `json:"requests,omitempty"`
 }
 
 // SentBack counts the stretches that moved a task back to an earlier column without failing: from verifying to running or todo, or
