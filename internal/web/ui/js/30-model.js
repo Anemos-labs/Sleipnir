@@ -149,7 +149,9 @@
         let T = m.tasks[ev.id];
         if (!T) { T = m.tasks[ev.id] = { id: ev.id, title: ev.title || ev.id, owner: null, deps: [], scope: '', st: 'todo', t: ev.t, ms: 0, since: ev.t }; m.torder.push(ev.id); }
         /* since: when the task last changed column, or failed, or changed hands; t moves with every event of the task (its spend too) */
-        if ((ev.s && ev.s !== T.st) || !!ev.failed !== !!T.failed || (ev.owner || null) !== T.owner) T.since = ev.t;
+        /* the server says when (a keyframe re-dates the event, so its t is no guide); an event without it moves since on a change */
+        if (typeof ev.since === 'number' && ev.since > 0) T.since = ev.since;
+        else if ((ev.s && ev.s !== T.st) || !!ev.failed !== !!T.failed || (ev.owner || null) !== T.owner) T.since = ev.t;
         if (ev.s) { T.st = ev.s; T.t = ev.t; }
         /* a task resolved as no longer needed is done but merged nothing: the merge queue does not list it */
         if (ev.s === 'merged' && !/^unneeded/.test(ev.closure || '')) { if (!m.merged.includes(ev.id)) m.merged.push(ev.id); }

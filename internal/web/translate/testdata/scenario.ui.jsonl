@@ -12,17 +12,17 @@
 {"t":0.37,"k":"layers","seq":12,"id":"mgr","toks":[0,1000,200,50,30,0]}
 {"t":0.37,"k":"warm","seq":13,"ttl":300}
 {"t":0.38,"k":"plan","seq":14,"steps":["Survey the API","Build the catalogue","Review"],"st":["done","act","pending"]}
-{"t":0.395,"k":"task","seq":15,"id":"T1","title":"catalogue","scope":"api/T1/**","s":"todo","attempts":1}
+{"t":0.395,"k":"task","seq":15,"id":"T1","title":"catalogue","scope":"api/T1/**","s":"todo","attempts":1,"since":0.395}
 {"t":0.395,"k":"state","seq":16,"id":"mgr","s":"think","doing":"thinking","task":null}
-{"t":0.405,"k":"task","seq":17,"id":"T2","title":"cart","deps":["T1"],"scope":"api/T2/**","s":"todo","attempts":1}
-{"t":0.415,"k":"task","seq":18,"id":"T3","title":"old cart","scope":"api/T3/**","s":"todo","attempts":1}
+{"t":0.405,"k":"task","seq":17,"id":"T2","title":"cart","deps":["T1"],"scope":"api/T2/**","s":"todo","attempts":1,"since":0.405}
+{"t":0.415,"k":"task","seq":18,"id":"T3","title":"old cart","scope":"api/T3/**","s":"todo","attempts":1,"since":0.415}
 {"t":0.425,"k":"state","seq":19,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
 {"t":0.435,"k":"state","seq":20,"id":"rv-1","s":"think","doing":"thinking","task":null}
-{"t":0.445,"k":"task","seq":21,"id":"T1","title":"catalogue","owner":"be-1","scope":"api/T1/**","s":"running","attempts":1}
+{"t":0.445,"k":"task","seq":21,"id":"T1","title":"catalogue","owner":"be-1","scope":"api/T1/**","s":"running","attempts":1,"since":0.445}
 {"t":0.475,"k":"stream","seq":22,"id":"be-1","text":"Total() keeps cents as int64. ","rate":240,"mid":"m22"}
 {"t":0.485,"k":"req","seq":23,"id":"be-1","ratio":0.8333333333333334,"p":1800,"o":80}
 {"t":0.485,"k":"use","seq":24,"id":"be-1","rd":1500,"un":300,"out":80,"wr":0,"cost":0.002,"saved":0.00135}
-{"t":0.485,"k":"task","seq":25,"id":"T1","title":"catalogue","owner":"be-1","scope":"api/T1/**","s":"running","attempts":1,"cost":0.002,"reqs":1}
+{"t":0.485,"k":"task","seq":25,"id":"T1","title":"catalogue","owner":"be-1","scope":"api/T1/**","s":"running","attempts":1,"cost":0.002,"reqs":1,"since":0.445}
 {"t":0.485,"k":"layers","seq":26,"id":"be-1","toks":[520,1000,200,50,30,0]}
 {"t":0.485,"k":"warm","seq":27,"ttl":300}
 {"t":0.495,"k":"more","seq":28,"mid":"m22","text":"","end":true}
@@ -57,23 +57,25 @@
 {"t":3.195,"k":"refuse","seq":57,"id":"rv-1","name":"Bash","arg":"npm run lint","reason":"approval required: npm run lint (this run has no one to ask, so nothing can be approved: use an action that is allowed, or finish and say which permission you needed)"}
 {"t":3.195,"k":"sys","seq":58,"ch":"rv-1","glyph":"⚠","text":"the response reached the output limit","ag":"rv-1"}
 {"t":3.215,"k":"queue","seq":59,"head":"T1","cmd":"go test ./api/T1","step":"verifying","conflicts":0,"bounced":0}
-{"t":3.215,"k":"task","seq":60,"id":"T1","title":"catalogue","owner":"be-1","scope":"api/T1/**","s":"verify","attempts":1,"cost":0.002,"reqs":1}
+{"t":3.215,"k":"task","seq":60,"id":"T1","title":"catalogue","owner":"be-1","scope":"api/T1/**","s":"verify","attempts":1,"cost":0.002,"reqs":1,"since":0.445}
 {"t":3.615,"k":"queue","seq":61,"head":"T1","cmd":"go test ./api/T1","step":"verified","ms":400,"conflicts":0,"bounced":0}
-{"t":3.615,"k":"task","seq":62,"id":"T1","title":"catalogue","owner":"be-1","scope":"api/T1/**","s":"merged","attempts":1,"cost":0.002,"reqs":1}
+{"t":3.615,"k":"task","seq":62,"id":"T1","title":"catalogue","owner":"be-1","scope":"api/T1/**","s":"merged","attempts":1,"cost":0.002,"reqs":1,"since":0.445}
 {"t":3.625,"k":"merge","seq":63,"id":"T1","cmd":"go test ./api/T1","ms":400}
 {"t":3.625,"k":"queue","seq":64,"head":null,"conflicts":0,"bounced":0}
-{"t":3.645,"k":"task","seq":65,"id":"T1","title":"catalogue","owner":"be-1","scope":"api/T1/**","s":"merged","closure":"verified","attempts":1,"cost":0.002,"reqs":1}
-{"t":3.655,"k":"queue","seq":66,"head":null,"conflicts":0,"bounced":1}
-{"t":3.655,"k":"sys","seq":67,"ch":"mgr","glyph":"⚠","text":"T2: go test ./api/cart/... failed (exit 1)","task":"T2"}
-{"t":3.665,"k":"handover","seq":68,"task":"T2","from":"be-1","to":"be-2","s":"begin"}
-{"t":3.665,"k":"sys","seq":69,"ch":"mgr","glyph":"↺","text":"T2: handing over from be-1 to be-2","ag":"be-2","task":"T2"}
-{"t":3.675,"k":"state","seq":70,"id":"be-2","s":"think","doing":"thinking","task":"T2"}
-{"t":3.685,"k":"task","seq":71,"id":"T2","title":"cart","owner":"be-2","deps":["T1"],"scope":"api/T2/**","s":"running","attempts":1}
-{"t":3.695,"k":"handover","seq":72,"task":"T2","from":"be-1","to":"be-2","s":"done","closure":"handed_off(be-2)"}
-{"t":3.695,"k":"sys","seq":73,"ch":"mgr","glyph":"↺","text":"T2 handed from be-1 to be-2","ag":"be-2","task":"T2"}
-{"t":3.705,"k":"task","seq":74,"id":"T3","title":"old cart","scope":"api/T3/**","s":"todo","closure":"superseded(T2)","failed":true,"attempts":1}
-{"t":3.715,"k":"gov","seq":75,"rpm":3,"r429":1,"retries":1,"inflight":3,"queued":2}
-{"t":3.725,"k":"verdict","seq":76,"text":"not yet: T2 unfinished","kind":"continue","left":["T2 merged"]}
-{"t":3.735,"k":"final","seq":77}
-{"t":3.735,"k":"turn","seq":78,"s":"end"}
-{"t":3.745,"k":"interrupt","seq":79,"id":"turn"}
+{"t":3.635,"k":"note","seq":65,"id":"be-1","g":"done","text":"submitted T1","task":"T1"}
+{"t":3.635,"k":"task","seq":66,"id":"T1","title":"catalogue","owner":"be-1","scope":"api/T1/**","s":"merged","attempts":1,"cost":0.002,"reqs":1,"since":3.635}
+{"t":3.645,"k":"task","seq":67,"id":"T1","title":"catalogue","owner":"be-1","scope":"api/T1/**","s":"merged","closure":"verified","attempts":1,"cost":0.002,"reqs":1,"since":3.635}
+{"t":3.655,"k":"queue","seq":68,"head":null,"conflicts":0,"bounced":1}
+{"t":3.655,"k":"sys","seq":69,"ch":"mgr","glyph":"⚠","text":"T2: go test ./api/cart/... failed (exit 1)","task":"T2"}
+{"t":3.665,"k":"handover","seq":70,"task":"T2","from":"be-1","to":"be-2","s":"begin"}
+{"t":3.665,"k":"sys","seq":71,"ch":"mgr","glyph":"↺","text":"T2: handing over from be-1 to be-2","ag":"be-2","task":"T2"}
+{"t":3.675,"k":"state","seq":72,"id":"be-2","s":"think","doing":"thinking","task":"T2"}
+{"t":3.685,"k":"task","seq":73,"id":"T2","title":"cart","owner":"be-2","deps":["T1"],"scope":"api/T2/**","s":"running","attempts":1,"since":3.685}
+{"t":3.695,"k":"handover","seq":74,"task":"T2","from":"be-1","to":"be-2","s":"done","closure":"handed_off(be-2)"}
+{"t":3.695,"k":"sys","seq":75,"ch":"mgr","glyph":"↺","text":"T2 handed from be-1 to be-2","ag":"be-2","task":"T2"}
+{"t":3.705,"k":"task","seq":76,"id":"T3","title":"old cart","scope":"api/T3/**","s":"todo","closure":"superseded(T2)","failed":true,"attempts":1,"since":3.705}
+{"t":3.715,"k":"gov","seq":77,"rpm":3,"r429":1,"retries":1,"inflight":3,"queued":2}
+{"t":3.725,"k":"verdict","seq":78,"text":"not yet: T2 unfinished","kind":"continue","left":["T2 merged"]}
+{"t":3.735,"k":"final","seq":79}
+{"t":3.735,"k":"turn","seq":80,"s":"end"}
+{"t":3.745,"k":"interrupt","seq":81,"id":"turn"}

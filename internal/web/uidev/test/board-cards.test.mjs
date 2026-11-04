@@ -66,3 +66,13 @@ test('a failed card says why it failed, in words', async () => {
   assert.equal(L.SL.ui.closureWords('denied'), 'the manager refused the work');
   assert.equal(L.SL.ui.closureWords(''), 'failed');
 });
+
+test('the server\'s since wins over the event\'s own t: a page loaded from a keyframe keeps the true age', async () => {
+  const L = await boot(), S = L.SL.sessions.active;
+  await L.step(700); const t0 = S.vt;
+  /* a keyframe re-dates the task at its own t0; since still says when the task started running */
+  await L.event('task', { id: 'T8', title: 'old', s: 'running', owner: 'be-1', t: t0, since: t0 - 600 });
+  await L.step(1); L.SL.views.show('board'); await L.settle();
+  assert.equal(S.m.tasks.T8.since, t0 - 600);
+  assert.match(age(L, 'T8'), /^1\dm$/);
+});
