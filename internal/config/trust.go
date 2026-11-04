@@ -80,8 +80,7 @@ var userOnlyPaths = [][]string{
 	{"resources", "priority"},
 	{"resources", "unlimited"},
 	{"storage", "clean"},
-	{"storage", "session_max_age"},
-	{"storage", "keep_sessions"},
+	{"storage", "worktree_idle"},
 }
 
 // userOnlySections are the sections made only of user-only settings: a project file cannot replace one as a whole either.

@@ -658,3 +658,38 @@ func TestAdoptRefusesATreeWhoseGitFileNamesAnotherRepository(t *testing.T) {
 		t.Fatal("a tree opening another repository was adopted")
 	}
 }
+
+// KeepUnmerged removes only what holds nothing of its own: a clean tree whose branch has no commit of its own goes, with its
+// branch; a tree with uncommitted changes and a tree whose branch holds a commit that exists nowhere else stay, as they are.
+func TestPruneKeepUnmergedRemovesOnlyEmptyTrees(t *testing.T) {
+	dir := newRepo(t)
+	repo := openRepo(t, dir)
+	m := newManager(t, repo)
+	empty := mustCreate(t, m, "empty")
+	dirty := mustCreate(t, m, "dirty")
+	edit(t, dirty, "wip.txt", "unsaved\n")
+	committed := mustCreate(t, m, "committed")
+	edit(t, committed, "done.txt", "done\n")
+	rawGit(t, committed.Path, "add", "-A")
+	rawGit(t, committed.Path, "commit", "-qm", "work of its own")
+	for _, tr := range []*Tree{empty, dirty, committed} {
+		orphan(t, tr)
+	}
+	fresh := &Manager{Repo: repo, Dir: m.Dir, Prefix: "sleipnir/s1", Clock: testClock()}
+	rep, err := fresh.Prune(tctx(t), PruneOptions{KeepUnmerged: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exists(empty.Path) {
+		t.Errorf("the empty tree was kept: %+v", rep)
+	}
+	if _, err := repo.BranchSHA(tctx(t), empty.Branch); err == nil {
+		t.Errorf("the empty tree's branch was kept")
+	}
+	if !exists(filepath.Join(dirty.Path, "wip.txt")) || !exists(filepath.Join(committed.Path, "done.txt")) {
+		t.Fatalf("a tree with work was removed: %+v", rep)
+	}
+	if len(rep.Kept) != 2 {
+		t.Errorf("Kept: %+v", rep.Kept)
+	}
+}

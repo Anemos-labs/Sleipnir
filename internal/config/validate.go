@@ -310,20 +310,18 @@ func (v *validator) cache(c Cache) {
 	v.nonNegative(seg("cache", "affinity_shards"), c.AffinityShards)
 }
 
-// storage validates the housekeeping settings: a known mode, an age written as `sleipnir storage clean --older-than` takes one,
-// and a count that is not negative.
+// storage validates the housekeeping settings: a known mode and an age written as `sleipnir storage clean` takes one.
 func (v *validator) storage(s Storage) {
 	if m := strings.ToLower(strings.TrimSpace(s.Clean)); m != "" && m != StorageCleanAuto && m != StorageCleanOff {
 		v.err(seg("storage", "clean"), "must be \"auto\" or \"off\", got %q", s.Clean)
 	}
-	if a := strings.TrimSpace(s.SessionMaxAge); a != "" && !validAge(a) {
-		v.err(seg("storage", "session_max_age"), "must be an age such as 30d, 36h or 2w, got %q", s.SessionMaxAge)
+	if a := strings.TrimSpace(s.WorktreeIdle); a != "" && !validAge(a) {
+		v.err(seg("storage", "worktree_idle"), "must be an age of an hour or more, such as 3d, 36h or 2w, got %q", s.WorktreeIdle)
 	}
-	v.nonNegative(seg("storage", "keep_sessions"), s.KeepSessions)
 }
 
-// validAge reports whether s is an age of at least an hour: a number of days (30d) or weeks (2w), or a Go duration (36h). An
-// automatic cleanup that deletes sessions minutes old is a typo, not a policy.
+// validAge reports whether s is an age of at least an hour: a number of days (3d) or weeks (2w), or a Go duration (36h). An
+// automatic cleanup that reclaims the trees of a session minutes after it stopped is a typo, not a policy.
 func validAge(s string) bool {
 	d, ok := ParseAge(s)
 	return ok && d >= time.Hour

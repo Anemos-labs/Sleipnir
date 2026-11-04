@@ -68,9 +68,9 @@ memories, plugins). `+"`storage clean`"+` removes what is old; sleipnir web does
 	}
 	auto := "off (storage.clean)"
 	if cfg.Storage.AutoClean() {
-		auto = fmt.Sprintf("once a day in sleipnir web: sessions older than %s, past the newest %d", cfg.Storage.MaxAge(), cfg.Storage.Keep())
+		auto = fmt.Sprintf("once a day in sleipnir web: worktrees of sessions stopped for %s that hold nothing of their own, idle scratch directories, worktrees of deleted sessions (sessions are never deleted by it)", cfg.Storage.Idle())
 	}
-	fmt.Fprintf(stdout, "* cleaned by `sleipnir storage clean`; automatic cleanup: %s\n", auto)
+	fmt.Fprintf(stdout, "* reclaimed by `sleipnir storage clean` (sessions only with --sessions); automatic cleanup: %s\n", auto)
 	return nil
 }
 
@@ -82,16 +82,20 @@ func cmdStorageClean(ctx context.Context, stdout, stderr io.Writer, args []strin
 	}
 	fset := newFlagSet("storage clean", flag.ContinueOnError)
 	fset.SetOutput(stderr)
-	older := fset.String("older-than", config.DefaultSessionMaxAge, "delete sessions whose newest file is older than this (30d, 36h, 2w; 0 is any age); unset, storage.session_max_age")
-	keep := fset.Int("keep", config.DefaultKeepSessions, "never delete the newest N sessions, whatever their age; unset, storage.keep_sessions")
+	idle := fset.String("idle", config.DefaultWorktreeIdle, "reclaim the worktrees of sessions stopped this long (3d, 36h, 2w; at least 1h); unset, storage.worktree_idle")
+	sessions := fset.Bool("sessions", false, "also delete the recorded sessions older than --older-than, past the newest --keep, with their history")
+	older := fset.String("older-than", "30d", "with --sessions: delete sessions whose newest file is older than this (30d, 36h, 2w; 0 is any age)")
+	keep := fset.Int("keep", 20, "with --sessions: never delete the newest N sessions, whatever their age")
 	yes := fset.Bool("yes", false, "clean (without it, what would go is listed and nothing is removed)")
 	fset.Usage = func() {
 		printHelp(stderr, `usage: sleipnir storage clean [flags]
 
-Removes what is old from the data directory: the sessions older than --older-than past the newest --keep (never a pinned one, nor
-one a process holds), the scratch directories of sessions nobody has written to for a day, and the worktrees of sessions that are
-gone. Worktrees are released as a deleted session's are: uncommitted edits are committed onto their Git branch first, and a branch
-that holds commits no other branch has is kept. Nothing is removed without --yes; without it what would go is listed, with its size.
+Reclaims room in the data directory, as sleipnir web does by itself once a day: the worktrees of sessions that no process holds and
+that have been stopped for --idle, when they hold nothing of their own (a tree with uncommitted changes or unmerged commits is kept,
+and a resumed session makes the others again), the scratch directories of sessions nobody has written to for a day, and the
+worktrees of sessions that were deleted. No session is deleted unless --sessions says so; then the sessions older than --older-than
+past the newest --keep go (never a pinned one, nor one a process holds), their worktrees' edits committed onto their Git branches
+first. Nothing is removed without --yes; without it what would go is listed, with its size.
 
 flags:
 `)
@@ -106,11 +110,15 @@ flags:
 	}
 	given := map[string]bool{}
 	fset.Visit(func(f *flag.Flag) { given[f.Name] = true })
-	if !given["older-than"] {
-		*older = cfg.Storage.MaxAge()
+	if !given["idle"] {
+		*idle = cfg.Storage.Idle()
 	}
-	if !given["keep"] {
-		*keep = cfg.Storage.Keep()
+	if (given["older-than"] || given["keep"]) && !*sessions {
+		return errors.New("storage clean: --older-than and --keep choose which sessions --sessions deletes: add --sessions")
+	}
+	idleAge, err := parseAge(*idle)
+	if err != nil || idleAge < time.Hour {
+		return fmt.Errorf("storage clean: --idle: %q is not an age of an hour or more", *idle)
 	}
 	age, err := parseAge(*older)
 	if err != nil {
@@ -119,7 +127,7 @@ flags:
 	if *keep < 0 {
 		return errors.New("storage clean: --keep must not be negative")
 	}
-	rep, err := session.CleanStorage(ctx, "", session.CleanOptions{OlderThan: age, Keep: *keep, DryRun: !*yes, Now: now})
+	rep, err := session.CleanStorage(ctx, "", session.CleanOptions{Sessions: *sessions, OlderThan: age, Keep: *keep, TreesIdle: idleAge, DryRun: !*yes, Now: now})
 	if err != nil {
 		return fmt.Errorf("storage clean: %w", err)
 	}
@@ -152,8 +160,12 @@ func printCleanReport(stdout, stderr io.Writer, rep *session.CleanReport, dry bo
 			}
 		}
 	}
-	fmt.Fprintf(stdout, "%s %d of %d sessions, %d scratch directories (%s), %d folders of worktrees (%s): %s in all\n", verb, sessions,
-		p.Total, rep.Scratch, sizeText(rep.ScratchBytes), len(rep.Trees), sizeText(rep.TreesBytes), sizeText(rep.Freed()))
+	fmt.Fprintf(stdout, "%s the worktrees of %d stopped sessions and %d of deleted ones (%s), %d scratch directories (%s)", verb, rep.Idle,
+		len(rep.Trees), sizeText(rep.TreesBytes), rep.Scratch, sizeText(rep.ScratchBytes))
+	if p.Total > 0 || sessions > 0 {
+		fmt.Fprintf(stdout, ", %d of %d sessions", sessions, p.Total)
+	}
+	fmt.Fprintf(stdout, ": %s in all\n", sizeText(rep.Freed()))
 	if n := len(p.Pinned) + len(p.Locked) + len(p.InUse); n > 0 {
 		fmt.Fprintf(stdout, "left alone: %d pinned, %d in use by a process, %d written to in the last ten minutes\n", len(p.Pinned), len(p.Locked), len(p.InUse))
 	}
@@ -179,10 +191,13 @@ func storageSummary(rep *session.CleanReport) string {
 			n++
 		}
 	}
-	msg := fmt.Sprintf("storage cleanup: %d old sessions, %d scratch directories and %d folders of worktrees removed, %s freed", n, rep.Scratch,
-		len(rep.Trees), sizeText(rep.Freed()))
+	msg := fmt.Sprintf("storage cleanup: the worktrees of %d stopped sessions and %d deleted ones, and %d scratch directories reclaimed, %s freed",
+		rep.Idle, len(rep.Trees), rep.Scratch, sizeText(rep.Freed()))
+	if n > 0 {
+		msg += fmt.Sprintf("; %d sessions deleted", n)
+	}
 	if len(rep.Kept) > 0 {
-		msg += fmt.Sprintf("; %d branch(es) or tree(s) kept because they hold unmerged work (sleipnir storage clean lists them)", len(rep.Kept))
+		msg += fmt.Sprintf("; %d tree(s) or branch(es) kept because they hold work (sleipnir storage clean lists them)", len(rep.Kept))
 	}
 	if len(rep.Errors) > 0 {
 		msg += "; " + strings.Join(rep.Errors[:min(len(rep.Errors), 2)], "; ")

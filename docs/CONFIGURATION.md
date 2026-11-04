@@ -141,7 +141,7 @@ Settings that could send your API key to another host, run commands or widen wha
 | `providers.<name>.auth`, `.dialect` | choose which credential is sent and how; a ChatGPT sign-in is never sent on a project's choice, trusted or not |
 | `providers.<name>.allow_hosts`, `.allow_insecure_http` | say where your key may go: dropped from **every** project layer, trusted or not (section 6) |
 | `resources.*` | how much of your machine the agents' commands may take: dropped from **every** project layer, trusted or not (section 6) |
-| `storage.*` | what of your recorded history the harness deletes by itself: dropped from **every** project layer, trusted or not (section 6) |
+| `storage.*` | what the harness removes from your data directory by itself: dropped from **every** project layer, trusted or not (section 6) |
 | `permissions.mode` | `bypass` and `yolo` turn off the prompts |
 | `permissions.allow` | pre-approves actions |
 | `permissions.roles.<role>.mode`, `.allow` | the same, per role |
@@ -475,18 +475,17 @@ not, and `SLEIPNIR_RESOURCES_CPUS` and the like work as for every section. A com
 
 ### `storage`
 
-The housekeeping of the data directory (`$SLEIPNIR_HOME`, else `~/.sleipnir`; `docs/STORAGE.md`). `sleipnir web` cleans it by
-itself at most once a day: it deletes the recorded sessions older than `session_max_age` past the newest `keep_sessions` (never a
-pinned one, nor one a process holds), with their worktrees, whose edits are first committed onto their Git branches; it empties the
-scratch directories of sessions nobody has written to for a day; and it releases the worktrees of sessions that are gone. A branch
-that holds commits no other branch has is always kept. `sleipnir storage` shows the room each area takes, and
-`sleipnir storage clean` does the same cleanup on demand, whatever `clean` says.
+The housekeeping of the data directory (`$SLEIPNIR_HOME`, else `~/.sleipnir`; `docs/STORAGE.md`). `sleipnir web` reclaims room
+by itself at most once a day, and never deletes a session or its history. It removes the worktrees of a session that no process holds
+and that has been stopped for `worktree_idle`, when they hold nothing of their own (a tree with uncommitted changes or a branch with
+unmerged commits is kept; a resumed session makes the others again); it empties the scratch directories of sessions nobody has
+written to for a day; and it releases the worktrees of sessions that were deleted. `sleipnir storage` shows the room each area
+takes, and `sleipnir storage clean` does the same on demand, whatever `clean` says; only `storage clean --sessions` deletes sessions.
 
 | Key | Type | Default | Applied | Meaning |
 |---|---|---|---|---|
-| `clean` | `"auto"` or `"off"` | `"auto"` | at the next check (hourly) | Whether `sleipnir web` cleans the data directory by itself |
-| `session_max_age` | string | `"30d"` | at the next check | How old a session's newest file must be for the automatic cleanup to delete it: `30d`, `36h`, `2w`; at least an hour |
-| `keep_sessions` | integer | `20` (also for `0`) | at the next check | How many of the newest sessions are kept whatever their age |
+| `clean` | `"auto"` or `"off"` | `"auto"` | at the next check (hourly) | Whether `sleipnir web` reclaims room by itself |
+| `worktree_idle` | string | `"3d"` | at the next check | How long a session must have been stopped before its team's empty worktrees are removed: `3d`, `36h`, `2w`; at least an hour |
 
 Only your user file sets `storage`: a project file's is dropped, trusted or not. `SLEIPNIR_STORAGE_CLEAN=off` and the like work
 as for every section.

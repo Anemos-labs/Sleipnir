@@ -2982,8 +2982,10 @@
     "mode": "run",
     "positionals": [],
     "flags": [
+     "idle",
      "keep",
      "older-than",
+     "sessions",
      "yes"
     ],
     "modeWith": {

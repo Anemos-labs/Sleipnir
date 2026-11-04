@@ -11,17 +11,17 @@ they do not indicate whether a change has been released.
   else `~/.sleipnir`. The worktrees of isolated teams move there
   (`<state>/worktrees/<session>/<agent>`) from the cache directory
   (`~/.cache/sleipnir/worktrees`); a session started before keeps its trees
-  where they are, resumes from there, and they go when it is deleted. The
-  permission engine leaves a session's own trees out of the protection of the
-  data directory; the project's rules still hold inside them. `sleipnir web`
-  now cleans the data directory by itself once a day: sessions older than 30
-  days past the newest 20 (never pinned or live ones, with their worktrees,
-  whose edits are committed onto their branches first), the scratch
-  directories of sessions idle for a day, and the worktrees of sessions that
-  are gone. `storage.clean` (`"off"` stops it), `storage.session_max_age` and
-  `storage.keep_sessions` tune it, from the user's file only. `sleipnir
-  storage` shows the room each area takes, and `sleipnir storage clean` cleans
-  on demand. No prompt bytes change.
+  where they are and resumes from there. The permission engine leaves a
+  session's own trees out of the protection of the data directory; the
+  project's rules still hold inside them. `sleipnir web` now reclaims room by
+  itself once a day without deleting any session: the worktrees of sessions
+  stopped for `storage.worktree_idle` (3 days) that hold nothing of their own
+  (a resumed session makes them again; a worker whose tree went that way is
+  recovered with a new one), the scratch directories of sessions idle for a
+  day, and the worktrees of deleted sessions, salvaged onto their branches.
+  `storage.clean = "off"` stops it. `sleipnir storage` shows the room each
+  area takes, and `sleipnir storage clean` reclaims it on demand; only its
+  `--sessions` flag deletes sessions. No prompt bytes change.
 
 - What the person types while an agent works (a steer) reaches the model
   inside a fixed frame that names it as the person's message, says that it

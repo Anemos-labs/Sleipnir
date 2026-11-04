@@ -368,18 +368,16 @@ type Resources struct {
 	Unlimited bool `json:"unlimited"`
 }
 
-// Storage is the housekeeping of the data directory ($SLEIPNIR_HOME, else ~/.sleipnir): how long a recorded session, with its
-// worktrees and scratch files, is kept before the harness deletes it by itself (docs/STORAGE.md). Only the user's own file sets
-// it: what of the person's history is deleted is not a repository's choice.
+// Storage is the housekeeping of the data directory ($SLEIPNIR_HOME, else ~/.sleipnir; docs/STORAGE.md): what the harness reclaims
+// by itself. It never deletes a session or its history: only what a session can do without, the worktrees of a stopped session that
+// hold nothing of their own, scratch directories and the worktrees of sessions that are gone. Only the user's own file sets it.
 type Storage struct {
-	// Clean is "auto" (the default, also for "") or "off": whether the harness cleans the data directory by itself, at most once
-	// a day. `sleipnir storage clean` works either way.
+	// Clean is "auto" (the default, also for "") or "off": whether the harness reclaims room by itself, at most once a day.
+	// `sleipnir storage clean` works either way.
 	Clean string `json:"clean,omitempty"`
-	// SessionMaxAge is how old a session's newest file must be for the automatic cleanup to delete it ("30d" when empty; 36h,
-	// 2w and the like).
-	SessionMaxAge string `json:"session_max_age,omitempty"`
-	// KeepSessions is how many of the newest sessions are kept whatever their age (0: 20).
-	KeepSessions int `json:"keep_sessions"`
+	// WorktreeIdle is how long a stopped session must have gone unwritten before the trees of its team that hold nothing of
+	// their own are removed ("3d" when empty; 36h, 2w and the like; at least an hour). A resumed session makes them again.
+	WorktreeIdle string `json:"worktree_idle,omitempty"`
 }
 
 // Storage cleanup modes.
@@ -388,31 +386,20 @@ const (
 	StorageCleanOff  = "off"
 )
 
-// Automatic storage cleanup defaults.
-const (
-	DefaultSessionMaxAge = "30d"
-	DefaultKeepSessions  = 20
-)
+// DefaultWorktreeIdle is the default of Storage.WorktreeIdle.
+const DefaultWorktreeIdle = "3d"
 
-// AutoClean reports whether the harness cleans the data directory by itself.
+// AutoClean reports whether the harness reclaims room in the data directory by itself.
 func (s Storage) AutoClean() bool {
 	return !strings.EqualFold(strings.TrimSpace(s.Clean), StorageCleanOff)
 }
 
-// MaxAge is SessionMaxAge, or its default when empty.
-func (s Storage) MaxAge() string {
-	if v := strings.TrimSpace(s.SessionMaxAge); v != "" {
+// Idle is WorktreeIdle, or its default when empty.
+func (s Storage) Idle() string {
+	if v := strings.TrimSpace(s.WorktreeIdle); v != "" {
 		return v
 	}
-	return DefaultSessionMaxAge
-}
-
-// Keep is KeepSessions, or its default when 0.
-func (s Storage) Keep() int {
-	if s.KeepSessions > 0 {
-		return s.KeepSessions
-	}
-	return DefaultKeepSessions
+	return DefaultWorktreeIdle
 }
 
 // DefaultTimeout is DefaultTimeoutSec as a duration.
