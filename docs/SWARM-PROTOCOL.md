@@ -534,12 +534,12 @@ context for new, reused, and claiming workers. They survive private compaction
 and event-log recovery; they do not depend on the live note buffer. Task data
 cannot grant permissions or override user instructions.
 
-Each agreement is limited to 6,000 UTF-8 bytes and 40 lines. Combined inherited
-agreements are limited to 12,000 bytes including labels; excessive submissions
+Each agreement is limited to 16,000 UTF-8 bytes and 400 lines. Combined inherited
+agreements are limited to 48,000 bytes including labels; excessive submissions
 or assignments are rejected with guidance instead of silently truncating a
 contract. Tasks assigned to one worker, including blocked work and worktree
-instructions, must fit 24,000 bytes of assignment text. Compaction preserves
-harness assignments up to a fixed 32,000-byte bound, independently of token
+instructions, must fit 96,000 bytes of assignment text. Compaction preserves
+harness assignments up to a fixed 100,000-byte bound, independently of token
 estimator calibration. Human instruction token limits remain separate.
 
 Accepted contracts are immutable within an assignment revision. A changed design uses
@@ -574,12 +574,17 @@ ephemeral: delivered into the recipient's next turn, cached for a few turns, com
 
 * **Typed**: `info` (no reply expected), `request`, `blocker`, `answer`, `contract` (an interface changed).
 * **No broadcast, no self-mail, known recipients only** (`to: manager` resolves to the manager).
-* **Bounded**: 600 characters for mail that asks for something (`request`, `blocker`) and 1,200 for mail that carries
-  content (`info`, `answer`, `contract`), 8 messages per minute per sender, 3 per minute per sender->recipient pair,
-  identical text to one recipient deduplicated for 5 minutes; over-limit errors are written for the sending model and say
-  what to do instead (use `note`, wait, or fold messages). A message over its kind's limit is refused with its length,
-  how far over it is, a target below the limit, and where long content lasts: a file in the sender's task scope, or the
-  agreement submitted with `task done` (at most 6000 bytes, read with `task get`, inherited by dependent tasks). The
+* **Bounded inline, kept whole**: 600 characters of mail that asks for something (`request`, `blocker`) and 1,200 of
+  mail that carries content (`info`, `answer`, `contract`) reach the recipient's thread. A longer message, up to 24,000
+  characters, is not refused or cut: its opening is delivered with a harness note of how much follows, and the sender or
+  the recipient reads the whole, line breaks kept, with `mail read=<id>`. Mail coalesced while an inbox was full, and
+  parcels a mailman digested from their opening, are kept whole as well, and the digest names their ids. The router keeps
+  these messages within 8 MiB, forgetting the oldest first. 8 messages per minute per sender, 3 per minute per
+  sender->recipient pair, identical text to one recipient deduplicated for 5 minutes; over-limit errors are written for
+  the sending model and say what to do instead (use `note`, wait, or fold messages). A message over 24,000 characters is
+  refused with its length, how far over it is, a target below the limit, and where long content lasts: a file in the
+  sender's task scope, or the agreement submitted with `task done` (at most 16,000 bytes, read with `task get`,
+  inherited by dependent tasks). The
   router's bookkeeping is swept, so it does not grow with the number of agents or messages that ever existed.
 * **Framed by the harness.** A delivered message is one line: a harness-written header (`[mail <id> <kind> from
   <agent>]`), the text reduced to one printable line in which harness-looking markers (`[mail`, `[end`, `[system`, ...),
