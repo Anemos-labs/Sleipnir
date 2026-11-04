@@ -541,6 +541,7 @@ func (t *Translator) mail(e events.Event, ts float64, at int64) {
 			From    string   `json:"from"`
 			To      string   `json:"to"`
 			Text    string   `json:"text"`
+			Full    string   `json:"full"` // the whole of a message whose opening alone reached the recipient's thread
 			Via     string   `json:"via"`
 			Origins []string `json:"origins"`
 		}
@@ -561,7 +562,7 @@ func (t *Translator) mail(e events.Event, ts float64, at int64) {
 		if t.agentOutOf(uiID(from)).service {
 			break
 		}
-		t.put(&MailX{Mail: wire.Mail{From: uiID(from), To: uiID(p.To), Text: line(p.Text, capMail)}, Tok: estTokens(len(p.Text))}, ts, at, nil)
+		t.put(&MailX{Mail: wire.Mail{From: uiID(from), To: uiID(p.To), Text: text(firstNonEmpty(p.Full, p.Text), capMail)}, Tok: estTokens(len(p.Text))}, ts, at, nil)
 	case events.TypeMailDigest:
 		var p struct {
 			ID      string   `json:"id"`
@@ -580,7 +581,7 @@ func (t *Translator) mail(e events.Event, ts float64, at int64) {
 		delete(t.d.digests, p.ID)
 		from := firstNonEmpty(first(p.Senders), first(d.origins), p.Mailman, d.from)
 		n := max(len(p.Parcels), 1)
-		t.put(&MailX{Mail: wire.Mail{From: uiID(from), To: uiID(firstNonEmpty(p.To, d.to)), Text: line(fmt.Sprintf("digest of %d: %s", n, d.text), capMail)},
+		t.put(&MailX{Mail: wire.Mail{From: uiID(from), To: uiID(firstNonEmpty(p.To, d.to)), Text: text(fmt.Sprintf("digest of %d: %s", n, d.text), capMail)},
 			Tok: estTokens(len(d.text)), Digest: n}, ts, at, nil)
 	case "mail.drop":
 		var p struct {

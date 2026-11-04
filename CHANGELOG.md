@@ -7,6 +7,25 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Team mail, task text and contracts are no longer cut short. Mail over its
+  kind's inline limit (600 characters for a request or blocker, 1,200 for
+  info, answer and contract) is accepted up to 24,000 characters: its opening
+  is delivered with a note of how much follows, and the sender or recipient
+  reads the whole, line breaks kept, with the new `mail read=<id>`. Mail
+  coalesced while an inbox was full, and parcels a mailman digested, are kept
+  whole too and named in the digest. A task description holds 12,000
+  characters with every line (it held 2,000 and its first 40 lines) and is
+  refused, not cut, beyond that; a title too long for the board opens the
+  description. Agreements hold 16,000 bytes and 400 lines (6,000 and 40),
+  inherited agreements 48,000 bytes, a claimed assignment 96,000 (the
+  compaction bound on an assignment is now 100,000 bytes, so it never cuts
+  one the swarm accepted), reports 16,000 characters, handover summaries
+  6,000, a manager's rejection feedback reaches a pool whole, and a note over
+  300 characters is refused with its size instead of cut. The web interface
+  shows a mail whole. Prompt-cache change: the `mail` tool's description and
+  schema change bytes, so a prefix cached before the upgrade no longer
+  matches the tool layer.
+
 - Images a tool returns (a screenshot the read tool opens, an MCP tool's
   picture) reach the model on every wire format. Chat Completions and the
   Responses API carry a tool's output as text, so its images follow in the

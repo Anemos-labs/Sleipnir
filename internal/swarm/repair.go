@@ -95,11 +95,22 @@ func reviseOp(id string, spec TaskSpec, reason string) func(d *draft) error {
 				t.Kind = ""
 			}
 		}
+		desc := spec.Desc
 		if spec.Title != "" {
 			t.Title = cleanText(spec.Title, maxTitleRunes)
+			// A title too long for the board opens the description, the new one or the one the task has.
+			if desc == "" {
+				desc = t.Desc
+			}
+			if spilled := spillTitle(spec.Title, desc); spilled != desc {
+				spec.Desc = spilled
+			}
 		}
 		if spec.Desc != "" {
-			t.Desc = cleanBlock(spec.Desc, maxDescRunes)
+			if err := descFits(spec.Desc); err != nil {
+				return err
+			}
+			t.Desc = cleanDesc(spec.Desc)
 		}
 		if spec.Files != nil {
 			files, err := cleanScopes(spec.Files)
