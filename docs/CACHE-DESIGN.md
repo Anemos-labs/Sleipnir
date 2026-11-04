@@ -100,6 +100,45 @@ history to a cold slot while its warm slot is occupied by the compactor, at
 the cost of waiting for that compaction. It does not pin a server slot or
 guarantee reuse between different agents.
 
+## Images
+
+Many endpoints accept one or two images in a prompt and fail past that (too many
+images, too many image tokens, a gateway that times out encoding every picture
+of a long history on every request). An image is therefore attached to a request
+only while it is needed: from the turn that brings it (a picture a person
+attached, a screenshot a tool returned) for the rest of the run that received
+it, and only the newest `cache.attached_images` of those (default 1; `-1` attaches
+none). Every other image is retired: its block in the thread is replaced by a
+text block with a description of it, durably, as a declared rebase like a
+compaction commit (thinking bound to the old bytes is stripped on routes that
+replay it). The event log keeps the image, so both interfaces still show it.
+
+The description is asked for as soon as the image enters the thread, in a side
+request that carries only that image, the context it came with (the person's
+words, or the tool call that returned it) and an instruction to transcribe its
+text and describe what matters; it is usually ready when the image retires. A
+turn with more images than can be attached is thereby split: each extra image is
+described in its own request, one image per request, and the conversation request
+carries the descriptions and the newest image. The `vision` role
+(`models.roles.vision`, `--role-model vision=M`) names the model that writes the
+descriptions, so an agent whose model cannot see still works from pictures;
+without it each agent's own model describes. `cache.describe_images: false`
+retires images to a short placeholder and sends no description request.
+
+A request the endpoint refuses for its images (an error that names images,
+vision or the image part) is sent again once with every image described, and the
+agent attaches no image from then on. Before an image is sent, a blob reference
+is turned into a data URL, scaled down when its long side is over 1568 pixels or
+it is larger than about 3.7 MB (PNG stays PNG, other formats become JPEG; WebP is
+sent as it is). Chat Completions and Responses carry tool results as text, so an
+image a tool returned follows the results in the user message of the same turn,
+introduced by the call it came from.
+
+The rewrite changes the bytes from the retired image on, so the cache misses
+from there once; with one image attached, that is the span since the previous
+image. Retiring every image of an earlier run at the start of the next one
+costs the same as one more retirement.
+
 ## Team requests
 
 A warm gate limits simultaneous cold starts. It waits for generated response

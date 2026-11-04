@@ -55,6 +55,7 @@ func Register(srv *web.Server, h seam.Host) {
 	srv.HandleFunc("POST /api/sessions/{id}/ws/accept", s.handleAccept, web.RouteOpts{WriteTimeout: 5 * time.Minute})
 	srv.HandleFunc("GET /api/sessions/{id}/complete", s.handleComplete, web.RouteOpts{})
 	srv.HandleFunc("POST /api/sessions/{id}/permissions/check", s.handleCheck, web.RouteOpts{})
+	s.registerImages(srv)
 }
 
 // service is the state of the Workspace routes: what lives only in this process (the

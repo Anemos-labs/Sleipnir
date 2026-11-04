@@ -1,0 +1,65 @@
+package openaichat_test
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/provider/openaichat"
+)
+
+// A screenshot a tool returned reaches the model: a role=tool message carries text only, so the image follows in a user message
+// that names the call, sent as a data URL of the blob's bytes and never as the blob's hash.
+func TestToolResultImagesReachTheModel(t *testing.T) {
+	media := func(ref, _ string) ([]byte, error) { return []byte("png:" + ref), nil }
+	p := &core.Prompt{Model: "m", Messages: []core.Message{
+		{Role: core.RoleUser, Blocks: []core.Block{core.Text("look at the app")}},
+		{Role: core.RoleAssistant, Blocks: []core.Block{{Kind: core.BlockToolUse, ToolID: "c1", ToolName: "read", Input: json.RawMessage(`{"path":"shot.png"}`)}}},
+		{Role: core.RoleUser, Blocks: []core.Block{core.ToolResult("c1", false, core.Text("Image shot.png (image/png, 3 B)"),
+			core.Block{Kind: core.BlockImage, MediaType: "image/png", MediaRef: "h1"})}},
+	}}
+	body, err := openaichat.Build(p, openaichat.Options{Media: media}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var req struct {
+		Messages []struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(req.Messages); n != 4 || req.Messages[2].Role != "tool" || req.Messages[3].Role != "user" {
+		t.Fatalf("messages: %s", body)
+	}
+	last := string(req.Messages[3].Content)
+	if !strings.Contains(last, "Image returned by tool call c1:") || !strings.Contains(last, `"url":"data:image/png;base64,cG5nOmgx"`) {
+		t.Fatalf("the image does not follow the tool message: %s", last)
+	}
+	if strings.Contains(string(body), `"url":"h1"`) {
+		t.Fatalf("a blob hash was sent as an image URL: %s", body)
+	}
+	// An image that cannot be resolved is a note, not a failed request: it stays in the history, and every later request would fail.
+	b2, err := openaichat.Build(p, openaichat.Options{}, false)
+	if err != nil || !strings.Contains(string(b2), "an image is not shown") || strings.Contains(string(b2), `"h1"`) {
+		t.Fatalf("an unresolvable image: %v %s", err, b2)
+	}
+}
+
+// A prompt with no image renders as it did: the image path adds nothing to the bytes of a text-only conversation.
+func TestToolResultWithoutImagesIsUnchanged(t *testing.T) {
+	p := &core.Prompt{Model: "m", Messages: []core.Message{
+		{Role: core.RoleAssistant, Blocks: []core.Block{{Kind: core.BlockToolUse, ToolID: "c1", ToolName: "read", Input: json.RawMessage(`{}`)}}},
+		{Role: core.RoleUser, Blocks: []core.Block{core.ToolResult("c1", false, core.Text("ok"))}},
+	}}
+	body, err := openaichat.Build(p, openaichat.Options{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), `"role":"user"`) {
+		t.Fatalf("a user message was added: %s", body)
+	}
+}

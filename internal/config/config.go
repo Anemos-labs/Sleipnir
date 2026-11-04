@@ -234,6 +234,13 @@ type Cache struct {
 	// CompactionMode selects background (the default) or blocking model compaction.
 	// Blocking waits before the agent's next request; other agents remain concurrent.
 	CompactionMode string `json:"compaction_mode,omitempty"`
+	// AttachedImages is the most images one request carries (agent.ImagePolicy.Attached): 0 is one, -1 none (every image
+	// reaches the model as its description), at most 20. Images past it, and those of earlier turns of the conversation,
+	// are replaced in the model's history by a description written for each.
+	AttachedImages int `json:"attached_images,omitempty"`
+	// DescribeImages, false, retires images to a short placeholder instead of a description a model writes (one request
+	// per image). Unset is true.
+	DescribeImages *bool `json:"describe_images,omitempty"`
 	// HotMaxTokens caps the always-fresh "hot" layer.
 	HotMaxTokens int `json:"hot_max_tokens"`
 	// AffinityShards spreads a large swarm over several provider cache routing
