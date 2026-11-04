@@ -146,6 +146,9 @@ type Role struct {
 	Pin string
 	// ReadOnly roles may not write files or run mutating commands.
 	ReadOnly bool
+	// Report marks a role whose deliverable is a report rather than a change (swarm.Role.Report). A
+	// project definition sets it through readonly, which implies it.
+	Report bool
 	// Priority orders this role's requests under contention.
 	Priority int
 	// MaxSteps bounds one assignment.

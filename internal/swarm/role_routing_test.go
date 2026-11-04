@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/anemos-labs/sleipnir/internal/perm"
 )
 
 // A task goes to a member of its own role, whose model and instructions were chosen for its kind of work: queued behind the one
@@ -107,5 +109,57 @@ func TestAnIdleMemberAPoolKeepsIsNotAFreeSlot(t *testing.T) {
 	})
 	if free := r.sw.freeWriters("backend"); len(free) != 0 {
 		t.Fatalf("free writers %v include members a pool keeps", free)
+	}
+}
+
+// Every built-in role writes: the architect, the scout and the reviewer have no read-only policy. A planning task holds its owner
+// to reading while it plans, since its deliverable is the agreement and nothing written meanwhile would be merged; a work task of
+// the same member writes.
+func TestEveryBuiltinRoleWritesAndAPlanHoldsItsOwnerToReading(t *testing.T) {
+	for name, role := range BuiltinRoles() {
+		if role.ReadOnly {
+			t.Errorf("the built-in %s role is read-only", name)
+		}
+	}
+	if !BuiltinRoles()["reviewer"].Reports() || !BuiltinRoles()["scout"].Reports() || BuiltinRoles()["architect"].Reports() {
+		t.Error("the reviewer and the scout report, the architect delivers changes")
+	}
+	block := make(chan struct{})
+	t.Cleanup(func() { close(block) })
+	r := newRVRigWith(t, Config{MaxWorkers: 4, Team: []string{"architect", "architect", "backend"}},
+		func(ctx context.Context, c *rvCall) rvReply {
+			select { // the architect stays in its run on whatever it was given, so its task stays its current one
+			case <-block:
+			case <-ctx.Done():
+			}
+			return rvReply{Text: "thinking"}
+		}, nil)
+	plan, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "Design the API", Role: "architect", Kind: TaskKindPlan})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := r.sw.Spawn(SpawnReq{Role: "architect", TaskID: plan.ID, By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	write := perm.Request{Tool: "write", Writes: true, Paths: []string{"openapi.yaml"}}
+	d, held := r.sw.planPermission(context.Background(), id, perm.AllowAll{}, write)
+	if !held || d.Allow || !strings.Contains(d.Reason, plan.ID+" is a planning task") {
+		t.Fatalf("a write while planning: held=%v %+v", held, d)
+	}
+	if _, held := r.sw.planPermission(context.Background(), id, perm.AllowAll{}, perm.Request{Tool: "read", Paths: []string{"go.mod"}}); held {
+		t.Fatal("a read while planning was held back")
+	}
+	work, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "Write the OpenAPI contract", Role: "architect", Files: []string{"openapi.yaml"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := r.sw.Spawn(SpawnReq{Role: "architect", TaskID: work.ID, By: "mgr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, other+" on "+work.ID, func() bool { return r.sw.get(other) != nil && r.sw.get(other).currentTask() == work.ID })
+	if _, held := r.sw.planPermission(context.Background(), other, perm.AllowAll{}, write); held {
+		t.Fatal("an architect's write on a work task was held back")
 	}
 }

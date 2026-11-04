@@ -25,7 +25,10 @@ cache side of the design (why a worker costs a cache read, not a briefing) is in
 ## 2. Roles and tools
 
 Roles are pins (G2) plus runtime restrictions. Built-ins: `manager` (plans, delegates substantial work, reviews and handles direct requests),
-`backend`, `frontend`, `devops`, `tester`, `docs` (writers), `architect`, `reviewer`, `scout` (read-only). The legacy executable `fullstack` role is unavailable. Users add roles
+`backend`, `frontend`, `devops`, `tester`, `docs`, `architect`, `reviewer`, `scout`. Every built-in role can write files and run
+programs on a work task; the reviewer and the scout report (their `task done` text is kept whole as the report the manager reads,
+and their tasks are not counted as implementation), and a planning task holds whoever owns it to reading while it plans (below).
+A project role can still be read-only (`readonly: true`). The legacy executable `fullstack` role is unavailable. Users add roles
 with markdown files (`.sleipnir/agents/*.md`).
 
 **The team.** A session's team is a list of worker slots, one role each (`swarm.Config.Team`). The chat, run and web
@@ -520,7 +523,10 @@ can never turn a failing test into a passing one. Dependencies are enforced on c
 
 Agents share project context, not conversation histories. For parallel work that
 depends on common decisions, the manager creates a task with `kind="plan"` and
-assigns a scout, reviewer, or custom read-only role. Its owner
+assigns it to the role it names: the architect, else a scout or a reviewer. While a planning task is its owner's current
+task, the owner changes no file (it keeps a read-only role's reading, research and checks): the agreement is the
+deliverable and the harness merges nothing from it, so a file the plan needs (a contract, a schema, shared types) is a work
+task of its own, which the architect can take. A planning task holds no writer slot and takes part in no scope overlap. Its owner
 gathers input from affected roles and submits a concise contract through
 `task(action="done", id="T1", text="contract ready", agreement="...")`.
 The contract names interfaces, shared components or abstractions, conventions,
@@ -563,7 +569,7 @@ planning in one word instead of building the chain by hand:
 | `rigor` | Tasks the harness creates | The work task |
 |---|---|---|
 | (none) | the work task | as before |
-| `plan` | `Plan: <title>` (kind plan) for the architect, else the scout, else another read-only role the team can staff | depends on the plan and inherits its agreement |
+| `plan` | `Plan: <title>` (kind plan) for the architect, else the scout, else a read-only role the team can staff | depends on the plan and inherits its agreement |
 | `reviewed` | the plan, then `Review plan: <title>` (kind plan) for the reviewer, which depends on the plan | depends on both; the review's agreement is the verdict and the amendments, which the work follows as acceptance criteria |
 
 The work task's description starts with a line that says which plan to follow

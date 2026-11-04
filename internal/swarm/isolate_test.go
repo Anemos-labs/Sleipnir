@@ -651,6 +651,7 @@ func TestIsolatedReviewerGateRunsOnTheIntegratedWork(t *testing.T) {
 		"rv-1": {act(doneCall("T2", "the fix is right"))},
 	}
 	r := newIsoRig(t, isoOpts{verify: true, files: map[string]string{"app.txt": "BROKEN\n"}}, sc.fn())
+	r.readOnly("reviewer") // a read-only role has no tree of its own
 	r.mustSpawn("backend", "fix app", "app.txt")
 	r.waitStatus("T1", StatusReview)
 	if result := r.accept("T1"); result.IsError {
@@ -680,6 +681,7 @@ func TestIsolatedReviewerReadsIntegrationWithoutWaitingForCheckoutRefresh(t *tes
 	iso := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 1}}, func(ctx context.Context, c *rvCall) rvReply {
 		return rvReply{Text: "nothing to do"}
 	})
+	iso.readOnly("reviewer") // a read-only role has no tree of its own
 	id := iso.mustSpawn("reviewer", "Review integrated work")
 	rvWait(t, "reviewer idle", func() bool { return iso.idle(id) })
 	for _, want := range []string{
