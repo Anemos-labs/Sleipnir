@@ -1,7 +1,7 @@
 // queued-lines.test.mjs: the lines that wait for the turn (meta.queued) in the composer of the shipped page. A message has Send now
 // (it goes to the running turn as a steer), Edit (it leaves the queue and comes back into the message box) and ×; a slash line has
 // Edit and ×; an action of the session (a goal change) has no buttons. While a turn runs, the hint under the box says what Enter and
-// Ctrl+Enter do, Ctrl+Enter steers instead of queueing, and Up in an empty box takes the last queued line back, as in the terminal.
+// Ctrl+Enter do (in a team, Enter reaches the manager at once), Ctrl+Enter steers instead of queueing, and Up in an empty box takes the last queued line back, as in the terminal.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { boot, FakeEvent } from './pagedom.mjs';
@@ -46,7 +46,12 @@ test('each queued line has the buttons its kind allows, and the hint says what E
   assert.deepEqual(buttons(r[0]), ['now', 'edit', 'drop'], 'a message');
   assert.deepEqual(buttons(r[1]), ['edit', 'drop'], 'a slash line cannot steer');
   assert.deepEqual(buttons(r[2]), [], 'an action of the session stays');
-  assert.equal(L.$('#cHint').textContent, 'Enter queues · Ctrl+Enter steers');
+  // the page's session is a team: its manager runs while the members work, and Enter reaches it at once
+  assert.equal(L.$('#cHint').textContent, 'Enter tells the manager now');
+  assert.match(L.$('#cHint').title, /answers it first/);
+  const S = L.SL.sessions.active; S.roster = S.roster.filter(x => x.id === 'mgr');
+  await L.frame('meta', { tab: 'a', patch: { swarm: 0 } }); await L.step(0.1);
+  assert.equal(L.$('#cHint').textContent, 'Enter queues · Ctrl+Enter steers', 'a single agent');
   assert.equal(L.$('#cHint').title, 'Enter queues for after this turn · Ctrl+Enter sends now (steer)');
   await L.frame('meta', { tab: 'a', patch: { running: false, queued: [] } }); await L.step(0.1);
   assert.equal(L.$('#cHint').textContent, '/ commands', 'the idle hint comes back');
