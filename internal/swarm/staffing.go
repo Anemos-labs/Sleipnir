@@ -261,7 +261,7 @@ func (s *Swarm) noteAcceptedCheck(t Task) TaskCheck {
 			role = r
 		}
 	}
-	implementation := t.Pool == nil && t.Kind != TaskKindPlan && !s.isDocsTask(t) && !s.roles[role].ReadOnly
+	implementation := t.Pool == nil && t.Kind != TaskKindPlan && !s.isDocsTask(t) && !s.roles[role].Reports()
 	if r, ok := s.mergedFor(t); implementation && ok && r.empty {
 		// Nothing reached the shared tree (a tester's check that left no test behind): no merge, so a review running beside it
 		// still covers the result it reads.
@@ -504,7 +504,7 @@ func (s *Swarm) implementationTask(t Task) bool {
 			role = r
 		}
 	}
-	return t.Kind != TaskKindPlan && !s.isDocsTask(t) && !s.roles[role].ReadOnly
+	return t.Kind != TaskKindPlan && !s.isDocsTask(t) && !s.roles[role].Reports()
 }
 
 // hasReviewer reports whether the team has a reviewer slot.
@@ -768,7 +768,7 @@ func (s *Swarm) freeSlots(slots, used map[string]int, order []string, ready []Ta
 	out := map[string]int{}
 	for _, r := range order {
 		n := slots[r] - used[r]
-		if n <= 0 || planned[r] || s.roles[r].ReadOnly || r == DocsRole && s.AutoDocs() {
+		if n <= 0 || planned[r] || s.roles[r].Reports() || r == DocsRole && s.AutoDocs() {
 			continue
 		}
 		out[r] = n
@@ -916,7 +916,8 @@ func roleKeys(m map[string][]string) []string {
 }
 
 // freeWriters are the roles of the team, other than except, in team order, with a slot or an idle member free for a task now:
-// roles that write code, so neither a read-only role, nor docs, nor the tester, whose tasks are tests of their own. It tells a
+// roles that write code, so neither a role that reports (a reviewer, a scout, a read-only role), nor the architect, nor docs, nor
+// the tester, whose tasks are tests of their own. It tells a
 // manager that edits files itself that writer roles could take that work as tasks of their own (handoffLine); it never offers one
 // role's queued task to another, since each role runs on the model chosen for its kind of work (roleMismatch).
 func (s *Swarm) freeWriters(except string) []string {
@@ -943,7 +944,7 @@ func (s *Swarm) freeWriters(except string) []string {
 	}
 	var out []string
 	for _, r := range order {
-		if r == except || r == DocsRole || r == "tester" || s.roles[r].ReadOnly {
+		if r == except || r == DocsRole || r == "tester" || r == "architect" || s.roles[r].Reports() {
 			continue
 		}
 		if slots[r] > used[r] || idle[r] {
@@ -973,7 +974,7 @@ func (s *Swarm) reviewerModelHint() string {
 		switch {
 		case r == ReviewerRole:
 			reviewers[id] = true
-		case !s.roles[r].ReadOnly:
+		case !s.roles[r].Reports():
 			writers[id] = true
 		}
 	}

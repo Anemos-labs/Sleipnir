@@ -259,7 +259,7 @@ func (s *Swarm) retryChangedScope(m *member, checked Task) {
 // arranging another worker run if a scope update made the result obsolete.
 func (s *Swarm) submitSettledTask(m *member, checked Task, result, evidence string) bool {
 	report := ""
-	if m.readOnly {
+	if m.reports {
 		result, report = readOnlyReport(checked.ID, result)
 	}
 	if err := s.Board.submitReportAt(m.id, checked.ID, checked.Rev, submission{result: result, report: report, evidence: evidence}, taskGateCheck(checked), s.reviewSubmission(checked)); err != nil {
