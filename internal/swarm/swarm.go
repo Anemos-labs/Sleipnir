@@ -1019,6 +1019,9 @@ func (r roleRequester) Check(ctx context.Context, req perm.Request) perm.Decisio
 		if d, handled := r.swarm.poolPermission(ctx, r.agent, r.inner, req); handled {
 			return d
 		}
+		if d, handled := r.swarm.planPermission(ctx, r.agent, r.inner, req); handled {
+			return d
+		}
 	}
 	if r.only != nil && !r.only[req.Tool] {
 		return perm.Decision{Allow: false, Reason: r.denyWrites}

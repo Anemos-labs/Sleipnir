@@ -7,6 +7,17 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Every built-in role writes. The architect, the scout and the reviewer are no
+  longer read-only: on a work task they write files and run programs like any
+  worker (the architect a contract file or a scaffold, the reviewer a failing
+  test that proves a finding). The reviewer and the scout still report: their
+  `task done` text is kept whole as the report. A planning task (`kind=plan`)
+  can go to any role and holds its owner to reading while it plans, since its
+  agreement is the deliverable and nothing written meanwhile is merged; it
+  holds no writer slot. A project role can still be `readonly: true`.
+  Prompt-cache change: the manager, architect, scout and reviewer pins and the
+  `task` tool's description change bytes.
+
 - A task goes to a member of its own role. `spawn` with another role, `spawn
   agent=` naming a member of another role, a self-claim and a handover of a
   task whose role the team can staff are refused, naming the task's role and

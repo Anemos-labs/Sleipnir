@@ -12,11 +12,12 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/session"
 )
 
-// A reviewer verifies what it reviews with the project's own test runners: python -m pytest, node --test, and the tests run with the
+// A read-only role (a project's auditor; every built-in role writes) verifies what it reviews with the project's own test runners: python -m pytest, node --test, and the tests run with the
 // project's virtual environment. In a trial a reviewer was refused ".venv/bin/python -m pytest -q" and "node --test tests/*.mjs" and
 // reviewed without running anything. Creating or installing into the environment stays out of its reach.
-func TestAReviewerRunsTheProjectsTests(t *testing.T) {
+func TestAReadOnlyRoleRunsTheProjectsTests(t *testing.T) {
 	repo := newRepo(t)
+	readOnlyRole(t, repo, "auditor")
 	python := ""
 	for _, name := range []string{"python3", "python"} {
 		if p, err := exec.LookPath(name); err == nil {
@@ -70,9 +71,9 @@ func TestAReviewerRunsTheProjectsTests(t *testing.T) {
 		{"python3 -m venv .venv2", false},
 		{"touch x", false},
 	} {
-		d := s.Perm.Check(context.Background(), perm.Request{Agent: "rv-1", Role: "reviewer", Tool: "Bash", Command: c.cmd, Cwd: repo})
+		d := s.Perm.Check(context.Background(), perm.Request{Agent: "au-1", Role: "auditor", Tool: "Bash", Command: c.cmd, Cwd: repo})
 		if d.Allow != c.allow {
-			t.Errorf("reviewer %q: allow=%v (%s), want %v", c.cmd, d.Allow, d.Reason, c.allow)
+			t.Errorf("auditor %q: allow=%v (%s), want %v", c.cmd, d.Allow, d.Reason, c.allow)
 		}
 	}
 }

@@ -674,6 +674,7 @@ func TestRefusedSpawnLeavesNothingBehind(t *testing.T) {
 		time.Sleep(300 * time.Millisecond) // keep the first worker busy
 		return rvReply{Text: "ok"}
 	})
+	r.readOnly("reviewer")
 	r.sw.StartManager()
 	for i := 0; i < 3; i++ {
 		if _, err := r.sw.Spawn(SpawnReq{Role: "nonesuch", Title: "will be refused", By: "mgr"}); err == nil {

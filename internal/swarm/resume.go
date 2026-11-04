@@ -172,7 +172,7 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 			continue
 		}
 		_, merged := s.mergedFor(t)
-		if merged || t.Pool != nil || t.Owner != "" && s.roles[ids[t.Owner]].ReadOnly {
+		if merged || t.Pool != nil || t.Owner != "" && s.roles[ids[t.Owner]].Reports() {
 			keep[t.ID] = true
 		}
 	}

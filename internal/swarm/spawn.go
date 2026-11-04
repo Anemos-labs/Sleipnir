@@ -1,6 +1,7 @@
 package swarm
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/kv"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
 
@@ -51,7 +53,7 @@ func (s *Swarm) isClosed() bool {
 // writerCapError reports the active-writer limit and suggests ways to continue without adding a
 // concurrent writer.
 func writerCapError(active, limit int) error {
-	return fmt.Errorf("%d writers are already active (limit %d): concurrent writers collide on shared code. Wait for one to finish, reuse an idle worker, or use a read-only role (architect, scout, reviewer) for this", active, limit)
+	return fmt.Errorf("%d writers are already active (limit %d): concurrent writers collide on shared code. Wait for one to finish, or reuse an idle worker; a planning task (kind=plan) writes nothing and is not held to the limit", active, limit)
 }
 
 // Spawn starts (or reuses) a worker for a task and returns its id. Every decision
@@ -343,7 +345,7 @@ func (s *Swarm) assignFor(req SpawnReq, agentID string, role Role, files []strin
 // manager is told the most useful thing first. The board repeats the check inside its
 // critical section; this one is only for the message.
 func (s *Swarm) precheckScope(req SpawnReq, files []string, role Role) error {
-	if role.ReadOnly || s.isolated() {
+	if role.ReadOnly || s.isolated() || s.planReq(req) {
 		return nil
 	}
 	sn := s.Board.Snapshot()
@@ -393,7 +395,7 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (SpawnResult, error) {
 		}
 		return SpawnResult{}, fmt.Errorf("%s is still working; wait for it or spawn a new worker", m.id)
 	}
-	if !role.ReadOnly && !s.isolated() {
+	if !role.ReadOnly && !s.isolated() && !s.planReq(req) {
 		// The reserved member counts as active: the cap applies to reuse as well. (An
 		// isolated run has no writer cap: every writer edits a tree of its own.)
 		if w := s.activeWriters(); w > s.cfg.MaxWriters {
@@ -533,7 +535,7 @@ func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 	if slotErr != nil {
 		return "", slotErr
 	}
-	if !role.ReadOnly && !s.isolated() {
+	if !role.ReadOnly && !s.isolated() && !s.planReq(req) {
 		// (An isolated run has no writer cap: every writer edits a tree of its own.)
 		if w := s.activeWriters(); w >= s.cfg.MaxWriters {
 			return "", writerCapError(w, s.cfg.MaxWriters)
@@ -596,6 +598,58 @@ func (s *Swarm) spawnNew(req SpawnReq, files []string) (string, error) {
 
 // ---- scopes ------------------------------------------------------------------------
 
+// planReq reports whether req assigns an existing planning task (kind=plan): its owner writes nothing while it plans
+// (planPermission), so it is held to neither the writer limit nor scope overlap.
+func (s *Swarm) planReq(req SpawnReq) bool {
+	if req.TaskID == "" {
+		return false
+	}
+	t, ok := s.Board.Snapshot().Task(strings.TrimSpace(req.TaskID))
+	return ok && t.Kind == TaskKindPlan
+}
+
+// onPlan reports whether m's current task is a planning task (kind=plan), during which it writes nothing (planPermission).
+func (s *Swarm) onPlan(m *member) bool {
+	id := m.currentTask()
+	if id == "" {
+		return false
+	}
+	t, ok := s.Board.Snapshot().Task(id)
+	return ok && t.Kind == TaskKindPlan && t.Owner == m.id
+}
+
+// planPermission holds an agent to what a read-only role may do (perm.ReadOnlyAllow: reading, the web, the project's tests and
+// checks, within what the session allows) while its current task is a planning task: a plan's deliverable is the agreement it
+// submits with task done, which the harness does not merge, so a file written meanwhile would reach nobody. A file the plan
+// needs (a contract, a schema, shared types) is a work task of its own. handled is false when the agent is not planning, and
+// for a read-only role, whose own policy already holds it.
+func (s *Swarm) planPermission(ctx context.Context, id string, inner perm.Requester, req perm.Request) (perm.Decision, bool) {
+	if req.Tool == perm.ToolMemory {
+		return perm.Decision{}, false // the agent's own notes change nothing in the project
+	}
+	m := s.get(id)
+	if m == nil || m.manager || m.readOnly || !s.onPlan(m) {
+		return perm.Decision{}, false
+	}
+	why := fmt.Sprintf("%s is a planning task: its deliverable is the agreement you submit with task done, and you change no file while you plan. "+
+		"Put what the plan decides in the agreement; a file it needs (a contract, a schema, shared types) is a work task of its own, which the manager creates after accepting the plan",
+		m.currentTask())
+	if e, ok := inner.(*perm.Engine); ok {
+		if po := e.PlanOnly(perm.ReadOnlyAllow...); po != nil {
+			if d := po.Check(ctx, req); !d.Allow {
+				d.Reason = why + ". Refused: " + planCause(d.Reason)
+				return d, true
+			}
+			return inner.Check(ctx, req), true
+		}
+		return perm.Decision{Reason: why}, true
+	}
+	if req.Writes || (req.Tool == "bash" && !readOnlyCommand(req.Command)) {
+		return perm.Decision{Reason: why}, true
+	}
+	return perm.Decision{}, false
+}
+
 // scopeCheck is the board-side check that a task's scope does not overlap another
 // active writer's. Read-only roles neither take part nor are blocked: they cannot
 // write, so their tasks may share any area. In an isolated run writers do not
@@ -607,10 +661,7 @@ func (s *Swarm) scopeCheck(readOnly bool) TaskCheck {
 		if err := poolAssignment(sn, t); err != nil {
 			return err
 		}
-		if t.Kind == TaskKindPlan && !readOnly {
-			return fmt.Errorf("%s is a read-only planning task: the manager must use spawn with task=%s and role=architect (or scout, reviewer, or a custom read-only role); a writer cannot claim it", t.ID, t.ID)
-		}
-		if readOnly || len(t.Files) == 0 || s.isolated() {
+		if readOnly || t.Kind == TaskKindPlan || len(t.Files) == 0 || s.isolated() {
 			return nil
 		}
 		return s.scopeConflictIn(sn, t)
@@ -636,8 +687,8 @@ func (s *Swarm) scopeConflictIn(sn *Snapshot, t Task) error {
 			// a pool parent's own children are inside its scope by construction, not in its way
 			continue
 		}
-		if s.ownerReadOnly(sn, o.Owner) {
-			continue
+		if o.Kind == TaskKindPlan || s.ownerReadOnly(sn, o.Owner) {
+			continue // a planning task writes nothing (planPermission)
 		}
 		for _, a := range t.Files {
 			for _, b := range o.Files {

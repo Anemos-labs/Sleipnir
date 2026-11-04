@@ -349,12 +349,6 @@ func TestAgreementPlanCanBeReviewedWhileCodeVerificationFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	tool := secRevTool(t, r.sw, "task")
-	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: plan.ID, By: "mgr"}); err == nil {
-		t.Fatal("writer was assigned a read-only planning task")
-	}
-	if result := secRevCall(t, tool, "be-1", "backend", map[string]any{"action": "claim", "id": plan.ID}); !result.IsError {
-		t.Fatal("writer claimed a read-only planning task")
-	}
 	id, err := r.sw.Spawn(SpawnReq{Role: "scout", TaskID: plan.ID, By: "mgr"})
 	if err != nil {
 		t.Fatal(err)
