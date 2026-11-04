@@ -45,6 +45,7 @@ test('a running card whose owner works on it now is live; one the stall detector
   await L.event('stall', { id: 'be-1', task: 'T2', kind: 'no progress', s: 'raise', text: 'no edit in 10 minutes' }); await L.step(1);
   const c = card(L, 'T2');
   assert.ok(c.classList.contains('stalled'));
+  assert.ok(c.querySelector('.smark'), 'a ⚠ on its owner line, in the Cockpit too, whatever its owner\'s colour');
   assert.match(c.querySelector('.twhy').textContent, /⚠ no edit in 10 minutes/, 'the Board view says what stalls it on the card');
   await L.event('stall', { id: 'be-1', task: 'T2', kind: 'no progress', s: 'clear', text: '' }); await L.step(1);
   assert.ok(!card(L, 'T2').classList.contains('stalled'));
@@ -75,4 +76,24 @@ test('the server\'s since wins over the event\'s own t: a page loaded from a key
   await L.step(1); L.SL.views.show('board'); await L.settle();
   assert.equal(S.m.tasks.T8.since, t0 - 600);
   assert.match(age(L, 'T8'), /^1\dm$/);
+});
+
+test('on the Board view a task that moved has a history strip: a segment per stretch, and how often it was sent back', async () => {
+  const L = await boot(), S = L.SL.sessions.active;
+  await L.step(1); const t0 = S.vt;
+  const hist = [{ t: t0, s: 'todo' }, { t: t0 + 1, s: 'running', owner: 'be-1' }, { t: t0 + 2, s: 'verify', owner: 'be-1' }, { t: t0 + 3, s: 'running', owner: 'fe-1' }];
+  await L.event('task', { id: 'T6', title: 'pager', s: 'running', owner: 'fe-1', t: t0 + 3, hist });
+  await L.event('task', { id: 'T7', title: 'fresh', s: 'todo', t: t0 + 3, hist: [{ t: t0 + 3, s: 'todo' }] });
+  await L.step(2); L.SL.views.show('board'); await L.settle(); await L.step(1);
+  const h = card(L, 'T6').querySelector('.thist');
+  assert.ok(h, 'a task that moved has a strip');
+  const segs = h.querySelectorAll('.thbar i');
+  assert.equal(segs.length, 4, 'todo, running be-1, verify, running fe-1');
+  assert.match(h.textContent, /↩ 1/, 'sent back once, from verify to running');
+  assert.match(segs[1].title, /^running · be-1 · 1s$/);
+  assert.match(segs[3].title, /^running · fe-1 · \d+s$/, 'the open stretch runs to the view clock');
+  assert.equal(card(L, 'T7').querySelector('.thist'), null, 'a task that never moved has none');
+  await L.event('task', { id: 'T6', title: 'pager', s: 'running', owner: 'fe-1', t: t0 + 9 }); await L.step(1);
+  assert.deepEqual(S.m.tasks.T6.hist.length, 0, 'an event without hist clears it, as for every field of a task event');
+  assert.equal(card(L, 'T6').querySelector('.thist'), null);
 });
