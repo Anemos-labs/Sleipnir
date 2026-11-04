@@ -19,6 +19,8 @@
     return String(v);
   };
   const fmtN = n => Math.round(n).toLocaleString('en-US');
+  /** An effort estimate in hours as the plan writes it (internal/plan FormatHours): "45m", "3h", "1.5h". */
+  const fmtHours = h => { h = Number(h) || 0; return h < 1 ? Math.max(1, Math.round(h * 60)) + 'm' : String(Math.round(h * 10) / 10) + 'h'; };
   const fmtUsd = (n, d) => '$' + n.toFixed(d == null ? (n < .1 ? 4 : 2) : d);
   /** Usage a subscription plan covered (a ChatGPT sign-in) bills nothing per token: its figure is shown at the API list price, with a '≈'
    *  and the plan tag, and PLAN_HELP is what the tag says (the terminal's state.PlanHelp, word for word). */
@@ -130,6 +132,6 @@
     const t = document.createElement('template'); t.innerHTML = html;
     morphKids(el, t.content);
   }
-  SL.u = { morph, composing, agCol, okId, safeId, BAD_ID, own, clip1, NSV, $, $$, esc, fmtK, fmtN, fmtUsd, PLAN_HELP, spendOf, fmtSpend, planTag, planOnly, budgetPct, fmtMs, splitArgs, pct, clock, mmss, tod, dur, clamp, hitCls, mk, sv, frag, rng, hash, uid, deepCopy, upperBound, makeBus, copy, ucfirst };
+  SL.u = { morph, composing, agCol, okId, safeId, BAD_ID, own, clip1, NSV, $, $$, esc, fmtK, fmtN, fmtHours, fmtUsd, PLAN_HELP, spendOf, fmtSpend, planTag, planOnly, budgetPct, fmtMs, splitArgs, pct, clock, mmss, tod, dur, clamp, hitCls, mk, sv, frag, rng, hash, uid, deepCopy, upperBound, makeBus, copy, ucfirst };
   SL.bus = makeBus();
 })(SL);

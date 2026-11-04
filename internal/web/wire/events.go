@@ -216,6 +216,10 @@ type Plan struct {
 	Base
 	Steps []string `json:"steps"`
 	St    []string `json:"st"`
+	// Eff is each step's effort estimate in hours (0: none) and Mile the goal milestone each serves ("": none); both are left out of
+	// a plan whose steps have none.
+	Eff  []float64 `json:"eff,omitempty"`
+	Mile []string  `json:"mile,omitempty"`
 }
 
 // Verdict is the goal judge's verdict as one line. Kind is checking (the judge is reading the evidence of a turn), continue, done or

@@ -292,15 +292,21 @@
     }
 
     /* ---------- plan box ---------- */
-    const planBox = $('#planBox'), GL = { done: '✓', verify: '▸', act: '✎', edit: '✎', ask: '?', queued: '◌', pending: '◌' };
-    const SHORT = { done: 'done', verify: 'verify', act: 'running', edit: 'editing', ask: 'asks you', queued: 'queued', pending: 'pending' };
+    const planBox = $('#planBox'), GL = { done: '✓', claimed: '◐', verify: '▸', act: '✎', edit: '✎', ask: '?', queued: '◌', pending: '◌' };
+    const SHORT = { done: 'done', claimed: 'not met yet', verify: 'verify', act: 'running', edit: 'editing', ask: 'asks you', queued: 'queued', pending: 'pending' };
     function renderPlan(S, m) {
       if (!S.meta.goalText && !(m.goal.objective && m.goal.state !== 'cleared') && !m.torder.length) { planBox.hidden = true; return; } planBox.hidden = false;
-      const n = m.plan.filter(s => s === 'done').length, open = S.ui.planOpen, segs = m.plan.map(s => '<i class="' + (s === 'done' ? 'done' : ['verify', 'edit', 'act', 'ask'].includes(s) ? 'act' : '') + '"></i>').join('');
+      const open = S.ui.planOpen, P = calc.plan(m), n = m.plan.filter(s => s === 'done').length, hrs = SL.u.fmtHours;
+      /* one bar, each step a share of it as large as its estimate: done (green), claimed (marked done, its milestone ruled unmet), in hand, open, and a share for each milestone no step names */
+      const segs = m.plan.map((s, i) => '<i class="' + (s === 'done' ? (P.unmet[i] ? 'claimed' : 'done') : ['verify', 'edit', 'act', 'ask'].includes(s) ? 'act' : '') + '" style="flex-grow:' + P.w[i].toFixed(3) + '"></i>').join('') + P.missing.map(() => '<i class="miss" style="flex-grow:' + (P.total > 0 && P.w.length ? (P.w.reduce((a, b) => a + b, 0) / P.w.length).toFixed(3) : 1) + '"></i>').join('');
       const ms = m.goal.milestones || [], msTag = ms.length ? '<span class="num dim" style="font-size:11px" title="milestones the judge found met">· ' + ms.filter(x => x.met).length + '/' + ms.length + ' milestones</span>' : '';
+      const ptitle = n + ' of ' + m.plan.length + ' steps marked done' + (P.hours ? '; weighed by the estimates, ' + hrs(P.done) + ' of ' + hrs(P.total) + ' is done' : '; no step has an estimate, so each weighs the same') + (P.claimed ? '; ' + (P.hours ? hrs(P.claimed) + ' of steps' : 'steps') + ' marked done wait on a milestone the judge found unmet' : '') + (P.missing.length ? '; no step yet for ' + P.missing.join(', ') : '');
+      const pnum = '<span class="num dim ppct" style="font-size:11px" title="' + esc(ptitle) + '">' + P.pct + '%' + (P.hours ? ' · ' + hrs(Math.max(0, P.total - P.done)) + ' left' : '') + '</span>';
       const verdict = m.verdict ? '<div class="verdict ' + (m.goal.state === 'met' ? 'met' : '') + '"><b>judge</b>' + esc(m.verdict.replace(/`/g, '')) + '</div>' : '';
-      const list = '<ul class="plist cp">' + S.plan.map((p, i) => '<li class="' + m.plan[i] + '"><span class="pg">' + GL[m.plan[i]] + '</span><span class="pt">' + (i + 1) + '. ' + esc(p) + '</span><span class="pc">' + (SHORT[m.plan[i]] || m.plan[i]) + '</span></li>').join('') + '</ul>';
-      const html = '<button type="button" id="planTgl" aria-expanded="' + open + '"><span class="ptitle">Goal plan</span><span class="num dim" style="font-size:11px">' + n + '/' + S.plan.length + '</span>' + msTag + '<span class="pprog">' + segs + '</span><span class="dim" aria-hidden="true">' + (open ? '▾' : '▸') + '</span></button>' + (open ? '<div>' + list + verdict + '</div>' : '');
+      const tag = i => { const t = [m.planMs[i], (m.planEff[i] || 0) > 0 ? hrs(m.planEff[i]) : ''].filter(Boolean).join(' · '); return t ? ' <span class="ptag">' + esc(t) + '</span>' : ''; };
+      const list = '<ul class="plist cp">' + S.plan.map((p, i) => { const st = m.plan[i] === 'done' && P.unmet[i] ? 'claimed' : m.plan[i]; return '<li class="' + st + '"><span class="pg">' + (GL[st] || GL[m.plan[i]]) + '</span><span class="pt">' + (i + 1) + '. ' + esc(p) + tag(i) + '</span><span class="pc">' + (SHORT[st] || st) + '</span></li>'; }).join('') +
+        P.missing.map(id => '<li class="miss"><span class="pg">◌</span><span class="pt">' + esc(id) + ' <span class="dim">' + esc(((ms.find(x => x.id === id) || {}).text || '').slice(0, 120)) + '</span></span><span class="pc">no step yet</span></li>').join('') + '</ul>';
+      const html = '<button type="button" id="planTgl" aria-expanded="' + open + '"><span class="ptitle">Goal plan</span>' + pnum + msTag + '<span class="pprog">' + segs + '</span><span class="dim" aria-hidden="true">' + (open ? '▾' : '▸') + '</span></button>' + (open ? '<div>' + list + verdict + '</div>' : '');
       if (planBox._h !== html) { planBox._h = html; planBox.innerHTML = html; }
     }
     sc.listen(planBox, 'click', e => { if (e.target.closest('#planTgl')) { const S = SL.sessions.active; S.ui.planOpen = !S.ui.planOpen; planBox._h = ''; renderPlan(S, S.m); } });
