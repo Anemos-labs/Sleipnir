@@ -73,6 +73,9 @@ func (t *Translator) syncTask(id string, ts float64, force bool) {
 	if len(ev.Deps) == 0 {
 		ev.Deps = nil
 	}
+	for _, h := range tk.History {
+		ev.Hist = append(ev.Hist, Stretch{T: t.sessT(h.At), S: stretchCol(h.State), Owner: uiID(h.Owner)})
+	}
 	if !t.isolated() && tk.VerificationFailures != t.d.queue.vfails[id] {
 		if n := tk.VerificationFailures - t.d.queue.vfails[id]; n > 0 && !t.d.history && !force { // a history's are not counted
 			t.d.queue.bounced += n
@@ -91,14 +94,30 @@ func (t *Translator) syncTask(id string, ts float64, force bool) {
 	c := *ev
 	c.Deps = append([]string(nil), ev.Deps...)
 	c.PoolMembers = append([]string(nil), ev.PoolMembers...)
+	c.Hist = append([]Stretch(nil), ev.Hist...)
 	o.ev = &c
 	t.put(ev, ts, 0, nil)
+}
+
+// stretchCol is the page's word for the column of a stretch of a task's life.
+func stretchCol(s state.TaskState) string {
+	switch s {
+	case state.TaskRunning:
+		return "running"
+	case state.TaskVerifying:
+		return "verify"
+	case state.TaskMerged:
+		return "merged"
+	case state.TaskFailed:
+		return "failed"
+	}
+	return "todo"
 }
 
 // sameTask reports whether two task events say the same thing.
 func sameTask(a, b *TaskX) bool {
 	return a.ID == b.ID && a.Title == b.Title && a.Owner == b.Owner && a.Scope == b.Scope && a.S == b.S && a.Closure == b.Closure &&
-		a.Failed == b.Failed && a.Attempts == b.Attempts && a.Blocked == b.Blocked && a.Cost == b.Cost && a.Plan == b.Plan && a.Reqs == b.Reqs && a.Since == b.Since && reflect.DeepEqual(a.Deps, b.Deps) && a.Parent == b.Parent && a.PoolPhase == b.PoolPhase && reflect.DeepEqual(a.PoolMembers, b.PoolMembers)
+		a.Failed == b.Failed && a.Attempts == b.Attempts && a.Blocked == b.Blocked && a.Cost == b.Cost && a.Plan == b.Plan && a.Reqs == b.Reqs && a.Since == b.Since && reflect.DeepEqual(a.Hist, b.Hist) && reflect.DeepEqual(a.Deps, b.Deps) && a.Parent == b.Parent && a.PoolPhase == b.PoolPhase && reflect.DeepEqual(a.PoolMembers, b.PoolMembers)
 }
 
 // closureKind is the kind of a closure written as kind or kind(target).

@@ -65,6 +65,16 @@ type TaskX struct {
 	// Since is the session time (seconds) at which the task entered its column or changed hands: what its time in the column counts
 	// from. A keyframe re-dates every event, so the page cannot learn it from the event's own t.
 	Since float64 `json:"since,omitempty"`
+	// Hist is the task's life as stretches, oldest first (state.Task.History): the session time each began, its column (todo,
+	// running, verify, merged, or failed) and who held the task then. The board draws it as the card's history strip.
+	Hist []Stretch `json:"hist,omitempty"`
+}
+
+// Stretch is one stretch of a task's life on the page: from T (session seconds), in column S, held by Owner.
+type Stretch struct {
+	T     float64 `json:"t"`
+	S     string  `json:"s"`
+	Owner string  `json:"owner,omitempty"`
 }
 
 // MailX is a mail event with Tok, the estimated size of the text in tokens, and Digest, the number of messages a mailman's digest

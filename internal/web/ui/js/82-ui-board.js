@@ -141,6 +141,11 @@
     const S = B.S || (SL.sessions && SL.sessions.active), vt = S && typeof S.vt === 'number' ? S.vt : null;
     Object.keys(B.nodes).forEach(id => {
       const n = B.nodes[id], t = m.tasks[id]; if (!n || !t) return;
+      if (B.big) {
+        const hh = n.classList.contains('trow') ? '' : histHtml(t, vt); let hs = n.querySelector('.thist');
+        if (!hh) { if (hs) hs.remove(); }
+        else if (!hs || hs._h !== hh) { const x = document.createElement('span'); x.innerHTML = hh; const nx = x.firstChild; nx._h = hh; if (hs) hs.replaceWith(nx); else { const tti = n.querySelector('.tti'); if (tti) tti.after(nx); else n.appendChild(nx); } }
+      }
       const tow = n.querySelector('.tcr .tow'), word = !t.failed && AGE_WORD[t.st], since = typeof t.since === 'number' ? t.since : t.t;
       let a = n.querySelector('.amark');
       if (!word || vt == null || typeof since !== 'number' || !tow || n.classList.contains('trow')) { if (a) a.remove(); return; }
@@ -149,5 +154,26 @@
       if (a.textContent !== text) { a.textContent = text; a.title = word + ' for ' + U.dur(s) + (t.owner && t.st !== 'todo' ? ', held by ' + t.owner : ''); }
     });
   }
-  ui.board = { make, update, layout, ages, ageShort, COLS, COMPACT_AT, idCmp, newestMerged, resolved };
+  /** The colour of a stretch of a task's life on its history strip. */
+  const HIST_COL = { todo: 'var(--warm)', running: 'var(--ok)', verify: 'var(--info)', merged: 'var(--ok)' };
+  /** A task's history strip (the Board view only, once the task has moved at least once): one segment per stretch of its life (a
+   *  column and an owner; Task.hist, from the server), as wide as it lasted and coloured by column (a running stretch in its owner's
+   *  colour, a failed one red), then how many times the task was sent back. A task sent back three times draws its struggle where it sits. Returns the
+   *  strip's HTML, or '' for none. */
+  function histHtml(t, vt) {
+    const h = t.hist; if (!Array.isArray(h) || h.length < 2 || typeof vt !== 'number') return '';
+    const order = { todo: 0, running: 1, verify: 2, merged: 3 }; let back = 0;
+    const segs = h.map((x, i) => {
+      const end = i + 1 < h.length ? h[i + 1].t : (x.s === 'merged' || x.s === 'failed' ? x.t : vt), d = Math.max(0, end - x.t);
+      if (i > 0 && x.s in order && h[i - 1].s in order && order[x.s] < order[h[i - 1].s]) back++;
+      const col = x.s === 'failed' ? 'var(--err)' : x.s === 'running' && x.owner ? agCol(x.owner) : HIST_COL[x.s] || 'var(--dim)';
+      const what = x.s + (x.owner ? ' · ' + x.owner : '') + (end > x.t || i + 1 < h.length ? ' · ' + U.dur(d) : '');
+      /* a closed task's last stretch is a mark, not a span; stretches of an earlier run all start at 0 and share the bar evenly */
+      const closed = i + 1 === h.length && (x.s === 'merged' || x.s === 'failed');
+      return '<i style="flex-grow:' + (closed ? 0 : Math.max(1, Math.round(d))) + ';background:' + col + '" title="' + esc(what) + '"></i>';
+    });
+    const tail = back ? '<span class="warm" title="' + esc('sent back ' + back + ' time' + (back === 1 ? '' : 's')) + '">↩ ' + back + '</span>' : '';
+    return '<span class="thist" role="img" aria-label="' + esc(h.length + ' stretches' + (back ? ', sent back ' + back + ' time' + (back === 1 ? '' : 's') : '')) + '"><span class="thbar">' + segs.join('') + '</span>' + tail + '</span>';
+  }
+  ui.board = { make, update, layout, ages, ageShort, histHtml, COLS, COMPACT_AT, idCmp, newestMerged, resolved };
 })(SL);
