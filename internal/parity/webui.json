@@ -1634,6 +1634,15 @@
   },
   {
    "group": "the program (sleipnir ...)",
+   "name": "sleipnir tooleval",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:tooleval"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
    "name": "sleipnir trust",
    "kind": "program",
    "live": true,
@@ -2631,6 +2640,7 @@
    "mock",
    "sim",
    "council",
+   "tooleval",
    "plugins",
    "plugins add",
    "plugins disable",
@@ -3148,6 +3158,29 @@
      "target",
      "timeout",
      "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "tooleval": {
+    "mode": "net",
+    "positionals": [],
+    "flags": [
+     "case",
+     "cases",
+     "harvest",
+     "json",
+     "max-tokens",
+     "min-pass",
+     "model",
+     "out",
+     "parallel",
+     "samples",
+     "sizes",
+     "timeout",
+     "trust-project",
+     "variants"
     ],
     "modeWith": {
      "trust-project": "priv"
