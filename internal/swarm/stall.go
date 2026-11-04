@@ -65,7 +65,7 @@ const (
 	// over and over finds what its first pass found; the reviewer is told to write the report with what it has.
 	StallReviewOverrun StallKind = "review_overrun"
 	// StallTaskOverrun: a running worker that is not a reviewer has held its current assignment for longer than
-	// Config.TaskTimeout. Whatever it is doing, a task that takes that long is too big or going nowhere: the worker is told to
+	// Config.TaskTimeout, not counting the time the task waited blocked (reviewGate.blocked). Whatever it is doing, a task that takes that long is too big or going nowhere: the worker is told to
 	// finish with what it has, hand the task over, or block it saying why.
 	StallTaskOverrun StallKind = "task_overrun"
 )
