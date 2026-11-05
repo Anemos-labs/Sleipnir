@@ -200,26 +200,13 @@ func (m *Workspaces) checkContainer(ctx context.Context, task rl.Task) error {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, docker, "image", "inspect", "--format", "{{.Id}}", task.Container.Image)
-	cmd.Env = dockerEnv()
+	// The probe runs in the environment the task's docker commands get (scrubbed, with --pass-env and --set-env applied), so it fails
+	// exactly when they would: a daemon the harness reaches through DOCKER_HOST is reached by the commands only if the operator passes it.
+	cmd.Env = m.commandEnv(m.root, m.root, true, "")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return Infraf("container", "image %s of task %s is not available here (a rollout does not pull: `docker pull` it first): %v: %s", task.Container.Image, task.ID, err, strings.TrimSpace(string(out)))
 	}
 	return nil
-}
-
-// dockerEnv is the environment the docker client of a probe runs in: a minimal PATH and the variables that say which daemon it talks to.
-func dockerEnv() []string {
-	env := []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL=C"}
-	// Each variable is named in full: they say where the daemon is and where its configuration lives, never a credential.
-	for _, kv := range [][2]string{
-		{"DOCKER_HOST", os.Getenv("DOCKER_HOST")}, {"DOCKER_CONTEXT", os.Getenv("DOCKER_CONTEXT")}, {"DOCKER_CONFIG", os.Getenv("DOCKER_CONFIG")},
-		{"XDG_RUNTIME_DIR", os.Getenv("XDG_RUNTIME_DIR")}, {"HOME", os.Getenv("HOME")},
-	} {
-		if kv[1] != "" {
-			env = append(env, kv[0]+"="+kv[1])
-		}
-	}
-	return env
 }
 
 // containerKey is what of a task's container the cached snapshot depends on: setup runs in the image, so another image, workdir or PATH
@@ -231,9 +218,9 @@ func containerKey(t rl.Task) string {
 	return "container\x00" + t.Container.Image + "\x00" + t.Container.Workdir + "\x00" + t.Container.Path
 }
 
-// containerConflict says why a container task cannot run under the confinement this run uses ("" when it can): the container confines the
+// ContainerConflict says why a container task cannot run under the confinement this run uses ("" when it can): the container confines the
 // agent's commands, and a verifier that starts docker itself (as one for an image task does) cannot do so inside bubblewrap.
-func (m *Workspaces) containerConflict(t rl.Task) string {
+func (m *Workspaces) ContainerConflict(t rl.Task) string {
 	if t.Container != nil && m.Confined() {
 		return "a container task runs without --confine bwrap: the container confines the agent's commands, and the verifier needs docker"
 	}

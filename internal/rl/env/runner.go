@@ -657,7 +657,7 @@ func (rn *run) rollout(ctx context.Context, j job) (res RolloutResult) {
 		base.Error = "missing " + strings.Join(missing, ", ")
 		return base
 	}
-	if why := rn.r.Workspaces.containerConflict(j.task); why != "" {
+	if why := rn.r.Workspaces.ContainerConflict(j.task); why != "" {
 		base.Status = StatusSkipped
 		base.Error = why
 		return base

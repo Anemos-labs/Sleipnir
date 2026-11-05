@@ -66,6 +66,7 @@ func TestValidateTask(t *testing.T) {
 		{"container option-like image", func(t *rl.Task) { t.Container = &rl.Container{Image: "--privileged"} }, "container.image"},
 		{"container image with space", func(t *rl.Task) { t.Container = &rl.Container{Image: "a b"} }, "container.image"},
 		{"container relative workdir", func(t *rl.Task) { t.Container = &rl.Container{Image: "a", Workdir: "repo"} }, "container.workdir"},
+		{"container workdir with comma", func(t *rl.Task) { t.Container = &rl.Container{Image: "a", Workdir: "/w,x"} }, "container.workdir"},
 		{"container root workdir", func(t *rl.Task) { t.Container = &rl.Container{Image: "a", Workdir: "/"} }, "container.workdir"},
 		{"container unclean workdir", func(t *rl.Task) { t.Container = &rl.Container{Image: "a", Workdir: "/a/../b"} }, "container.workdir"},
 		{"container path newline", func(t *rl.Task) { t.Container = &rl.Container{Image: "a", Path: "/a\n/b"} }, "container.path"},

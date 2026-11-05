@@ -235,6 +235,8 @@ func validateContainer(t rl.Task) []*TaskError {
 	}
 	if c.Workdir != "" && (!path.IsAbs(c.Workdir) || path.Clean(c.Workdir) != c.Workdir || c.Workdir == "/") {
 		add("workdir", "%q must be a clean absolute path other than /", c.Workdir)
+	} else if c.Workdir != "" && bindable(c.Workdir) != nil {
+		add("workdir", "%q cannot be mounted into a container (no commas, quotes or line breaks)", c.Workdir)
 	}
 	if strings.ContainsAny(c.Path, "\n\r\x00") {
 		add("path", "must not contain line breaks")

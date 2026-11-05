@@ -238,7 +238,7 @@ func TestContainerTaskNeedsDockerAndNoBwrap(t *testing.T) {
 	if got := m.MissingTools(goodTask("plain")); len(got) != 0 {
 		t.Fatalf("a task without a container does not need docker: %q", got)
 	}
-	if why := m.containerConflict(task); why != "" {
+	if why := m.ContainerConflict(task); why != "" {
 		t.Fatalf("no confinement here, so no conflict: %q", why)
 	}
 	if err := m.checkContainer(context.Background(), task); err == nil || !IsInfra(err) || !strings.Contains(err.Error(), "needs docker") {
@@ -280,11 +280,63 @@ func TestContainerTaskIsSkippedUnderBwrap(t *testing.T) {
 	}
 	t.Cleanup(m.Close)
 	task := goodTask("c4")
-	if why := m.containerConflict(task); why != "" {
+	if why := m.ContainerConflict(task); why != "" {
 		t.Fatalf("a task without a container has no conflict: %q", why)
 	}
 	task.Container = &rl.Container{Image: "img"}
-	if why := m.containerConflict(task); !strings.Contains(why, "--confine bwrap") {
+	if why := m.ContainerConflict(task); !strings.Contains(why, "--confine bwrap") {
 		t.Fatalf("conflict = %q", why)
+	}
+}
+
+func TestImageCheckRunsInTheEnvironmentOfTheTaskCommands(t *testing.T) {
+	posixOnly(t)
+	seen := filepath.Join(t.TempDir(), "seen")
+	dir := t.TempDir()
+	script := "#!/bin/sh\nprintf '%s' \"$DOCKER_CONTEXT\" > " + seen + "\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	t.Setenv("DOCKER_CONTEXT", "remote-daemon")
+	task := goodTask("c5")
+	task.Container = &rl.Container{Image: "img"}
+	check := func(passEnv []string) string {
+		m, err := NewWorkspaces(WorkspaceOptions{Root: filepath.Join(t.TempDir(), "root"), DisableNetIsolation: true, PassEnv: passEnv})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer m.Close()
+		_ = os.Remove(seen)
+		if err := m.checkContainer(context.Background(), task); err != nil {
+			t.Fatal(err)
+		}
+		b, _ := os.ReadFile(seen)
+		return string(b)
+	}
+	// The harness's own daemon variables do not reach the check, as they do not reach the commands, unless the operator passes them:
+	// a check that succeeds where the commands cannot connect would turn an infrastructure failure into a failed episode.
+	if got := check(nil); got != "" {
+		t.Errorf("the check saw DOCKER_CONTEXT=%q that the commands will not have", got)
+	}
+	if got := check([]string{"DOCKER_CONTEXT"}); got != "remote-daemon" {
+		t.Errorf("a passed DOCKER_CONTEXT must reach the check, got %q", got)
+	}
+}
+
+func TestSavepointWorkspacesCheckTheContainerToo(t *testing.T) {
+	m, err := NewWorkspaces(WorkspaceOptions{Root: filepath.Join(t.TempDir(), "root"), DisableNetIsolation: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	t.Setenv("PATH", t.TempDir())
+	task := goodTask("c6")
+	task.Container = &rl.Container{Image: "img"}
+	if _, err := m.PrepareID(context.Background(), task, "sp1"); err == nil || !IsInfra(err) || !strings.Contains(err.Error(), "needs docker") {
+		t.Fatalf("PrepareID = %v", err)
+	}
+	if _, err := m.RestoreWorkspace(context.Background(), task, WorkspaceInfo{ID: "sp1"}, t.TempDir(), t.TempDir()); err == nil || !IsInfra(err) || !strings.Contains(err.Error(), "needs docker") {
+		t.Fatalf("RestoreWorkspace = %v", err)
 	}
 }

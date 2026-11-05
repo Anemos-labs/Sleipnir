@@ -121,7 +121,7 @@ is needed and no call can bypass it. Endpoints that cannot return ids are captur
   verifier for an image task runs `docker run` on the verification checkout. A machine without docker skips these tasks like a
   missing tool, and the snapshot cache keys a container task by its image, `workdir` and `path`. The container's working directory is the
   task's tree, where every agent of a rollout works (the default `swarm.isolation` of `none`). The commands reach the docker daemon
-  through the environment's scrubbed variables, so a daemon at a non-default address needs `--pass-env DOCKER_HOST`.
+  through the environment's scrubbed variables, as does the image check before a workspace is made, so a daemon at a non-default address needs `--pass-env DOCKER_HOST` (and `DOCKER_CONTEXT` for a context). `rl tasks check` skips a container task under `--confine bwrap` with the same reason a rollout does.
 * **Score breakdown.** The last stdout line of a `json-score` verifier may say how its score was made:
   `{"score": s, "units": {"<unit>": {"passed": n, "total": m, "weight": w}}, "guards": {"kept": k, "total": g}}`.
   A unit is a part of the work (a milestone of a test suite) of which `n` of `m` checks passed, weighing `w` (1 when
