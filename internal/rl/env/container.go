@@ -210,9 +210,13 @@ func (m *Workspaces) checkContainer(ctx context.Context, task rl.Task) error {
 // dockerEnv is the environment the docker client of a probe runs in: a minimal PATH and the variables that say which daemon it talks to.
 func dockerEnv() []string {
 	env := []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL=C"}
-	for _, name := range []string{"DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "XDG_RUNTIME_DIR", "HOME"} {
-		if v := os.Getenv(name); v != "" {
-			env = append(env, name+"="+v)
+	// Each variable is named in full: they say where the daemon is and where its configuration lives, never a credential.
+	for _, kv := range [][2]string{
+		{"DOCKER_HOST", os.Getenv("DOCKER_HOST")}, {"DOCKER_CONTEXT", os.Getenv("DOCKER_CONTEXT")}, {"DOCKER_CONFIG", os.Getenv("DOCKER_CONFIG")},
+		{"XDG_RUNTIME_DIR", os.Getenv("XDG_RUNTIME_DIR")}, {"HOME", os.Getenv("HOME")},
+	} {
+		if kv[1] != "" {
+			env = append(env, kv[0]+"="+kv[1])
 		}
 	}
 	return env
