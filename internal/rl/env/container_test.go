@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -12,6 +13,14 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/rl"
 )
+
+// posixOnly skips a test that needs a POSIX shell, absolute POSIX paths or a docker script: container tasks run on Linux and macOS hosts.
+func posixOnly(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("container tasks need a POSIX host")
+	}
+}
 
 // pair reports whether argv holds flag immediately followed by value.
 func pair(argv []string, flag, value string) bool {
@@ -34,6 +43,7 @@ func mountArgs(argv []string) []string {
 }
 
 func TestContainerArgv(t *testing.T) {
+	posixOnly(t)
 	tree, home, tmp, cache := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
 	c := ContainerRun{
 		Spec: rl.Container{Image: "docker.io/x/y:1", Workdir: "/repo"}, Docker: "/usr/bin/docker", Tree: tree, Dir: tree, UID: -1, GID: -1,
@@ -98,6 +108,7 @@ func TestContainerArgv(t *testing.T) {
 }
 
 func TestContainerArgvRefusesWhatItCannotMountSafely(t *testing.T) {
+	posixOnly(t)
 	tree := t.TempDir()
 	base := ContainerRun{Spec: rl.Container{Image: "a"}, Docker: "/usr/bin/docker", Tree: tree, UID: -1, GID: -1}
 	cases := map[string]struct {
@@ -139,6 +150,7 @@ func fakeDocker(t *testing.T) (docker, log string) {
 }
 
 func TestSandboxRunsInTheContainer(t *testing.T) {
+	posixOnly(t)
 	tree := t.TempDir()
 	docker, log := fakeDocker(t)
 	s := testSandbox(t)
@@ -169,6 +181,7 @@ func TestSandboxRunsInTheContainer(t *testing.T) {
 }
 
 func TestCommandPrefixOfAContainerTask(t *testing.T) {
+	posixOnly(t)
 	m, err := NewWorkspaces(WorkspaceOptions{Root: filepath.Join(t.TempDir(), "root"), DisableNetIsolation: true})
 	if err != nil {
 		t.Fatal(err)
@@ -234,6 +247,7 @@ func TestContainerTaskNeedsDockerAndNoBwrap(t *testing.T) {
 }
 
 func TestCheckContainerRejectsAnImageThatIsNotThere(t *testing.T) {
+	posixOnly(t)
 	m, err := NewWorkspaces(WorkspaceOptions{Root: filepath.Join(t.TempDir(), "root"), DisableNetIsolation: true})
 	if err != nil {
 		t.Fatal(err)
