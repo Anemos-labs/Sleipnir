@@ -223,6 +223,18 @@ func (ev *evaluator) judge(u *unit) verdict {
 			return v
 		}
 	}
+	if check := ev.e.writeChecker(); check != nil && ev.r.Agent != "" && !(ev.r.VerifiedIntegration && ev.r.Role == "manager") {
+		for _, a := range all {
+			if !a.write || a.dynamic || a.guess || a.format || a.lex == "" || ev.rs.inTmp(a.real) {
+				continue
+			}
+			if why := check(ev.r.Agent, a.lex, a.tree); why != "" {
+				v := deny(why)
+				v.origin, v.tier = OriginScope, TierHard
+				return v
+			}
+		}
+	}
 	if r := ev.restrictMatch(ev.v.deny, u, all); r != nil {
 		return deny("denied by rule " + r.String()).by(r)
 	}

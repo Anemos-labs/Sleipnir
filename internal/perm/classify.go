@@ -22,6 +22,8 @@ const (
 	OriginTests = "the tests preset"
 	// OriginIsolation is the confinement of a worker to its own tree.
 	OriginIsolation = "isolation"
+	// OriginScope is a write check the embedder installed (Engine.SetWriteCheck): a swarm worker's task scope.
+	OriginScope = "task scope"
 )
 
 // Tiers of a decision, as Classify reports them.

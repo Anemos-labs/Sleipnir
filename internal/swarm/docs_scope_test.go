@@ -360,3 +360,22 @@ func TestAParentWhoseChildrenCarriedTheWorkCountsAsMergingNothing(t *testing.T) 
 		t.Fatalf("emptyMerges = %v, want only T1 (a parent whose child carried its work)", got)
 	}
 }
+
+// A change inside a project of its own below the root (a directory with a go.mod, a package.json, a .git) names that project's
+// README.md, whether or not it exists yet: a project made in a subdirectory of the session's directory had its README refused to
+// every catch-up pass, since "*.md" names the session's directory alone.
+func TestDocsCatchUpScopeNamesTheSubprojectReadme(t *testing.T) {
+	cfg := Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "docs"}}
+	r := newRVRigWith(t, cfg, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	root := r.sw.deps.Root
+	if err := os.MkdirAll(filepath.Join(root, "check", "internal", "store"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "check", "go.mod"), []byte("module check\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	batch := []docsChange{{task: "T1", files: []string{"check/internal/store/**"}}, {task: "T2", files: []string{"check/go.mod"}}, {task: "T3", files: []string{"web/**"}}}
+	if got, want := strings.Join(r.sw.docsScopeFor(batch), " "), "*.md docs/** check/README.md"; got != want {
+		t.Fatalf("scope = %q, want %q", got, want)
+	}
+}

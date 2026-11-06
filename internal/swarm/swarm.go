@@ -520,6 +520,11 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	if s.isolated() {
 		s.Leases.Isolate()
 		s.Leases.SetTreeParent(deps.Isolation.Manager.Dir)
+	} else if c, ok := deps.Perm.(interface {
+		SetWriteCheck(func(agent, path string, tree bool) string)
+	}); ok {
+		// One shared tree: a worker's shell is held to its task's scope as its file tools are (Leases.ShellWriteCheck).
+		c.SetWriteCheck(s.Leases.ShellWriteCheck)
 	}
 	s.Gov = NewGovernor(GovernorConfig{RPM: cfg.RPM, MaxConcurrent: cfg.MaxConcurrent, Admit: s.budgetErr,
 		OnEvent: func(action string, data map[string]any) {
