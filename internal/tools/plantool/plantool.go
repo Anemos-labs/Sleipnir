@@ -11,6 +11,9 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
+// ManagerRole is the role of a team's manager (swarm.ManagerRole), whose plan may have a step doing for each worker on one.
+const ManagerRole = "manager"
+
 // Tool sets the calling agent's plan in a store.
 type Tool struct {
 	store *plan.Store
@@ -55,7 +58,11 @@ func (t *Tool) Run(_ context.Context, c *tools.Call) (*tools.Result, error) {
 	if err := json.Unmarshal(c.Input, &in); err != nil {
 		return tools.Errorf(`invalid arguments (%v): send {"items": [{"step": "...", "status": "pending"}, ...]}`, err), nil
 	}
-	items, err := plan.Normalize(in.Items)
+	normalize := plan.Normalize
+	if c.Env.Role == ManagerRole {
+		normalize = plan.NormalizeDelegated // its steps are carried by its workers, several at once
+	}
+	items, err := normalize(in.Items)
 	if err != nil {
 		return tools.Errorf("%v", err), nil
 	}

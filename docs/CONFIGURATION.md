@@ -442,8 +442,9 @@ using it keeps a machine that answers:
   `cargo run`, `dotnet run` or `docker compose up`, is light, while `docker compose build` is heavy) and every verification run (`swarm` done checks and the integration queue)
   takes one of `heavy_slots` slots before it starts. The slots are files under `<state>/run/slots/` locked by the
   operating system: a slot whose holder died is free again at once. A command that waits says so live
-  (`[sleipnir: waiting for a free slot: ...]`) and in its result (`[waited 42s before starting: ...]`); the wait is not
-  part of its timeout. Background jobs (`run_in_background`) take no slot: they are servers more often than builds.
+  (`[sleipnir: waiting for a free slot: ...]`) and in its result (`[waited 42s before starting: ...]`), naming what holds
+  the slots: an agent's command and how long it has run (its first line, without words that hold `=`), or another
+  process; the wait is not part of its timeout. Background jobs (`run_in_background`) take no slot: they are servers more often than builds.
 - **Commands are told how many workers to start.** `SLEIPNIR_JOBS`, `CARGO_BUILD_JOBS`, `CMAKE_BUILD_PARALLEL_LEVEL`,
   `GOMAXPROCS`, `GOFLAGS=-p=N`, `PYTEST_XDIST_AUTO_NUM_WORKERS`, `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`,
   `MKL_NUM_THREADS`, `RAYON_NUM_THREADS`, `VITEST_MAX_THREADS`, `VITEST_MAX_FORKS`, `UV_CONCURRENT_BUILDS` and

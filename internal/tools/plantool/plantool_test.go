@@ -59,3 +59,26 @@ func TestThePlanToolAddsTheCheckAndWeighsTheEstimates(t *testing.T) {
 		t.Errorf("kept: %+v", got)
 	}
 }
+
+// A team's manager hands its steps to workers, several at once: its plan may have a step doing for each, which anyone else's may not.
+func TestAManagersPlanMayHaveSeveralStepsDoing(t *testing.T) {
+	st := plan.NewStore()
+	tool := New(st)
+	in := `{"items":[{"step":"store","status":"doing"},{"step":"web ui","status":"doing"},{"step":"ci","status":"doing"},{"step":"review"}]}`
+	call := func(agent, role string) *tools.Result {
+		res, err := tool.Run(context.Background(), &tools.Call{Name: "plan", Input: []byte(in), Env: &tools.Env{Agent: agent, Role: role}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	if r := call("mgr", ManagerRole); r.IsError || st.Open("mgr") != 4 {
+		t.Fatalf("the manager's plan of three steps in hand: %+v", r)
+	}
+	if r := call("be-1", "backend"); !r.IsError || !strings.Contains(r.Text, "3 steps are doing") {
+		t.Fatalf("a worker's plan of three steps in hand: %+v", r)
+	}
+	if items, err := plan.NormalizeDelegated(st.Get("mgr")); err != nil || len(items) != 4 {
+		t.Fatalf("the saved plan does not replay: %v %v", items, err)
+	}
+}

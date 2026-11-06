@@ -795,7 +795,11 @@ func restorePlans(log string, store *plan.Store) {
 			if json.Unmarshal(c.Input, &in) != nil {
 				return nil
 			}
-			if items, err := plan.Normalize(in.Items); err == nil {
+			normalize := plan.Normalize
+			if e.Agent == managerAgent {
+				normalize = plan.NormalizeDelegated // as the plan tool judged it: a manager's steps may be doing at once
+			}
+			if items, err := normalize(in.Items); err == nil {
 				store.Set(e.Agent, items)
 			}
 		}

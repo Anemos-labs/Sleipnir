@@ -298,7 +298,7 @@ func (m *Manager) runForeground(ctx context.Context, env *tools.Env, sh shellInf
 		case <-wctx.Done():
 		}
 	}()
-	adm, err := m.opts.Machine.Admit(wctx, machine.Heavy(command), func(why string) {
+	adm, err := m.opts.Machine.AdmitAs(wctx, machine.Heavy(command), slotHolder(env.Agent, command), func(why string) {
 		if env.Out != nil {
 			env.Out("stderr", "[sleipnir: "+why+"]\n")
 		}
@@ -447,4 +447,25 @@ func samePosixMeaning(command string) bool {
 		}
 	}
 	return len(f) == 0 || !windowsOwnMeaning[strings.ToLower(f[0])]
+}
+
+// slotHolder is how a heavy command is named to one that waits for its slot: the agent and the command's first line, cut short
+// ("be-2: pytest tests/ -q"). A word with "=" in it is left out: an assignment or a flag's value may be a secret, and the
+// waiting command belongs to another agent.
+func slotHolder(agent, command string) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(command), "\n")
+	var words []string
+	for _, w := range strings.Fields(line) {
+		if !strings.Contains(w, "=") { // KEY=value and --token=value stay with the command's own agent
+			words = append(words, w)
+		}
+	}
+	line = strings.Join(words, " ")
+	if r := []rune(line); len(r) > 60 {
+		line = string(r[:59]) + "…"
+	}
+	if agent == "" {
+		return line
+	}
+	return agent + ": " + line
 }
