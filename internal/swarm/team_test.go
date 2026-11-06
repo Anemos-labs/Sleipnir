@@ -382,6 +382,15 @@ func TestAutoDocsStartsBesideADirectoryWriter(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// the team is still building (T2, T3): the pass is held, up to docsHoldMax
+	r.sw.docsTick(now)
+	if _, made := r.sw.Board.Snapshot().Task("T4"); made {
+		t.Fatal("a pass started while the team was still building")
+	}
+	if st := r.sw.DocsState(); !strings.Contains(st, "held while the team is still building") {
+		t.Errorf("state while the team builds: %q", st)
+	}
+	now = now.Add(docsHoldMax)
 	r.sw.docsTick(now)
 	pass, _ := r.sw.Board.Snapshot().Task("T4")
 	if !strings.HasPrefix(pass.Title, DocsTaskTitle) || pass.Owner != "" {

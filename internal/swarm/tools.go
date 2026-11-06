@@ -526,6 +526,9 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		}
 		summary = out.evidence + "; " + summary
 	}
+	if m == nil || m.tree == nil {
+		s.noteSharedCommit(task, taskCommitMessage(task, in.Text, in.Commit, s.everyMember()))
+	}
 	if err := s.Board.submitReportAt(me, in.ID, task.Rev, submission{result: result, report: report, evidence: summary, agreement: in.Agreement, assumptions: in.Assumptions}, taskGateCheck(task), s.reviewSubmission(task)); err != nil {
 		return tools.Errorf("%v", err)
 	}
@@ -619,10 +622,14 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 		}
 		s.wakeBlockedOn(in.ID)
 		s.flushLearned(task)
-		if last := s.reviewPending(); last != "" && s.roleOf(task.Owner) != ReviewerRole {
-			return text("%s accepted. The merged result is not reviewed yet: a reviewer task is due before the goal is reported met%s", in.ID, s.planNudge(me))
+		commit := ""
+		if !s.hadTree(task.Owner) {
+			commit = s.sharedCommitHint(task)
 		}
-		return text("%s accepted%s", in.ID, s.planNudge(me))
+		if last := s.reviewPending(); last != "" && s.roleOf(task.Owner) != ReviewerRole {
+			return text("%s accepted. The merged result is not reviewed yet: a reviewer task is due before the goal is reported met%s%s", in.ID, commit, s.planNudge(me))
+		}
+		return text("%s accepted%s%s", in.ID, commit, s.planNudge(me))
 	case "reject", "reopen":
 		if task.Status == StatusFailed || (in.Action == "reopen" && task.Status == StatusDone) {
 			if err := s.Board.Reopen(me, in.ID); err != nil {

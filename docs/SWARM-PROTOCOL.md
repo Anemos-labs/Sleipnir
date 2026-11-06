@@ -215,7 +215,10 @@ directory its scope names, or, when that directory has none, of the nearest dire
 directory: `**/*.md` overlaps every directory a task holds or will claim, so a pass scoped so would wait for every code
 task to close and, while it ran, keep every task scoped to a directory from being claimed. A pass that cannot start says
 why in the keeper's state (`pass T12 waiting to start: scope "*.md" overlaps T6 …`). The first pass waits for the first accepted implementation task: an agreement accepted before
-any code exists stays pending (and holds nobody) and is folded into that pass. It never interrupts a running docs worker; the docs worker's own tasks are not changes, and neither is a task whose scope names test files alone (`*_test.go`, `test_*.py`, `*.spec.ts`, a `tests/` directory): it leaves no document stale. The product files the manager edits by itself are a change of their own (`manager`) once it has left them alone for 90 seconds, or at once when it means to finish; its test and Markdown edits are none. The
+any code exists stays pending (and holds nobody) and is folded into that pass. A pass is also held while the team is still
+building: while an implementation task other than docs and the tester's suites is todo, doing, blocked or in review, for at most
+20 minutes after the oldest change it would cover (`pass waiting to start: held while the team is still building (T7 doing)`),
+so it describes the code as it ends up rather than the defects review is still fixing. It never interrupts a running docs worker; the docs worker's own tasks are not changes, and neither is a task whose scope names test files alone (`*_test.go`, `test_*.py`, `*.spec.ts`, a `tests/` directory): it leaves no document stale. The product files the manager edits by itself are a change of their own (`manager`) once it has left them alone for 90 seconds, or at once when it means to finish; its test and Markdown edits are none. The
 docs worker keeps README, `docs/` and `AGENTS.md` current; `AGENTS.md` is also the team's map of the project. Its brief
 has it read the diff of the changed files and leave testing the code to the reviewer and the verifier. The
 manager's pin says that documentation is automatic, every other worker's pin says to read `AGENTS.md` and to mail facts

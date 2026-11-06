@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- In a shared tree the manager's `task accept` of an implementation task
+  says to commit the change now, in the git repository that holds it, with
+  the subject its worker gave in `task done commit=` (which was dropped in a
+  shared tree) or one made from the title; nothing changes in an isolated
+  run, where the merge queue commits. A docs catch-up pass waits while the
+  team is still building (an implementation task other than docs and the
+  tester's suites is open), for at most 20 minutes after the oldest change
+  it covers, so it documents the code as it ends up. No prompt bytes change.
+
 - In a shared tree a worker's shell is held to its task's scope and to
   role-owned paths, as its file tools are: the permission engine refuses a
   write a command is known to make (a redirection, `cp`/`mv`'s destination,
