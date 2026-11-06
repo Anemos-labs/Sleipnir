@@ -70,31 +70,29 @@ type synthResult struct {
 }
 
 type simAgent struct {
-	id, role     string
-	next         time.Time
-	steps        int
-	done         int
-	thread       int
-	turn         int
-	from         int
-	spine        int
-	notesTok     int
-	notesVer     int
-	spineVer     int
-	lastReq      time.Time
-	prevChain    []int
-	prevSig      []string
-	prevFrom     int
-	evictAt      int // step at which the provider loses the entry (a low_hit anomaly)
-	commits      int
-	toolsVar     int
-	idleAt       int // step at which the agent idles past the TTL (0: never)
-	task         string
-	pinTok       int
-	mgr          bool
-	openCalls    int
-	spawnedAt    time.Time
-	firstReqRead int
+	id, role  string
+	next      time.Time
+	steps     int
+	done      int
+	thread    int
+	turn      int
+	from      int
+	spine     int
+	notesTok  int
+	notesVer  int
+	spineVer  int
+	lastReq   time.Time
+	prevChain []int
+	prevSig   []string
+	prevFrom  int
+	evictAt   int // step at which the provider loses the entry (a low_hit anomaly)
+	commits   int
+	toolsVar  int
+	idleAt    int // step at which the agent idles past the TTL (0: never)
+	task      string
+	pinTok    int
+	mgr       bool
+	spawnedAt time.Time
 }
 
 type sim struct {
@@ -106,11 +104,9 @@ type sim struct {
 	rng    *rand.Rand
 	agents []*simAgent
 	res    synthResult
-	seq    int
 	warm   map[string]time.Time // shared prefix key -> last request
 	tasks  int
 	sysTxt string
-	tools  []byte
 }
 
 func toks(chars int) int { return (chars*10 + 35) / 36 }
