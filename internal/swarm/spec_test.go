@@ -762,24 +762,27 @@ func TestEvidenceExitStatus(t *testing.T) {
 	}
 	// A masked test whose line prints its status (`npm test; echo "exit=$?"`) is summed up by that status, said to be the
 	// line's own: the harness still does not count it as passed. A pipe's "$?" is the pipe's, and is not read as the test's.
-	for cmd, want := range map[string]string{
-		`cd app && npm test; echo "exit=$?"; ls`: "printed the test's status as 1",
-		`npm test; printf 'EXIT: %s\n' "$?"`:     "",
-		`go test ./... ; echo "status $? done"`:  "printed the test's status as 1",
-		`npm test | tail -3; echo "exit=$?"`:     "",
+	for _, tc := range []struct{ cmd, out, want string }{
+		{`cd app && npm test; echo "exit=$?"; ls`, "# fail 2\nexit=1\nsrc", "which printed the test's status as 1)"},
+		{`go test ./... ; echo "status $? done"`, "FAIL\nstatus 2 done", "which printed the test's status as 2)"},
+		{`npm test; printf "code=$?\n"`, "ok\ncode=0", "which printed the test's status as 0)"},
+		{`npm test; printf 'EXIT: %s\n' "$?"`, "EXIT: 3", ""}, // the status is an argument, not in the template's text
+		{`npm test | tail -3; echo "exit=$?"`, "exit=0", ""},  // a pipe's status, not the test's
+		{`npm test; echo "exit=$?"`, "exit=ok\nexit=999", ""}, // no status a shell prints
+		{`npm test; echo "exit=$?"`, "status=0", ""},          // text that does not match the template
 	} {
 		ev = NewEvidence()
-		in, _ = json.Marshal(map[string]any{"command": cmd})
-		ev.Observe(core.ToolUse("1", "bash", in), &tools.Result{Text: "# fail 2\nexit=1\nstatus 1 done\nsrc\n[exit code 0]"}, time.Now())
+		in, _ = json.Marshal(map[string]any{"command": tc.cmd})
+		ev.Observe(core.ToolUse("1", "bash", in), &tools.Result{Text: tc.out + "\n[exit code 0]"}, time.Now())
 		s := ev.Summary()
-		if want == "" {
+		if tc.want == "" {
 			if strings.Contains(s, "printed the test's status") {
-				t.Errorf("%s: %q", cmd, s)
+				t.Errorf("%s: %q", tc.cmd, s)
 			}
 			continue
 		}
-		if !strings.Contains(s, want) || strings.Contains(s, "passed") {
-			t.Errorf("%s: %q", cmd, s)
+		if !strings.Contains(s, "ran (exit status masked by the command line, "+tc.want) || strings.Contains(s, "passed") {
+			t.Errorf("%s: %q", tc.cmd, s)
 		}
 	}
 	// The recorded command cannot carry a forged header or a tag.

@@ -218,6 +218,9 @@ func echoedStatus(cmd, out string) string {
 	if !ok || strings.Contains(after, "$?") {
 		return ""
 	}
+	if echo[0] == "printf" && strings.Contains(cmd, `\n`) {
+		after = strings.TrimSuffix(after, "n") // splitShell keeps the n of a quoted \n
+	}
 	before, after = strings.TrimSpace(strings.ReplaceAll(before, `\n`, "")), strings.TrimSpace(strings.ReplaceAll(after, `\n`, ""))
 	if before == "" && after == "" {
 		return "" // a bare number is not told apart from the test's own output

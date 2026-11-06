@@ -64,4 +64,14 @@ func TestAnAcceptWhileAReviewIsOpenNamesIt(t *testing.T) {
 	if got := accept("fix"); strings.Contains(got, "a reviewer task is due") || !strings.Contains(got, "A review is open ("+review.ID+")") {
 		t.Fatalf("an accept while a review is open: %q", got)
 	}
+	// A review already submitted was fixed when it was: it does not cover what is accepted after it.
+	if err := b.Assign("mgr", "rv-1", review.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Submit("rv-1", review.ID, "looks right", "read api.go"); err != nil {
+		t.Fatal(err)
+	}
+	if got := accept("another fix"); !strings.Contains(got, "a reviewer task is due") || strings.Contains(got, "A review is open") {
+		t.Fatalf("an accept after the review was submitted: %q", got)
+	}
 }

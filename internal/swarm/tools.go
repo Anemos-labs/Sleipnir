@@ -727,7 +727,7 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 		if last := s.reviewPending(); last != "" && s.roleOf(task.Owner) != ReviewerRole {
 			// Once a review is under way, the line names it instead: a manager that accepted the fixes a running review had asked
 			// for read "a reviewer task is due" after each of them, with two reviewer tasks open, and called it noise.
-			if open := s.openReviews(); len(open) > 0 {
+			if open := s.runningReviews(); len(open) > 0 {
 				return text("%s accepted. A review is open (%s): it covers what is merged when it reports%s%s", in.ID, strings.Join(open, ", "), commit, s.planNudge(me))
 			}
 			return text("%s accepted. The merged result is not reviewed yet: a reviewer task is due before the goal is reported met%s%s", in.ID, commit, s.planNudge(me))
@@ -1088,11 +1088,12 @@ func (t *spawnTool) queueBehindDeps(req SpawnReq) *tools.Result {
 		task.ID, dep.ID, dep.Status, was, on)
 }
 
-// openReviews lists the reviewer tasks that are not settled (todo, doing, blocked or in review), sorted.
-func (s *Swarm) openReviews() []string {
+// runningReviews lists the top-level reviewer tasks not yet submitted (todo, doing or blocked), sorted: each covers what is
+// merged when it reports. One already in review does not: its report was fixed when it was submitted.
+func (s *Swarm) runningReviews() []string {
 	var out []string
 	for _, t := range s.Board.Snapshot().Tasks {
-		if t.Status == StatusDone || t.Status == StatusFailed || t.Parent != "" {
+		if (t.Status != StatusTodo && t.Status != StatusDoing && t.Status != StatusBlocked) || t.Parent != "" {
 			continue
 		}
 		role := t.Role
