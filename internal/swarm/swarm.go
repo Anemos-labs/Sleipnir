@@ -800,7 +800,9 @@ func (s *Swarm) runManager(ctx context.Context, m *member, goal, mail string) (r
 				m.a.Send(flushErr.Error())
 			}
 			u := s.unfinishedWork()
-			if flushErr == nil && u.empty() && !s.docsPending() && s.reviewPending() == "" {
+			// Workers that run holding nothing on the board are not work to repair: the stop guard has waited for them already
+			// (holdHooks.BeforeStop), and sending the manager back for them gives it nothing it can do.
+			if flushErr == nil && (u.empty() || u.windingDown()) && !s.docsPending() && s.reviewPending() == "" {
 				break
 			}
 			version := s.Board.Snapshot().Version

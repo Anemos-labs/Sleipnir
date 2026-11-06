@@ -411,9 +411,14 @@ func TestWindingDownIsOnlyRunningWorkersThatHoldNothing(t *testing.T) {
 // closing message, which the test holds back. The manager waits for the task, accepts it
 // and answers; its answer reaches the guard while the worker is still running.
 func finishingRig(t *testing.T, gate chan struct{}) (*rvRig, *recordingHooks) {
+	return finishingRigWith(t, Config{HoldManager: true, MaxWriters: 4}, gate)
+}
+
+// finishingRigWith is finishingRig with the swarm's configuration given.
+func finishingRigWith(t *testing.T, cfg Config, gate chan struct{}) (*rvRig, *recordingHooks) {
 	t.Helper()
 	inner := &recordingHooks{}
-	r := newRVRigWith(t, Config{HoldManager: true, MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply {
+	r := newRVRigWith(t, cfg, func(ctx context.Context, c *rvCall) rvReply {
 		if c.Role == "manager" {
 			switch c.Assistants {
 			case 0:
@@ -741,5 +746,34 @@ func TestAManagersEditNamesTheSubmissionsWaitingOnIt(t *testing.T) {
 	last := more[0]
 	if got := edit("write"); !strings.HasPrefix(got, last.ID+" (10 min), "+t2.ID+" (2 min)") {
 		t.Fatalf("the submission past the cap was not named once the ones before it were decided: %q", got)
+	}
+}
+
+// A persistent team (no veto bound) lets the answer through too: its manager loop does not send the manager back for a worker that
+// holds nothing on the board, which it can do nothing about.
+func TestAPersistentTeamIsNotHeldByAWorkerWithNoTask(t *testing.T) {
+	prev := holdSettleMax
+	holdSettleMax = 100 * time.Millisecond
+	t.Cleanup(func() { holdSettleMax = prev })
+
+	gate := make(chan struct{}) // never opened: the worker does not end
+	r, _ := finishingRigWith(t, Config{HoldManager: true, PersistentPools: true, MaxWriters: 4}, gate)
+	t.Cleanup(func() { close(gate) })
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := r.sw.RunManager(context.Background(), "add notes")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(8 * time.Second):
+		t.Fatal("a persistent team's manager was held by a worker that holds no task")
+	}
+	if n := managerCalls(r); n != 4 {
+		t.Fatalf("the manager made %d requests, want 4: it was sent back for a worker it can do nothing about", n)
 	}
 }
