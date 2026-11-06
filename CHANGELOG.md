@@ -7,6 +7,17 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The `note` tool states its 300-character limit in its description and in
+  the schema's `text` description, so a note is written to fit instead of
+  refused after it was written. The `memory` tool's refusal of `scope
+  project` says why this session keeps no project notes (no project, or the
+  project at its root is not trusted, which only the person can change with
+  `sleipnir trust` or `--trust-project`) and to save the note with scope
+  user. The manager is mailed of idle capacity at most once in 30 minutes:
+  the finding is still raised and logged each time it starts to hold, and
+  its mail says that a serial remainder is a reason to keep waiting.
+  Prompt-cache change: the `note` tool's description and schema change bytes.
+
 - A manager that only reads while the team waits is told what to do next, on
   the result of its third read-only call in a row (and every third after): the
   submissions waiting for its decision, with the `task accept` calls to make;

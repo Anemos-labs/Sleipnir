@@ -2,9 +2,12 @@ package swarm
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // An idle-capacity rig: a configured team of four (be-1..3, fe-1) made idle, be-1 at work on T1, and the manager, which waits.
@@ -202,4 +205,53 @@ func TestStallIdleCapacitySparesTheVerdictPhase(t *testing.T) {
 	}
 	r.sw.stopRun(r.sw.get(id), "test over", false)
 	rvWait(t, "the reviewer to stop", func() bool { return r.idle(id) })
+}
+
+// stallMails counts the stall checks the harness mailed to an agent.
+func stallMails(r *rvRig, to string) int {
+	n := 0
+	for _, e := range r.log.OfType(events.TypeMailSend) {
+		var m struct{ From, To, Text string }
+		_ = json.Unmarshal(e.Data, &m)
+		if m.From == harnessSender && m.To == to && strings.HasPrefix(m.Text, "Stall check:") {
+			n++
+		}
+	}
+	return n
+}
+
+// An idle_capacity finding that clears and is raised again soon after is logged again but not mailed again: in a run whose last
+// stretch was serial the manager was told three times to assign work that did not exist. After idleCapacityQuiet it is mailed again.
+func TestStallIdleCapacityIsMailedAtMostOncePerQuietPeriod(t *testing.T) {
+	r := idleCapacityRig(t, 20*time.Minute)
+	reraise := func() {
+		r.sw.stalls.mu.Lock()
+		for k, f := range r.sw.stalls.active {
+			if f.Kind == StallIdleCapacity {
+				delete(r.sw.stalls.active, k) // as if the idle workers had been at work in between
+			}
+		}
+		r.sw.stalls.mu.Unlock()
+		r.sw.noteCoordination("mgr", "wait", "")
+		r.sw.sweepStalls()
+	}
+	r.sw.sweepStalls()
+	if n := stallMails(r, "mgr"); n != 1 {
+		t.Fatalf("first finding: %d mails", n)
+	}
+	reraise()
+	reraise()
+	if n := raised(r, StallIdleCapacity); n != 3 {
+		t.Fatalf("raised %d times, want 3 (every raise is still logged)", n)
+	}
+	if n := stallMails(r, "mgr"); n != 1 {
+		t.Fatalf("%d mails for three raises within %s", n, idleCapacityQuiet)
+	}
+	r.sw.stalls.mu.Lock()
+	r.sw.stalls.mailed = r.sw.deps.Now().Add(-idleCapacityQuiet - time.Minute)
+	r.sw.stalls.mu.Unlock()
+	reraise()
+	if n := stallMails(r, "mgr"); n != 2 {
+		t.Fatalf("%d mails after the quiet period, want 2", n)
+	}
 }
