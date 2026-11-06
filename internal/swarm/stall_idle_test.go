@@ -255,3 +255,25 @@ func TestStallIdleCapacityIsMailedAtMostOncePerQuietPeriod(t *testing.T) {
 		t.Fatalf("%d mails after the quiet period, want 2", n)
 	}
 }
+
+// The escalation diagnosis of an idle_capacity finding counts against the same quiet period: it is not a second mail inside it.
+func TestStallIdleCapacityEscalationSharesTheQuietPeriod(t *testing.T) {
+	r := idleCapacityRig(t, 20*time.Minute)
+	r.sw.sweepStalls()
+	r.sw.stalls.mu.Lock()
+	for k := range r.sw.stalls.since {
+		r.sw.stalls.since[k] = r.sw.deps.Now().Add(-stallEscalateAfter - time.Minute)
+	}
+	r.sw.stalls.mu.Unlock()
+	r.sw.sweepStalls()
+	for _, e := range r.log.OfType(events.TypeMailSend) {
+		var m struct{ From, To, Text string }
+		_ = json.Unmarshal(e.Data, &m)
+		if m.To == "mgr" && strings.HasPrefix(m.Text, "Stall diagnosis (idle_capacity)") {
+			t.Fatalf("an idle-capacity diagnosis was mailed within the quiet period: %q", m.Text)
+		}
+	}
+	if n := stallMails(r, "mgr"); n != 1 {
+		t.Fatalf("%d stall checks", n)
+	}
+}
