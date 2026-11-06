@@ -2,6 +2,7 @@ package agent
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/anemos-labs/sleipnir/internal/provider"
 )
@@ -10,6 +11,24 @@ import (
 // degenerate generation. One such response of a real model held 72 calls, among them one command 21 times and one edit 10
 // times, and took ten minutes to reach the output limit; stopped at the repeatedCallLimit-th copy, it costs seconds.
 var ErrRepeatedCalls = errors.New("the response repeated the same tool call")
+
+// repeatedCallsError is ErrRepeatedCalls with the tool whose call repeated, which the model is told.
+type repeatedCallsError struct{ tool string }
+
+func (e *repeatedCallsError) Error() string {
+	return fmt.Sprintf("%v (%s, %d times)", ErrRepeatedCalls, e.tool, repeatedCallLimit)
+}
+
+func (e *repeatedCallsError) Unwrap() error { return ErrRepeatedCalls }
+
+// repeatedTool is the tool whose call err repeated, "" when it names none.
+func repeatedTool(err error) string {
+	var rc *repeatedCallsError
+	if errors.As(err, &rc) {
+		return rc.tool
+	}
+	return ""
+}
 
 // repeatedCallLimit is how many copies of one call (the same tool and the same arguments) a response may hold before it is
 // stopped. A model that means to run a command twice in one turn does not write it four times.

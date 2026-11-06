@@ -7,6 +7,18 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The manager's `wait` is no longer refused while the only unstarted tasks
+  are ones the harness has queued to start. A masked test whose command line
+  echoes its status (`npm test; echo "exit=$?"`) reports that status as the
+  line's own. Accepting work while a review is open names the review instead
+  of asking for one again. A manager's `task update` of a task nobody holds
+  says so instead of naming an empty owner. A response stopped for repeating
+  a call names the tool and says that distinct calls are fine. Refusing to
+  move a run's branch names how to read it (`git show <branch>:<path>`).
+  `deliver` with nothing left to commit no longer points at push and PR
+  commands. Role names take "an" where they should ("an architect member").
+  No prompt bytes change in the system prompt or tool specs.
+
 - The manager's "Stop reading" line no longer says that the harness built and
   tested each submission when no verifier is configured: it says that nothing
   but the worker checked it, and to check what its evidence leaves in doubt.

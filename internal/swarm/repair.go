@@ -281,7 +281,7 @@ func (t *taskTool) reviseTask(ctx context.Context, c *tools.Call, in taskIn) *to
 		s.review.mu.Unlock()
 	}
 	if newRole != "" {
-		return text("%s revised in place and is now a %s task: start it on a %s member (spawn task=%s)", in.ID, newRole, newRole, in.ID)
+		return text("%s revised in place and is now %s %s task: start it on %s %s member (spawn task=%s)", in.ID, article(newRole), newRole, article(newRole), newRole, in.ID)
 	}
 	return text("%s revised in place; its existing worker will retry", in.ID)
 }

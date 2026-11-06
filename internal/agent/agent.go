@@ -874,7 +874,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 			// told why, so that the next response is not the same loop.
 			repeats++
 			a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("the response repeated the same tool call and was stopped: asking the model again (%d of %d)", repeats, maxRepeatRounds))
-			a.pushUser(core.OriginSystem, a.wrapUp([]core.Block{core.Text(repeatedCallsNudge)}, limit-step-1))
+			a.pushUser(core.OriginSystem, a.wrapUp([]core.Block{core.Text(repeatedCallsText(repeatedTool(err)))}, limit-step-1))
 			continue
 		}
 		if err != nil {
@@ -1077,6 +1077,18 @@ const maxRepeatRounds = 2
 // repeatedCallsNudge is what the model reads after a response that was stopped for repeating one call.
 const repeatedCallsNudge = "[harness] Your last response was stopped: it wrote the same tool call again and again in one response, and none of it ran. " +
 	"Make each call once. Take the next step with one or a few distinct calls, then read their results before you go on."
+
+// repeatedCallsText is repeatedCallsNudge naming the tool whose call repeated (when known), and saying that distinct calls in one
+// response are not what was stopped: a manager told to batch independent calls read the bare nudge as at odds with that.
+func repeatedCallsText(tool string) string {
+	if tool == "" || len(tool) > 40 || strings.IndexFunc(tool, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-' || r == '.')
+	}) >= 0 {
+		return repeatedCallsNudge // the name is the model's own text: only a plain tool name is repeated back
+	}
+	return "[harness] Your last response was stopped: it wrote the same " + tool + " call (same arguments) again and again in one response, and none of it ran. " +
+		"Make each call once: several different calls in one response are fine. Take the next step with one or a few distinct calls, then read their results before you go on."
+}
 
 // thinkingCutoffNudge replaces cutoffNudge when the cut-off response held only reasoning: no answer text and no call. Reasoning
 // that planned the whole task at once does not finish by being continued; one step taken does.

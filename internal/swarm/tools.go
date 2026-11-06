@@ -481,6 +481,9 @@ func (t *taskTool) update(c *tools.Call, in taskIn) *tools.Result {
 					}
 					return text("%s's scope set (%s); its workers keep going. The text was not recorded: it is the progress line of %s's owner, %s; to tell %s something, mail it", in.ID, strings.Join(task.Files, ", "), in.ID, task.Owner, task.Owner)
 				}
+				if task.Owner == "" {
+					return tools.Errorf("update's text is the progress line of %s's owner, and nobody holds %s yet. To change the task: files= widens or sets its scope (with update, or revise with only files), revise with a description changes its requirements; to start it, spawn it", in.ID, in.ID)
+				}
 				return tools.Errorf("update's text is the progress line of %s's owner, %s. To change the task: files= widens or sets its scope (with update, or revise with only files), revise with a description changes its requirements; to tell %s something, mail it", in.ID, task.Owner, task.Owner)
 			}
 		}
@@ -722,6 +725,11 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 			commit = s.sharedCommitHint(task, commitMsg)
 		}
 		if last := s.reviewPending(); last != "" && s.roleOf(task.Owner) != ReviewerRole {
+			// Once a review is under way, the line names it instead: a manager that accepted the fixes a running review had asked
+			// for read "a reviewer task is due" after each of them, with two reviewer tasks open, and called it noise.
+			if open := s.runningReviews(); len(open) > 0 {
+				return text("%s accepted. A review is open (%s): it covers what is merged when it reports%s%s", in.ID, strings.Join(open, ", "), commit, s.planNudge(me))
+			}
 			return text("%s accepted. The merged result is not reviewed yet: a reviewer task is due before the goal is reported met%s%s", in.ID, commit, s.planNudge(me))
 		}
 		return text("%s accepted%s%s", in.ID, commit, s.planNudge(me))
@@ -1080,6 +1088,28 @@ func (t *spawnTool) queueBehindDeps(req SpawnReq) *tools.Result {
 		task.ID, dep.ID, dep.Status, was, on)
 }
 
+// runningReviews lists the top-level reviewer tasks not yet submitted (todo, doing or blocked), sorted: each covers what is
+// merged when it reports. One already in review does not: its report was fixed when it was submitted.
+func (s *Swarm) runningReviews() []string {
+	var out []string
+	for _, t := range s.Board.Snapshot().Tasks {
+		if (t.Status != StatusTodo && t.Status != StatusDoing && t.Status != StatusBlocked) || t.Parent != "" {
+			continue
+		}
+		role := t.Role
+		if t.Owner != "" {
+			if r := s.roleOf(t.Owner); r != "" {
+				role = r
+			}
+		}
+		if role == ReviewerRole {
+			out = append(out, t.ID)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return lessTaskID(out[i], out[j]) })
+	return out
+}
+
 // ---- wait -------------------------------------------------------------------
 
 type waitTool struct{ s *Swarm }
@@ -1260,9 +1290,38 @@ func (s *Swarm) stalledWaitReason(agentID string) string {
 	if len(u.running) > 0 || u.empty() {
 		return ""
 	}
+	if s.onlyQueuedLeft(u) {
+		// The harness starts a queued task itself (queueTick) and says so: the spawn that queued it said "use wait", and a wait
+		// refused here sent a manager to spawn it again, which the pool then refused as busy.
+		return ""
+	}
 	return "Cannot wait: no workers are running and work needs manager action (" + u.summary(holdListCap) + "). " +
 		"Use spawn to start or reuse a worker on an unstarted task of its role; a planning task goes to the role it names (the architect by default). " +
 		"Review submissions with task get and accept or reject them; resolve blocked tasks or fail abandoned work."
+}
+
+// onlyQueuedLeft reports whether every unstarted task of u is one the harness has queued to start (spawnqueue.go), and
+// nothing else (in review, doing, blocked) waits on the manager.
+func (s *Swarm) onlyQueuedLeft(u unfinishedWork) bool {
+	if len(u.review)+len(u.doing)+len(u.blocked) > 0 || len(u.todo)+len(u.gated) == 0 {
+		return false
+	}
+	queued := map[string]bool{}
+	for _, q := range s.queuedTasks() {
+		queued[safeToken(q.req.TaskID, 24)] = true
+	}
+	for _, id := range u.todo {
+		if !queued[id] {
+			return false
+		}
+	}
+	for _, g := range u.gated {
+		id, _, _ := strings.Cut(g, " ")
+		if !queued[id] {
+			return false
+		}
+	}
+	return true
 }
 
 // restartWaitReason refuses the manager's wait while a task that a resume reserved for its recovered worker (ResumedLine) has not

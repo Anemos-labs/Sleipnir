@@ -212,9 +212,9 @@ func (s *Swarm) roleMismatch(sn *Snapshot, t Task, agent, role string) error {
 	if _, ok := s.roles[t.Role]; !ok || t.Role == "manager" || s.isService(t.Role) || s.hidden[t.Role] || !s.canStaff(t.Role) {
 		return nil
 	}
-	who := "a " + role + " member"
+	who := article(role) + " " + role + " member"
 	if agent != "" {
-		who = agent + ", a " + role + " member,"
+		who = agent + ", " + article(role) + " " + role + " member,"
 	}
 	var members []string
 	if sn != nil {
