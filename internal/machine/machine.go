@@ -285,7 +285,7 @@ func (b *Budget) Admit(ctx context.Context, heavy bool, waiting func(string)) (A
 	return b.AdmitAs(ctx, heavy, "", waiting)
 }
 
-// AdmitAs is Admit for a command that who describes ("be-2: pytest tests/"): while it holds its slot, a command that waits for
+// AdmitAs is Admit for a command that who describes ("be-2: go test"): while it holds its slot, a command that waits for
 // one is told who holds the slots and for how long, where Admit's waiting line said only that they were taken. A manager whose
 // 0.05-second command waited 63 seconds behind "1 heavy commands ... already run on this machine" could not tell whose they were.
 func (b *Budget) AdmitAs(ctx context.Context, heavy bool, who string, waiting func(string)) (Admission, error) {

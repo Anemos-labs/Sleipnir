@@ -20,7 +20,7 @@ they do not indicate whether a change has been released.
 
 - A team manager's `plan` may mark several steps doing, one for each a worker
   is on; anyone else's plan still has at most one. A heavy command that waits
-  for a slot is told what holds it (`be-2: pytest tests/ (running for 40s)`,
+  for a slot is told what holds it (`be-2: python -m pytest (running for 40s)`,
   or another process). Creating a top-level reviewer task with no deps while
   implementation tasks are open names them and how to make them its deps. No
   prompt bytes change in the system prompt or tool specs.

@@ -449,16 +449,28 @@ func samePosixMeaning(command string) bool {
 	return len(f) == 0 || !windowsOwnMeaning[strings.ToLower(f[0])]
 }
 
-// slotHolder is how a heavy command is named to one that waits for its slot: the agent and the command's first line, cut short
-// ("be-2: pytest tests/ -q"). A word with "=" in it is left out: an assignment or a flag's value may be a secret, and the
-// waiting command belongs to another agent.
+// slotHolder is how a heavy command is named to one that waits for its slot: the agent and the words that name the program
+// ("be-2: go test", "be-1: npm run build"). The waiting command belongs to another agent, and an argument may be a secret
+// (a flag's value, a header, credentials in a URL), so the name stops at the first word that is not a plain program or
+// subcommand name; a leading KEY=value assignment is skipped. At most four words, cut to 60 runes.
 func slotHolder(agent, command string) string {
 	line, _, _ := strings.Cut(strings.TrimSpace(command), "\n")
+	fields := strings.Fields(line)
+	for len(fields) > 0 && strings.Contains(fields[0], "=") {
+		fields = fields[1:]
+	}
 	var words []string
-	for _, w := range strings.Fields(line) {
-		if !strings.Contains(w, "=") { // KEY=value and --token=value stay with the command's own agent
-			words = append(words, w)
+	for i := 0; i < len(fields) && len(words) < 4; i++ {
+		w := fields[i]
+		if w == "-m" && i+1 < len(fields) && plainWord(fields[i+1]) { // python -m pytest: the module is the program
+			words = append(words, w, fields[i+1])
+			i++
+			continue
 		}
+		if !plainWord(w) {
+			break
+		}
+		words = append(words, w)
 	}
 	line = strings.Join(words, " ")
 	if r := []rune(line); len(r) > 60 {
@@ -468,4 +480,17 @@ func slotHolder(agent, command string) string {
 		return line
 	}
 	return agent + ": " + line
+}
+
+// plainWord reports whether w can only be a program or subcommand name: letters, digits and . _ + -, not starting with "-".
+func plainWord(w string) bool {
+	if w == "" || w[0] == '-' {
+		return false
+	}
+	for _, r := range w {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '+' || r == '-') {
+			return false
+		}
+	}
+	return true
 }
