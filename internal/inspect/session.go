@@ -126,7 +126,6 @@ type Session struct {
 	episode    *EpisodeInfo
 	episodeKey string
 	sumMemo    *Summary
-	sumMemoRev uint64
 }
 
 // metaState is the session-level facts gathered from events.

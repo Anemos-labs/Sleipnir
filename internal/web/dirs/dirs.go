@@ -60,11 +60,6 @@ var markers = []struct{ file, cmd string }{
 	{"Makefile", "make test"},
 }
 
-// endsWithSep reports whether s ends in a path separator of either kind (a Windows path is typed with either).
-func endsWithSep(s string) bool {
-	return s != "" && (s[len(s)-1] == '/' || s[len(s)-1] == filepath.Separator)
-}
-
 // Expand turns what was typed into an absolute, clean path: a leading ~ is the home folder, a relative path is relative to o.Base.
 func Expand(text string, o Options) (string, error) {
 	s := strings.TrimSpace(text)

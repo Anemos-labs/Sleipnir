@@ -50,7 +50,6 @@ type Screen struct {
 	prev       [][]Cell // what the terminal shows; nil means nothing is known and the screen must be cleared
 	spare      [][]Cell // a grid that nothing refers to, to build the next frame in
 	err        error
-	buf        []byte
 }
 
 // The view is held as a grid in memory, cell by cell, so its size is bounded: a terminal larger than this (a corrupt size from the

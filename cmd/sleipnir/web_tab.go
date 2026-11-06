@@ -124,9 +124,8 @@ type webTab struct {
 	pinnedSID  string // the session pinned was last read or set for
 	lastMeta   wire.MetaPatch
 	lastRoster []wire.RosterEntry
-	metaV      uint64 // the version of the last meta frame sent (seqMu)
-	rosterV    uint64 // the version of the last roster frame sent (seqMu)
-	shownQueue int
+	metaV      uint64        // the version of the last meta frame sent (seqMu)
+	rosterV    uint64        // the version of the last roster frame sent (seqMu)
 	view       sessView      // the model, effort and budget the session has, as the tab last read them
 	endReason  string        // why the session ends when the tab closes (session.EndExit unless the server is interrupted)
 	closedDone chan struct{} // closed when the tab's close has ended
