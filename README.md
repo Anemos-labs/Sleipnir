@@ -163,6 +163,8 @@ provider-measured usage, and a team does not guarantee lower cost.
 - **Extend:** [plugins](docs/PLUGINS.md), [extensions](docs/EXTENDING.md), [MCP](docs/MCP.md), [web API](docs/WEB-API.md)
 - **Understand:** [architecture](docs/ARCHITECTURE.md), [team protocol](docs/SWARM-PROTOCOL.md), [interfaces](docs/UX.md), [limitations](docs/STATUS.md), [roadmap](docs/ROADMAP.md)
 
+Every document, grouped by purpose: [documentation index](docs/README.md).
+
 ## Development
 
 Go 1.26 or newer. Dependencies are limited to `golang.org/x/net`, `x/sys` and `x/term`.
