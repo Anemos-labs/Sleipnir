@@ -46,7 +46,9 @@ func TestACommandThatWouldEndTheHarnessIsNamed(t *testing.T) {
 		{`ps -eo pid,args | grep 'kvlite|nothing' | xargs kill`, ""},            // and its | is literal
 		{`ps -eo pid,args | grep '^4242 ' | xargs kill`, `of grep`},             // ps puts the pid first
 		{`ps -eo pid,args | grep -f pats.txt | xargs kill`, `from a file`},
-		{"echo " + nest, "too complex"}, // nested deeper than the parser reads
+		{`ps -eo pid,args | grep -v -f pats.txt | xargs kill`, `from a file`},
+		{`ps -eo pid,args | grep '\(kv\).*\1' | xargs kill`, `cannot be checked`}, // a back-reference Go does not read
+		{"echo " + nest, "too complex"},                                           // nested deeper than the parser reads
 		{`kill %1`, ""},
 		{`pgrep -f kvlite; kill 4243`, ""}, // the pgrep only lists
 	} {

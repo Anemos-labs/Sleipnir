@@ -125,8 +125,8 @@ func endsHarness(command string, pid int, line, name string) string {
 			if o.exact {
 				o.pattern = "^(?:" + o.pattern + ")$"
 			}
-			if patternMatches(o.pattern, target, o.fold, false) {
-				return fmt.Sprintf("the pattern %q of %s", o.pattern, c.prog)
+			if m, ok := patternMatches(o.pattern, target, o.fold, false); m || !ok {
+				return fmt.Sprintf("the pattern %q of %s%s", o.pattern, c.prog, unreadable(ok))
 			}
 		case "killall":
 			for _, a := range operands(c.args) {
@@ -139,6 +139,9 @@ func endsHarness(command string, pid int, line, name string) string {
 				continue
 			}
 			o := grepOptions(c.prog, c.args)
+			if o.fromFile {
+				return "a grep whose patterns come from a file, which cannot be checked"
+			}
 			if o.invert {
 				continue
 			}
@@ -157,12 +160,11 @@ func endsHarness(command string, pid int, line, name string) string {
 						expr = `(?:^|\W)(?:` + expr + `)(?:\W|$)`
 					}
 				}
-				if patternMatches(expr, line, o.fold, fixed) || patternMatches(expr, psLine, o.fold, fixed) {
-					return fmt.Sprintf("the pattern %q of grep", p)
+				m1, ok := patternMatches(expr, line, o.fold, fixed)
+				m2, _ := patternMatches(expr, psLine, o.fold, fixed)
+				if m1 || m2 || !ok {
+					return fmt.Sprintf("the pattern %q of grep%s", p, unreadable(ok))
 				}
-			}
-			if o.fromFile {
-				return "a grep whose patterns come from a file, which cannot be checked"
 			}
 		}
 	}
@@ -373,23 +375,33 @@ func operands(args []string) []string {
 	return out
 }
 
-// patternMatches reports whether the pattern pat (a regular expression unless fixed; one Go cannot read is taken as text) is
-// found in s.
-func patternMatches(pat, s string, fold, fixed bool) bool {
+// unreadable is what a refusal adds for a pattern endsHarness could not read (ok false).
+func unreadable(ok bool) string {
+	if ok {
+		return ""
+	}
+	return ", which cannot be checked (a back-reference or other syntax Go does not read)"
+}
+
+// patternMatches reports whether the pattern pat (a regular expression unless fixed) is found in s, and false for ok when pat
+// is a regular expression Go cannot read, so whether it matches is not known.
+func patternMatches(pat, s string, fold, fixed bool) (match, ok bool) {
 	if pat == "" {
-		return false
+		return false, true
 	}
 	if !fixed {
 		expr := pat
 		if fold {
 			expr = "(?i)" + expr
 		}
-		if re, err := regexp.Compile(expr); err == nil {
-			return re.MatchString(s)
+		re, err := regexp.Compile(expr)
+		if err != nil {
+			return false, false
 		}
+		return re.MatchString(s), true
 	}
 	if fold {
-		return strings.Contains(strings.ToLower(s), strings.ToLower(pat))
+		return strings.Contains(strings.ToLower(s), strings.ToLower(pat)), true
 	}
-	return strings.Contains(s, pat)
+	return strings.Contains(s, pat), true
 }
