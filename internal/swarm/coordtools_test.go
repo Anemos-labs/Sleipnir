@@ -185,3 +185,22 @@ func TestWideningAParentNamesTheChildrenThatKeepTheirScopes(t *testing.T) {
 		t.Fatalf("a task with no children: %q", got)
 	}
 }
+
+// A review task created with no deps while implementation work is open is told what it will not see; one that waits for that
+// work, and one created once nothing is open, are not.
+func TestAReviewThatWaitsForNothingNamesTheOpenWork(t *testing.T) {
+	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+	create := func(spec map[string]any) string {
+		spec["action"] = "create"
+		return r.callTool(context.Background(), "task", "mgr", "manager", spec).Text
+	}
+	create(map[string]any{"title": "store", "role": "backend", "description": "the store"})
+	create(map[string]any{"title": "web ui", "role": "frontend", "description": "the ui"})
+	got := create(map[string]any{"title": "review", "role": "reviewer", "description": "review the result"})
+	if !strings.Contains(got, "It waits for nothing while T1 and T2 are still open") || !strings.Contains(got, "task revise id=T3 deps=[...]") {
+		t.Fatalf("a depless review was told %q", got)
+	}
+	if got := create(map[string]any{"title": "review 2", "role": "reviewer", "description": "review", "deps": []string{"T1", "T2"}}); strings.Contains(got, "waits for nothing") {
+		t.Fatalf("a review with deps was told %q", got)
+	}
+}

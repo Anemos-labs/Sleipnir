@@ -105,7 +105,15 @@ func normMilestone(s string) string {
 
 // Normalize checks a list a model wrote and returns it cleaned: single-spaced one-line steps, a missing status taken as pending, and at
 // most one step doing. The error says what to change.
-func Normalize(in []Item) ([]Item, error) {
+func Normalize(in []Item) ([]Item, error) { return normalize(in, true) }
+
+// NormalizeDelegated is Normalize for the plan of an agent that hands its steps to others, a team's manager: any number of steps
+// may be doing at once, one for each that a worker is on. Held to one, a manager with four workers on four steps was refused ("4
+// steps are doing; one at a time") and could only mark finished work done or running work pending. A replay of a saved plan
+// (resume, the web view) uses it too, since the tool already judged what it saved.
+func NormalizeDelegated(in []Item) ([]Item, error) { return normalize(in, false) }
+
+func normalize(in []Item, oneDoing bool) ([]Item, error) {
 	if len(in) == 0 {
 		return nil, fmt.Errorf(`the plan has no steps: give "items" as a list of {"step": "...", "status": "pending|doing|done"}`)
 	}
@@ -148,7 +156,7 @@ func Normalize(in []Item) ([]Item, error) {
 		}
 		out = append(out, Item{Step: step, Status: st, Effort: Hours(math.Round(e*100) / 100), Milestone: normMilestone(it.Milestone)})
 	}
-	if doing > 1 {
+	if oneDoing && doing > 1 {
 		return nil, fmt.Errorf("%d steps are doing; one at a time: mark the others pending or done", doing)
 	}
 	return out, nil

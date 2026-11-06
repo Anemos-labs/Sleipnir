@@ -178,6 +178,33 @@ func agreementPointers(sn *Snapshot, in []TaskAgreement) []TaskAgreement {
 	return out
 }
 
+// reviewWaitsForNothingHint is what the creation of a top-level review task with no dependencies adds while implementation work
+// is still open: the review starts at once, over a tree without that work, and the goal still needs a review after the last
+// merge. A manager created its reviewer task with no deps; the reviewer reviewed a tree three merges short, and a second review
+// had to follow. Not refused: a review of what has landed so far can be what the manager wants.
+func (s *Swarm) reviewWaitsForNothingHint(t Task) string {
+	if t.Role != ReviewerRole || len(t.Deps) > 0 || t.Parent != "" {
+		return ""
+	}
+	var open []string
+	for _, o := range s.Board.Snapshot().Tasks {
+		if o.ID == t.ID || o.Parent != "" || o.Status == StatusDone || o.Status == StatusFailed || o.Role == ReviewerRole || !s.implementationTask(o) {
+			continue
+		}
+		open = append(open, o.ID)
+	}
+	if len(open) == 0 {
+		return ""
+	}
+	shown := open
+	if len(shown) > holdListCap {
+		shown = append(shown[:holdListCap:holdListCap], fmt.Sprintf("%d more", len(open)-holdListCap))
+	}
+	return fmt.Sprintf(". It waits for nothing while %s %s still open: a review that starts now sees the tree without %s, and the goal "+
+		"still needs a review accepted after the last merge. If it should cover them, make them its deps (task revise id=%s deps=[...] text=why)",
+		joinNames(shown), pluralWord(len(open), "is", "are"), pluralWord(len(open), "it", "them"), t.ID)
+}
+
 // reviewRefusal says why a worker may not accept, reject, reopen, fail, revise or resolve a task: these are the manager's, except
 // that a pool leader accepts the children of the pool it leads while it executes. It returns nil for that exception.
 func (s *Swarm) reviewRefusal(me string, in taskIn) *tools.Result {
@@ -266,7 +293,7 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			return tools.Errorf("%v", err), nil
 		}
 		task := made[len(made)-1]
-		hint := s.scopeHint(task.Files)
+		hint := s.scopeHint(task.Files) + s.reviewWaitsForNothingHint(task)
 		if len(made) > 1 {
 			return text("created %s %q, waiting for %s; start with %s%s", task.ID, task.Title, rigorChain(made[:len(made)-1]), made[0].ID, hint), nil
 		}

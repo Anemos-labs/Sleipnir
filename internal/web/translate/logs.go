@@ -766,7 +766,7 @@ func (t *Translator) toolCall(e events.Event, ts float64, at int64) {
 		delete(t.d.hold, uid)
 	}
 	if name == "plan" && isMain(e.Agent) {
-		t.planCall(p.Input, ts, at)
+		t.planCall(e.Agent, p.Input, ts, at)
 	}
 	if !t.d.logOnly || nonAgent(e.Agent) || p.ID == "" {
 		return
@@ -781,15 +781,20 @@ func (t *Translator) toolCall(e events.Event, ts float64, at int64) {
 	t.d.pend[callKey(uid, p.ID)] = pt
 }
 
-// planCall is a call of the plan tool by the main agent: the whole plan, normalized as the tool does.
-func (t *Translator) planCall(input json.RawMessage, ts float64, at int64) {
+// planCall is a call of the plan tool by the main agent: the whole plan, normalized as the tool does (a team's manager, "mgr",
+// may have several steps doing).
+func (t *Translator) planCall(agent string, input json.RawMessage, ts float64, at int64) {
 	var in struct {
 		Items []plan.Item `json:"items"`
 	}
 	if json.Unmarshal(input, &in) != nil {
 		return
 	}
-	items, err := plan.Normalize(in.Items)
+	normalize := plan.Normalize
+	if agent == "mgr" {
+		normalize = plan.NormalizeDelegated
+	}
+	items, err := normalize(in.Items)
 	if err != nil {
 		return
 	}
