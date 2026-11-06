@@ -60,7 +60,8 @@ same way (`T3 waits for T2 (doing), so it is queued`): the harness starts it onc
 of them is done, on the member `agent=` names or the first free member of its role, and a
 dependency that fails drops it with a mail that says so. A `spawn agent=<id>` of an existing
 todo task while that member is in a run it cannot be told of is queued for that member and
-started when its run ends.
+started when its run ends. A queued task is the harness's to start: while only queued tasks are left unstarted,
+the manager's `wait` is not refused for them.
 
 A task goes to a member of its own role. Roles exist to run each kind of work on the model and instructions chosen for it
 (`--role-model frontend=<model>`), so a task whose `role` names a role the team can staff is refused to every agent of
@@ -531,7 +532,8 @@ can time out waiting for a slot. Output received after the deadline is never a v
 is what the harness observed (edited files, the last test command and its exit
 status), never what the worker wrote about itself. A test counts only if the program run is a test runner (`echo "go
 test ok"` is not one), its status is the command's own (a test piped into `tail` or followed by another command is
-reported as masked), and the status comes from the tool's structured result (`Meta.exit_code`), so truncated output
+reported as masked, with the last line its output printed, or the status the line printed for the test itself when it
+echoes it, as in `npm test; echo "exit=$?"`, labelled as the line's own and never counted as a pass), and the status comes from the tool's structured result (`Meta.exit_code`), so truncated output
 can never turn a failing test into a passing one. Dependencies are enforced on claim **and** on spawn.
 
 ### Shared agreements before dependent work

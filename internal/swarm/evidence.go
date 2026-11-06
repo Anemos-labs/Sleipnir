@@ -71,6 +71,9 @@ type CmdRecord struct {
 	// summary line a runner prints ("131 passed", "FAILED (failures=2)") is then the best sign of how it went, though a command
 	// after the test (an echo) may have printed it instead, which the summary's wording leaves open.
 	Ending string
+	// Echoed is the status the command line printed for a masked test itself (`npm test; echo "exit=$?"`), or "" when it
+	// printed none. It is what the worker's own line says, not a status the harness saw, and the summary says so.
+	Echoed string
 }
 
 // Passed reports whether the record is a test the harness saw succeed.
@@ -186,6 +189,58 @@ func outputEnding(out string) string {
 	return ""
 }
 
+// echoedStatus is the status a command line printed for its test right after it, as in `npm test; echo "exit=$?"`: the
+// command after the last test is an echo or printf of "$?", and its output line is found by the text around "$?". It is ""
+// when the line prints none, or when the test is piped (then "$?" is the pipe's status).
+func echoedStatus(cmd, out string) string {
+	cs := splitShell(cmd)
+	last := -1
+	for i, c := range cs {
+		if isTestWords(c.words) {
+			last = i
+		}
+	}
+	if last < 0 || last+1 >= len(cs) || cs[last].op == "|" || cs[last].op == "&" {
+		return ""
+	}
+	echo := cs[last+1].words
+	if len(echo) < 2 || (echo[0] != "echo" && echo[0] != "printf") {
+		return ""
+	}
+	var tmpl string
+	for _, w := range echo[1:] {
+		if strings.Contains(w, "$?") {
+			tmpl = w
+			break
+		}
+	}
+	before, after, ok := strings.Cut(tmpl, "$?")
+	if !ok || strings.Contains(after, "$?") {
+		return ""
+	}
+	before, after = strings.TrimSpace(strings.ReplaceAll(before, `\n`, "")), strings.TrimSpace(strings.ReplaceAll(after, `\n`, ""))
+	if before == "" && after == "" {
+		return "" // a bare number is not told apart from the test's own output
+	}
+	lines := strings.Split(out, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		l := strings.TrimSpace(lines[i])
+		rest, ok := strings.CutPrefix(l, before)
+		if !ok {
+			continue
+		}
+		rest, ok = strings.CutSuffix(strings.TrimSpace(rest), after)
+		if !ok {
+			continue
+		}
+		rest = strings.TrimSpace(rest)
+		if n, err := strconv.Atoi(rest); err == nil && n >= 0 && n < 256 {
+			return rest
+		}
+	}
+	return ""
+}
+
 // editedBy lists the paths a successful edit call changed, nil for any other call.
 func editedBy(call core.Block, res *tools.Result) []string {
 	if res == nil || res.IsError || res.Unchanged { // a write that left every file as it was edited nothing
@@ -243,6 +298,7 @@ func (e *Evidence) Observe(call core.Block, res *tools.Result, now time.Time) {
 		rec.Exit, rec.Known = exitOf(res)
 		if isTest && masked && res != nil {
 			rec.Ending = outputEnding(res.Text)
+			rec.Echoed = echoedStatus(cmd, res.Text)
 		}
 		e.cur.commands = append(e.cur.commands, rec)
 		if len(e.cur.commands) > 40 {
@@ -353,6 +409,9 @@ func (r *evRecord) summary() string {
 			verdict = "ran (exit status masked by the command line)"
 			if t.Ending != "" {
 				verdict = fmt.Sprintf("ran (exit status masked by the command line, whose output ended %q)", t.Ending)
+			}
+			if t.Echoed != "" {
+				verdict = fmt.Sprintf("ran (exit status masked by the command line, which printed the test's status as %s)", t.Echoed)
 			}
 		case t.Exit != 0:
 			verdict = fmt.Sprintf("FAILED (exit %d)", t.Exit)

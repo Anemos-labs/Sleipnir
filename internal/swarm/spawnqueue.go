@@ -99,7 +99,7 @@ func (s *Swarm) queueTick(now time.Time) {
 			s.notify(s.ManagerID(), "info", fmt.Sprintf("%s was queued for a free %s member and could not be started: %v", id, q.req.Role, err))
 		default:
 			s.dropQueued(id)
-			s.notify(s.ManagerID(), "info", fmt.Sprintf("%s started on %s: a %s member was free (it was queued %s ago).", id, r.Agent, q.req.Role, now.Sub(q.at).Round(time.Second)))
+			s.notify(s.ManagerID(), "info", fmt.Sprintf("%s started on %s: %s %s member was free (it was queued %s ago).", id, r.Agent, article(q.req.Role), q.req.Role, now.Sub(q.at).Round(time.Second)))
 		}
 	}
 }
