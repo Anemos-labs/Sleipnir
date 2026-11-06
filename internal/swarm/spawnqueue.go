@@ -69,15 +69,26 @@ func (s *Swarm) queueTick(now time.Time) {
 	stopped := map[string]bool{} // roles one of whose members' runs this pass stopped: one at a time
 	for _, q := range s.queuedTasks() {
 		id := q.req.TaskID
-		if t, ok := s.Board.Snapshot().Task(id); !ok || t.Status != StatusTodo || t.Owner != "" || t.Rev != q.rev {
+		t, ok := s.Board.Snapshot().Task(id)
+		if !ok || t.Status != StatusTodo || t.Owner != "" || t.Rev != q.rev {
 			// assigned, revised (a new revision even when it is still todo), closed or gone since it was queued: not the harness's
 			// to start any more; the manager assigns it again if it wants it started
 			s.dropQueued(id)
 			continue
 		}
+		if done, dep := depsDone(s.Board.Snapshot(), t); !done {
+			if dep.Status == StatusFailed {
+				s.dropQueued(id)
+				s.notify(s.ManagerID(), "info", fmt.Sprintf("%s was queued until its dependencies were done, and %s failed: reopen %s or re-plan, then assign %s again.", id, dep.ID, dep.ID, id))
+			}
+			continue // queued ahead of its dependencies (spawnTool.queueBehindDeps): it starts once they are done
+		}
 		r, err := s.spawn(q.req)
 		var busy *noSpareMember
+		var named *memberBusy
 		switch {
+		case errors.As(err, &named):
+			continue // the member the manager named is still in a run: it gets the task when the run ends
 		case errors.As(err, &busy):
 			if !stopped[q.req.Role] && s.stopTasklessRun(q, now) {
 				stopped[q.req.Role] = true

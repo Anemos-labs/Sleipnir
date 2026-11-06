@@ -7,6 +7,17 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The manager's `spawn` of an existing todo task whose dependencies are not
+  done is queued instead of refused: the harness starts it once they are
+  done, on the member `agent=` names or the first free member of its role,
+  and mails the manager when it does (or when a dependency failed). A `spawn
+  agent=<id>` of an existing todo task while that member is still working is
+  queued for that member instead of refused with "still working". In a
+  shared tree a reviewer's task takes no part in the scope overlap check, as
+  a read-only role's does: a review scoped to `**` starts while
+  implementation tasks are open, and they start while it runs. No prompt
+  bytes change.
+
 - The `note` tool states its 300-character limit in its description and in
   the schema's `text` description, so a note is written to fit instead of
   refused after it was written. The `memory` tool's refusal of `scope
