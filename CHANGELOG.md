@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The `note` tool takes `withdraw=<id>` to take back one of the agent's own
+  notes, and refuses a field it does not have (an `action: "remove"` was
+  taken as a new note) instead of dropping it. An agent at its 8-note limit
+  is told its notes' ids and to withdraw one: the old message said to wait
+  for the notes to be merged, which nothing does. The live board lists
+  notes as "team notes" with their ids. Prompt bytes change: the `note`
+  tool's description and schema, and the board's notes section.
+
 - In a shared tree the manager's `task accept` of an implementation task
   says to commit the change now, in the git repository that holds it, with
   the subject its worker gave in `task done commit=` (which was dropped in a

@@ -293,7 +293,7 @@ paths outside the project).
 |---|---|---|
 | `task` | create, list, get, claim, update, block, resume, done, accept, reject, reopen, revise, resolve, fail, handover, deliver | Manager: create, accept, reject, reopen, revise, resolve, deliver and scope changes; pool leaders may create and accept the children of the pool they lead while it executes, and set the scope of one nobody has claimed (`update files`) (a refusal names the condition that failed: the leader, the phase or the role). Persistent pools refuse `fail` and fresh-worker `handover`; embedded callers retain them (`fail` needs a typed `reason`). See sections 4 and 6. |
 | `mail` | send | one recipient; typed; section 5 |
-| `note` | propose | a bounded fact in the live view; older proposals can be evicted |
+| `note` | propose, `withdraw=<id>` | a bounded fact in the live view; older notes can be evicted, and an author takes back one of its own with `withdraw`. A field the tool does not have is refused, never dropped |
 | `spawn` | role, task, optional `agent=` to reuse an idle worker, optional `solo=true` to give a top-level task to one member without the role's pool | Manager or pool leader assigning an existing member to its child; section 6 |
 | `pool` | propose, agree, execute, reconcile, inspect, confirm, excuse | Leader or manager coordinates phases; every member acknowledges the current agreement and reconciled result; the manager excuses a member that cannot take part. `pool get` is read as `task get`, and so is a member's `pool inspect` before the pool reconciles (with a line saying nothing is combined yet); another unknown action is refused with the list of actions |
 | `approve` | answer a delegated worker permission question | Manager only; explicit policy denials and escalations still apply |
@@ -404,8 +404,10 @@ Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side
   task and says to use it (`task get id=…`). The check runs inside the board's critical section, so many identical
   creates issued in parallel in one model response leave one task.
 * Operations are events (`board.op`, section 11), so state can be rebuilt from the log.
-* Notes are *proposals*: eligible for the bounded hot view. Automatic folding into the shared layer is not implemented
-  (section 9); agreements use task dependencies instead.
+* Notes are *proposals*: eligible for the bounded hot view, where each shows its id. Automatic folding into the shared
+  layer is not implemented (section 9), so a note stays until newer notes evict it or its author withdraws it; an
+  author at its limit is told its notes' ids and to withdraw one or fold facts together. Agreements use task
+  dependencies instead.
 * **The board is bounded**, because every agent's prompt carries a rendering of it: 1000 tasks; titles 160 characters,
   descriptions 2000, at most 16 dependencies and 16 scope entries per task; 48 pending notes (8 per author, the oldest
   evicted, 300 characters each); 8 alerts, which expire after 2 minutes and are cleared when the conflict ends.
