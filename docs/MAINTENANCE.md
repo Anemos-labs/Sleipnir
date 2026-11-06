@@ -16,6 +16,7 @@
 | Supported release targets | `.goreleaser.yaml` | Repository tests compare release, cross-build, and test configuration |
 | Main protection | `.github/rulesets/` and CI gate | Repository tests check definitions; `scripts/protect-main.sh` reads/applies GitHub settings |
 | Links, production doc comments, platform coverage | Source tree | `go test ./internal/repocheck` |
+| Documentation index (`docs/README.md`) | The Markdown files in `docs/` | `TestDocumentationIndexListsEveryDocument` in `internal/repocheck` fails on a document the index does not link |
 
 [Releases](https://github.com/Anemos-labs/Sleipnir/releases) contain the versioned
 history. `CHANGELOG.md` holds cumulative compatibility declarations, including
