@@ -117,6 +117,11 @@ func (t *bashTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		return fail(env, "bash: %v", err), nil
 	}
 
+	if what := endsHarness(command, os.Getpid(), selfLine(), selfName()); what != "" {
+		return fail(env, "bash: not run: %s also matches the harness's own process (pid %d), and ending it ends every agent of the "+
+			"session. End the processes you started by their pid (the one a background job reports, or $! after starting one), "+
+			"or with a pattern only they match", what, os.Getpid()), nil
+	}
 	if msg := missingLeadingCd(command, m.startDir(env, base), env.Root); msg != "" {
 		return fail(env, "bash: %s", msg), nil
 	}

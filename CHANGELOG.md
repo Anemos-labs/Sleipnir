@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The bash tool no longer runs a command that would signal the harness's own
+  process: a `pkill`, or a `kill` or `xargs kill` fed by `pgrep` or `grep`,
+  whose pattern the harness's command line or name also matches (an agent
+  ending stray `myproj` servers with `ps | grep myproj | xargs kill` when the
+  harness was started with `--cwd .../myproj`), or `kill` of its pid. The
+  result says why and to end processes by their pid. No prompt bytes change in
+  the system prompt or tool specs.
+
 - The manager's `wait` is no longer refused while the only unstarted tasks
   are ones the harness has queued to start. A masked test whose command line
   echoes its status (`npm test; echo "exit=$?"`) reports that status as the
