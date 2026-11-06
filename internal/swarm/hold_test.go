@@ -777,3 +777,32 @@ func TestAPersistentTeamIsNotHeldByAWorkerWithNoTask(t *testing.T) {
 		t.Fatalf("the manager made %d requests, want 4: it was sent back for a worker it can do nothing about", n)
 	}
 }
+
+// A persistent team's manager that reaches its step limit while only a taskless worker runs is sent on, not ended with the limit's
+// error: the worker it can do nothing about lets a finished answer through, never one the manager has not given.
+func TestAPersistentManagerAtItsStepLimitBesideATasklessWorkerGoesOn(t *testing.T) {
+	prev := holdSettleMax
+	holdSettleMax = 100 * time.Millisecond
+	t.Cleanup(func() { holdSettleMax = prev })
+
+	gate := make(chan struct{}) // never opened: the worker does not end
+	r, _ := finishingRigWith(t, Config{HoldManager: true, PersistentPools: true, FixedSteps: true, MaxWriters: 4}, gate)
+	t.Cleanup(func() { close(gate) })
+	mgr := r.sw.roles["manager"]
+	mgr.MaxSteps = 3 // spawn, wait, accept: the limit falls before the answer
+	r.sw.roles["manager"] = mgr
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := r.sw.RunManager(context.Background(), "add notes")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("the run ended with %v: the manager at its step limit was not sent on", err)
+		}
+	case <-time.After(8 * time.Second):
+		t.Fatal("a persistent team's manager was held by a worker that holds no task")
+	}
+}
