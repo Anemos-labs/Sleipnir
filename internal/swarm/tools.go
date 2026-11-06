@@ -625,6 +625,7 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 		s.flushLearned(task)
 		commit := ""
 		if !s.hadTree(task.Owner) {
+			s.sharedCommitAt("accepted")
 			commit = s.sharedCommitHint(task, commitMsg)
 		}
 		if last := s.reviewPending(); last != "" && s.roleOf(task.Owner) != ReviewerRole {

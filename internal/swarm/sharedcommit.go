@@ -23,6 +23,7 @@ func (s *Swarm) noteSharedCommit(t Task, msg string) {
 	if strings.TrimSpace(msg) == "" {
 		return
 	}
+	s.sharedCommitAt("cleanup")
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// The snapshot is read under the lock that every message is written under, so each kept message's task is seen at least as
@@ -42,6 +43,13 @@ func (s *Swarm) noteSharedCommit(t Task, msg string) {
 		}
 	}
 	s.sharedCommits[t.ID] = msg
+}
+
+// sharedCommitAt runs the test hook for step (Swarm.sharedCommitStep).
+func (s *Swarm) sharedCommitAt(step string) {
+	if f := s.sharedCommitStep; f != nil {
+		f(step)
+	}
 }
 
 // sharedCommitMessage is the kept commit message of t's submission, read while t is still in review (before the accept), so that

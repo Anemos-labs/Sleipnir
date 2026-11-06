@@ -137,3 +137,65 @@ func TestTheAcceptToolCarriesTheWorkersSubjectAtTheBound(t *testing.T) {
 		t.Fatalf("the accepted task's message is still kept: %q", got)
 	}
 }
+
+// The interleavings forced through the hook. A task claimed and submitted after a cleanup began, but before it took the lock,
+// keeps its message (the board is read under the lock); and a cleanup that runs between the manager's accept and its hint does not
+// take the accepted task's message (it was read while the task was in review).
+func TestSharedCommitCleanupRacesKeepCurrentMessages(t *testing.T) {
+	r := newRVRig(t, Config{}, gatedWorkers(nil))
+	if err := os.MkdirAll(filepath.Join(r.sw.deps.Root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fill := func() {
+		for i := range maxSharedCommits {
+			r.sw.noteSharedCommit(Task{ID: "gone-" + strconv.Itoa(i)}, "fix: an abandoned submission")
+		}
+	}
+
+	// A submission lands between the start of a cleanup and its lock.
+	fill()
+	late, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "alerts page", Role: "frontend"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	once := false
+	r.sw.sharedCommitStep = func(step string) {
+		if step != "cleanup" || once {
+			return
+		}
+		once = true
+		if err := r.sw.Board.Assign("mgr", "fe-4", late.ID); err != nil {
+			t.Fatal(err)
+		}
+		cur, _ := r.sw.Board.Snapshot().Task(late.ID)
+		r.sw.noteSharedCommit(cur, "feat(web): show the alerts page") // its own cleanup leaves the map nearly empty: fill it again
+		r.sw.mu.Lock()
+		for i := 0; len(r.sw.sharedCommits) < maxSharedCommits; i++ {
+			r.sw.sharedCommits["gone-again-"+strconv.Itoa(i)] = "fix: an abandoned submission"
+		}
+		r.sw.mu.Unlock()
+	}
+	r.sw.noteSharedCommit(Task{ID: "T-new"}, "fix: the submission that starts the cleanup")
+	r.sw.sharedCommitStep = nil
+	if got := r.sw.sharedCommitMessage(late.ID); got != "feat(web): show the alerts page" {
+		t.Fatalf("the cleanup dropped a submission that landed before its lock: %q", got)
+	}
+
+	// A cleanup runs between the accept and its hint.
+	task := inReview(t, r.sw.Board, "frontend", "fe-5", `edited 1 (Incidents.tsx); last test "npm test" passed`)
+	r.sw.noteSharedCommit(task, "feat(web): show the incidents page")
+	r.sw.sharedCommitStep = func(step string) {
+		if step == "accepted" {
+			r.sw.sharedCommitStep = nil
+			fill()
+			r.sw.noteSharedCommit(Task{ID: "T-later"}, "fix: a submission at the bound")
+			if got := r.sw.sharedCommitMessage(task.ID); got != "" {
+				t.Errorf("the cleanup kept a done task's message: %q", got)
+			}
+		}
+	}
+	res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "accept", "id": task.ID, "text": "looks good"})
+	if res.IsError || !strings.Contains(res.Text, `"feat(web): show the incidents page"`) {
+		t.Fatalf("a cleanup between the accept and its hint took the worker's subject: %s", res.Text)
+	}
+}
