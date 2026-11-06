@@ -383,11 +383,11 @@ func unreadable(ok bool) string {
 	return ", which cannot be checked (a back-reference or other syntax Go does not read)"
 }
 
-// patternMatches reports whether the pattern pat (a regular expression unless fixed) is found in s, and false for ok when pat
+// patternMatches reports whether the pattern pat (a regular expression unless fixed) is found in s (an empty one always is), and false for ok when pat
 // is a regular expression Go cannot read, so whether it matches is not known.
 func patternMatches(pat, s string, fold, fixed bool) (match, ok bool) {
 	if pat == "" {
-		return false, true
+		return true, true // an empty pattern matches every line
 	}
 	if !fixed {
 		expr := pat
