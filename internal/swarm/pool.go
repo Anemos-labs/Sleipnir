@@ -364,8 +364,12 @@ func (s *Swarm) spareMembers(req SpawnReq, all []*member) ([]*member, map[string
 	if len(spare) == 0 {
 		t := busy[0]
 		if t.Pool.Phase != "executing" {
-			return nil, nil, &noSpareMember{role: req.Role, held: t.ID + "'s pool is agreeing on its plan with every member", msg: fmt.Sprintf("the %s pool is still agreeing on %s's plan with every member; once it executes, members without a subtask of it can take another parent. Wait for that (call wait), or have %s's leader %s take this work as a child of %s",
-				req.Role, t.ID, t.ID, t.Owner, t.ID)}
+			doing, next := "agreeing on "+t.ID+"'s plan", "once it executes"
+			if t.Pool.Phase == "reconciling" { // its parts are done, and every member votes on the merged result
+				doing, next = "reconciling "+t.ID+"'s finished parts", "once it has (or goes back to executing)"
+			}
+			return nil, nil, &noSpareMember{role: req.Role, held: t.ID + "'s pool is " + doing + " with every member", msg: fmt.Sprintf("the %s pool is still %s with every member; %s, members without a subtask of it can take another parent. Wait for that (call wait), or have %s's leader %s take this work as a child of %s",
+				req.Role, doing, next, t.ID, t.Owner, t.ID)}
 		}
 		// every member and what holds it: the parent it leads, or the open subtask it owns
 		var leads []string

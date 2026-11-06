@@ -48,7 +48,8 @@ A role works several parents side by side: when the manager assigns a role a par
 while another of its parents is open, the members that one can spare (it is executing
 its plan, and they neither lead it nor hold an open subtask of it) leave its pool,
 without being excused, and form the new parent's pool; its leader is told who left.
-A parent whose pool is still agreeing on its plan needs every member, and one whose
+A parent whose pool is still agreeing on its plan, or reconciling its finished parts (every member votes on the merged
+result), needs every member, and one whose
 members are all busy spares none. A `spawn` of an existing task by the manager is then
 queued: the answer names what holds the members (`be-1 leads T2, be-2 leads T3`), and the
 harness starts the task on the first member of the role that is free, on the supervisor's
@@ -341,7 +342,7 @@ free (be-2, be-3, fe-1)`) and asks for what is missing to be split among them.
 ## 3. The board
 
 Tasks: `id`, `kind` (work by default, or plan), `title`, `desc`, `status`, `owner`, `role`, `deps`, `files` (scope), `line` (latest one-line progress),
-`result` (what the worker said, one line), `report` (a read-only worker's whole report, up to 4000 characters and 40
+`result` (what the worker said, one line), `report` (a read-only worker's whole report, which the cut `result` line points to as `(whole report: task get T4, field report)`, up to 4000 characters and 40
 lines, kept while the task is in review or done and shown by `task get` only), `evidence` (what the harness observed),
 `agreement` (a proposed contract),
 `agreements` (accepted prerequisite contracts inherited at assignment; a `task get` by anyone but the task's owner shows
@@ -533,7 +534,7 @@ is what the harness observed (edited files, the last test command and its exit
 status), never what the worker wrote about itself. A test counts only if the program run is a test runner (`echo "go
 test ok"` is not one), its status is the command's own (a test piped into `tail` or followed by another command is
 reported as masked, with the last line its output printed, or the status the line printed for the test itself when it
-echoes it, as in `npm test; echo "exit=$?"`, labelled as the line's own and never counted as a pass), and the status comes from the tool's structured result (`Meta.exit_code`), so truncated output
+echoes it, as in `npm test; echo "exit=$?"` or, for a piped test, `make test | tail; echo "EXIT=${PIPESTATUS[0]}"`, labelled as the line's own and never counted as a pass), and the status comes from the tool's structured result (`Meta.exit_code`), so truncated output
 can never turn a failing test into a passing one. Dependencies are enforced on claim **and** on spawn.
 
 ### Shared agreements before dependent work
@@ -942,7 +943,7 @@ same findings; `idle_capacity`, `review_overrun` and `task_overrun` alone also r
 | `orphaned_task` | a doing or blocked task, or a todo task reserved for an agent, is owned by an agent that is not on the team, on two consecutive sweeps (a spawn in progress is not one) | the manager |
 | `blocked_cycle` | blocked tasks' `blocked_on` targets lead back to themselves; one finding per cycle, named by its lowest task id | the manager |
 | `review_starved` | a task has waited in review for `StallTurns` manager turns, or for 5 minutes, without the manager naming it in a task call | the manager |
-| `review_overrun` | a running reviewer's task (not a planning task) has run, since its assignment began, longer than the work it reviews took to build: the longest of the merges no accepted review covers yet (each from the first run that held its task to its submission: the wait for the manager's decision is not build time), and at least 10 minutes. The bound follows the work, so a review of a day's work may take hours and a review of a fix may not | the reviewer (write the report with what it has: findings so far, what was checked and found fine, what was not reached) |
+| `review_overrun` | a running reviewer's task (not a planning task) has run, since its assignment began, longer than the work it reviews took to build: the longest of the merges no accepted review covers yet (each from the first run that held its task to its submission: the wait for the manager's decision is not build time), and at least 10 minutes. A pooled review's parent is not held to it: each part is a review task of its own, held to the bound, and the parent's time is theirs plus the reconcile. The bound follows the work, so a review of a day's work may take hours and a review of a fix may not | the reviewer (write the report with what it has: findings so far, what was checked and found fine, what was not reached) |
 | `task_overrun` | a running worker that is not a reviewer has held its current assignment (a doing task that is not a pool's) for longer than `TaskTimeout` (default 90 minutes), from when the assignment began and not counting the time the task waited blocked (from its block to its resume) nor, across a resume, the time the team was not running (from the previous run's last board op), whatever it does meanwhile: a worker that keeps editing or re-running tests on a task it will not finish is busy by every other measure | the worker (finish with what works and name what is left, hand the task over, or block it on what it waits for) |
 | `idle_capacity` | in a configured team, the manager waits while at least one worker runs, a task is still open, and at least half of the workers, and two or more, have been idle for 15 minutes owning no open task (none reserved, in progress, blocked or in review), and the workers at work are not all read-only roles, on docs tasks, or finishing a turn with no open task (then the team waits for a verdict on finished work, and idle writers are expected); once raised it holds while that is so, whether the manager is still waiting or not | the manager (who is free, once, and at most once in 30 minutes however often the finding clears and is raised again; it decides whether the objective needs more than the open tasks) |
 

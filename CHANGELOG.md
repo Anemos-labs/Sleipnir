@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A test piped into another command whose line echoes its status through
+  bash's `PIPESTATUS` (`make test | tail; echo "EXIT=${PIPESTATUS[0]}"`) now
+  reports that status as the line's own, as `$?` after an unpiped test does.
+  A pooled review's parent is no longer reported as an overrun review: its
+  parts are each held to the bound. A spawn refused while a pool reconciles
+  its parts says so instead of saying it is agreeing on its plan. A read-only
+  worker's cut result line points at the `report` field of `task get`. No
+  prompt bytes change in the system prompt or tool specs.
+
 - The bash tool no longer runs a command that would signal the harness's own
   process: a `pkill`, or a `kill` or `xargs kill` fed by `pgrep` or `grep`,
   whose pattern the harness's command line or name also matches (an agent

@@ -35,7 +35,7 @@ func TestAReviewersWholeReportIsKeptForTheManager(t *testing.T) {
 	if !strings.Contains(got, "unused rawIdx field") {
 		t.Fatalf("task get lost the end of the report:\n%s", got)
 	}
-	if cur, _ := b.Snapshot().Task(task.ID); !strings.HasSuffix(cur.Result, "(whole report: task get "+task.ID+")") {
+	if cur, _ := b.Snapshot().Task(task.ID); !strings.HasSuffix(cur.Result, "(whole report: task get "+task.ID+", field report)") {
 		t.Fatalf("the result does not say where the report is: %q", cur.Result)
 	}
 	if _, err := b.SendBack("mgr", task.ID, "check the svc clock too"); err != nil {
@@ -100,7 +100,7 @@ func TestAPlannersWholeTextIsKeptAsItsReport(t *testing.T) {
 		cur, _ := b.Snapshot().Task(plan.ID)
 		return cur.Status == StatusReview
 	})
-	if cur, _ := b.Snapshot().Task(plan.ID); cur.Report != text || !strings.HasSuffix(cur.Result, "(whole report: task get "+plan.ID+")") {
+	if cur, _ := b.Snapshot().Task(plan.ID); cur.Report != text || !strings.HasSuffix(cur.Result, "(whole report: task get "+plan.ID+", field report)") {
 		t.Fatalf("the plan kept result %q and report %q", cur.Result, cur.Report)
 	}
 }
