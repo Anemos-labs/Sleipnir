@@ -84,13 +84,9 @@ var cloneConfig = []string{
 	"protocol.ssh.allow=always",
 }
 
-// Clone clones the repository into dir for a scan, without its submodules and with cloneConfig. A dir that exists is refused.
-func Clone(ctx context.Context, raw, dir string) error {
-	return CloneProgress(ctx, raw, dir, nil)
-}
-
-// CloneProgress is Clone that hands each progress line git prints ("Receiving objects:  42% (420/1000), 1.20 MiB | 2.00 MiB/s")
-// to progress as it comes, so that a caller can show the person how far a long clone is. A nil progress is Clone.
+// CloneProgress clones the repository into dir for a scan, without its submodules and with cloneConfig. A dir that exists is
+// refused. It hands each progress line git prints ("Receiving objects:  42% (420/1000), 1.20 MiB | 2.00 MiB/s") to progress as it
+// comes, so that a caller can show the person how far a long clone is; a nil progress clones without reporting.
 func CloneProgress(ctx context.Context, raw, dir string, progress func(line string)) error {
 	if err := CheckURL(raw); err != nil {
 		return err

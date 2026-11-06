@@ -623,11 +623,6 @@ func writeAtomic(root, rel string, data []byte) error {
 	return nil
 }
 
-// PagePath is the Markdown file of a page.
-func PagePath(root, slug, page string) string {
-	return filepath.Join(RunDir(root, slug), "pages", page+".md")
-}
-
 // maxPageFile bounds what is read of one page file: write_page accepts far less, so more is not a page the tool wrote.
 const maxPageFile = 4 << 20
 

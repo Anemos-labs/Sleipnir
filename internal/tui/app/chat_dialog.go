@@ -40,10 +40,7 @@ type dialog struct {
 	toolKey   string
 	opts      []widget.DialogOption
 	decisions []perm.Decision // what each option decides
-	title     string
-	body      []cell.Line
-	width     int    // the width body was laid out for
-	current   string // what the file of a write holds as the question appears: what the preview is a change of
+	current   string          // what the file of a write holds as the question appears: what the preview is a change of
 }
 
 // defaultAnswerAfter is the pause before a question takes an answer from the keyboard.

@@ -272,9 +272,8 @@ type accumulator struct {
 	rawUsage            json.RawMessage
 	started             bool
 	ttfb                time.Duration // when the first frame with content came, from the start of the request
-	textOpen            bool
-	leakChecked         bool // splitLeakedThinking has run or does not apply
-	leakScanned         int  // bytes of the text splitLeakedThinking has searched
+	leakChecked         bool          // splitLeakedThinking has run or does not apply
+	leakScanned         int           // bytes of the text splitLeakedThinking has searched
 
 	promptIDs []int32
 	compIDs   []int32

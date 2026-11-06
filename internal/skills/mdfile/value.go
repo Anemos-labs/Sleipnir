@@ -134,9 +134,6 @@ func (f *Fields) Has(key string) bool {
 	return ok
 }
 
-// Value returns the raw value of a key and marks it used.
-func (f *Fields) Value(key string) (Value, bool) { return f.get(key) }
-
 // Str returns a string field. Empty values count as absent. A flow list such as
 // "[message]" comes back as its source text; a block list or a mapping is an
 // error.
