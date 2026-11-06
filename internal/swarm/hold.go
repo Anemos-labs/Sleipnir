@@ -39,8 +39,8 @@ const holdReasonMax = 400
 const holdListCap = 6
 
 // holdSettleMax is the longest the guard waits, in all, for workers that are only
-// finishing their last turn (see unfinishedWork.windingDown) before it decides. A
-// worker that outlasts it is treated like any other running worker.
+// finishing their last turn (see unfinishedWork.windingDown) before it decides. Workers
+// that outlast it while holding nothing on the board no longer hold the answer back.
 var holdSettleMax = 20 * time.Second
 
 // holdSettlePoll is how often that wait looks at the workers.
@@ -499,6 +499,12 @@ func (h *holdHooks) BeforeStop(ctx context.Context, agentID, role, final string,
 			return agent.StopOutcome{}
 		}
 		u = h.s.unfinishedWork()
+		if u.windingDown() {
+			// Still running after the settle window, and holding nothing on the board: a worker with no task that keeps its turn
+			// open (in a real run, one that sat in wait loops "for the team" after its work was accepted). The manager can do
+			// nothing about it, and a veto it cannot clear held a finished team's answer for over an hour. Let the answer through.
+			u = unfinishedWork{}
+		}
 	}
 	if u.empty() {
 		h.s.flushManagerEdits()
