@@ -1,6 +1,7 @@
 package perm
 
 import (
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -361,10 +362,19 @@ func (rs *resolver) leavesConfinement(c rootPair, a access, agent string, ignore
 			" (or the relative path) instead; the checkout path is refused however it is spelled ($HOME, ~, a cd first, a script)"
 	}
 	for _, p := range rs.treeParents {
-		if inside(p, a.real) {
-			return head + " is in another agent's worktree, which only that agent may touch. Its work reaches your tree once it is merged; " +
-				"if you need it sooner, block your task and say what you need, or ask the manager (mail). Do not retry this path another way"
+		if !inside(p, a.real) {
+			continue
 		}
+		// Name what the path is: the directory of every tree, or one tree by its name. The advice holds for whoever reads it,
+		// the manager included (it used to say "ask the manager", which the manager was told too).
+		rel, err := filepath.Rel(p, a.real)
+		name, _, _ := strings.Cut(filepath.ToSlash(rel), "/")
+		if err != nil || name == "" || name == "." {
+			return head + " is the directory that holds every agent's worktree, which is not yours to read. Your own tree is the project; " +
+				"work from the other trees reaches it once it is merged. Do not retry this path another way"
+		}
+		return head + " is in another worktree (" + clipText(name, 40) + "), which only its owner may touch. Its work reaches your tree once it is merged; " +
+			"if you need something from it sooner, ask for it by mail instead of reading it. Do not retry this path another way"
 	}
 	return head + " is elsewhere in the workspace, outside your tree. Use paths inside your working directory; this path is refused however it is spelled"
 }

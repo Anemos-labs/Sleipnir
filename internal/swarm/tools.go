@@ -415,6 +415,9 @@ func (t *taskTool) update(c *tools.Call, in taskIn) *tools.Result {
 		if err := s.Board.SetScope(me, in.ID, files, check); err != nil {
 			return tools.Errorf("cannot change the scope: %v", err)
 		}
+		if line := openChildScopes(s.Board.Snapshot(), in.ID); line != "" && in.Text == "" {
+			return text("updated %s. %s", in.ID, line)
+		}
 	}
 	if in.Text != "" {
 		if c.Env.Role == "manager" {
@@ -437,6 +440,29 @@ func (t *taskTool) update(c *tools.Call, in taskIn) *tools.Result {
 		}
 	}
 	return text("updated %s", in.ID)
+}
+
+// openChildScopes says, after a task's scope changed, which of its open children keep scopes of their own: a child's scope is not
+// widened with its parent's, and in a team run the manager widened a parent for a file, the child's worker was refused writing it,
+// and the child needed a second widening. "" when the task has no open child.
+func openChildScopes(sn *Snapshot, id string) string {
+	var kids []string
+	for _, t := range sn.Tasks {
+		if t.Parent != id || t.Status == StatusDone || t.Status == StatusFailed {
+			continue
+		}
+		who := string(t.Status)
+		if t.Owner != "" {
+			who += ", " + t.Owner
+		}
+		kids = append(kids, fmt.Sprintf("%s (%s: %s)", t.ID, who, cleanText(strings.Join(t.Files, ", "), 120)))
+	}
+	if len(kids) == 0 {
+		return ""
+	}
+	sort.Strings(kids)
+	return "Its open children keep their own scopes, which this change did not widen: " + strings.Join(kids, "; ") +
+		". If a child's worker needs the new paths, widen that child too (task update id=<child> files=...)."
 }
 
 // done is a worker's request to finish. The harness decides: the task moves to
