@@ -185,3 +185,33 @@ func TestAPlanInReviewIsNotSaidToBeBuilt(t *testing.T) {
 		t.Fatalf("the line for a plan in review was %q", got)
 	}
 }
+
+// A submission is said to be built and tested only where a verifier ran on it: without one, the line says that nothing but its
+// worker checked it, and leaves the manager's own check to the doubt the evidence leaves.
+func TestASubmissionIsSaidToBeTestedOnlyWhereAVerifierRuns(t *testing.T) {
+	for _, verify := range []string{"", "go test ./..."} {
+		r, call := lookRig(t, []string{"backend"})
+		r.sw.cfg.VerifyCmd = verify
+		r.sw.Board.Restore(&Snapshot{Tasks: []Task{{ID: "T1", Title: "rollouts", Role: "backend", Status: StatusTodo}}})
+		if err := r.sw.Board.Claim("be-1", "T1"); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.sw.Board.submitAgreementAt("be-1", "T1", 0, "done", "", ""); err != nil {
+			t.Fatal(err)
+		}
+		var got string
+		for i := 0; i < lookEvery; i++ {
+			got = call("read", readMain)
+		}
+		said := strings.Contains(got, "built and tested") || strings.Contains(got, "run its verifier")
+		if verify != "" && !strings.Contains(got, `run its verifier ("go test ./...") on each submission`) {
+			t.Fatalf("the verifier is not named as it is: %q", got)
+		}
+		if verify == "" && (said || !strings.Contains(got, "No verifier is configured") || !strings.Contains(got, "task accept id=T1")) {
+			t.Fatalf("without a verifier the line was %q", got)
+		}
+		if verify != "" && !said {
+			t.Fatalf("with a verifier the line was %q", got)
+		}
+	}
+}

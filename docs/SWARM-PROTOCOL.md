@@ -343,7 +343,8 @@ Tasks: `id`, `kind` (work by default, or plan), `title`, `desc`, `status`, `owne
 `result` (what the worker said, one line), `report` (a read-only worker's whole report, up to 4000 characters and 40
 lines, kept while the task is in review or done and shown by `task get` only), `evidence` (what the harness observed),
 `agreement` (a proposed contract),
-`agreements` (accepted prerequisite contracts inherited at assignment), `attempts`, `rev`, `closure` (the typed reason
+`agreements` (accepted prerequisite contracts inherited at assignment; a `task get` by anyone but the task's owner shows
+each as a pointer, its size and the task whose `task get` holds the text), `attempts`, `rev`, `closure` (the typed reason
 a done or failed task closed, below) and `blocked_on` (the task a blocked task waits for, when its owner named one).
 Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side states.
 
@@ -419,6 +420,7 @@ create (manager)            todo
 claim / spawn               doing   (owner set, dependencies and scope checked, leases acquired lazily on write)
 worker: done(text)          --> the HARNESS runs the gate:
                                  1. evidence: files the harness saw the agent edit, commands it ran and their exit codes
+                                    (a test piped into another command has no exit status of its own: its output's last line is kept)
                                  2. verifier: the configured command (--verify "go test {dirs}") in the agent's workdir
                               pass  -> review (result = the model's text; evidence = what the harness observed)
                               fail  -> doing (the verifier output is returned to the worker for up to two repair retries)
@@ -944,7 +946,10 @@ same findings; `idle_capacity`, `review_overrun` and `task_overrun` alone also r
 
 `StallTurns` is `swarm.Config.StallTurns` (default 12; negative turns the two turn-based kinds off). A finding is
 raised once while its condition holds: a `swarm.stall` event (`action: raise`) and one harness mail ("Stall check: ...",
-ids and counts only) that says what would end it. `idle_capacity` is the exception: the manager gets at most one mail
+ids and counts only) that says what would end it. The mail is dropped unread when its finding no longer holds by the time
+its recipient takes it: a sweep cleared it, it was raised again (the new raise has its own mail), or its task was decided
+while the mail waited for the recipient's next turn. A full inbox keeps such mail whole instead of folding it into the
+digest, so it is still checked when it is taken. `idle_capacity` is the exception: the manager gets at most one mail
 about it, first nudge or escalation diagnosis, in 30 minutes, so a raise inside that period is logged without a mail. When the condition no longer holds the finding clears itself
 (`action: clear`); it can be raised again only after that. The sweep recovers nothing on its own: it names the
 condition and the agent that can act (by handing a task over, failing it with a reason, resuming one side of a

@@ -131,6 +131,10 @@ type stallState struct {
 	mu      sync.Mutex
 	active  map[string]Stall
 	raised  map[StallKind]int
+	// raise numbers each raise of a finding (gen, by key), so that a nudge from an earlier raise of a finding that cleared and
+	// was raised again does not hold beside the new one's (stallHolds).
+	raise   uint64
+	gen     map[string]uint64
 	orphans map[string]bool        // orphaned-task candidates of the previous sweep
 	review  map[string]reviewClock // "T3#rev": when the review clock (re)started
 	waiting bool                   // the manager's latest coordination call is wait
@@ -616,6 +620,11 @@ func (s *Swarm) sweepStalls() {
 		if _, ok := st.active[k]; !ok {
 			raised = append(raised, f)
 			st.raised[f.Kind]++
+			if st.gen == nil {
+				st.gen = map[string]uint64{}
+			}
+			st.raise++
+			st.gen[k] = st.raise
 		}
 		st.active[k] = f
 	}
@@ -623,7 +632,12 @@ func (s *Swarm) sweepStalls() {
 		if !now[k] {
 			cleared = append(cleared, f)
 			delete(st.active, k)
+			delete(st.gen, k)
 		}
+	}
+	gens := make(map[string]uint64, len(raised))
+	for _, f := range raised {
+		gens[f.key()] = st.gen[f.key()]
 	}
 	st.mu.Unlock()
 	sortStalls(cleared)
@@ -635,9 +649,29 @@ func (s *Swarm) sweepStalls() {
 		if f.Notify == "" || f.Kind == StallIdleCapacity && !s.stalls.mayMailIdle(s.deps.Now()) {
 			continue
 		}
-		s.notify(f.Notify, "request", stallNudge(f, s.stallTurns(), s.cfg.PersistentPools))
+		s.notifyStill(f.Notify, "request", stallNudge(f, s.stallTurns(), s.cfg.PersistentPools), false, s.stallHolds(f, gens[f.key()]))
 	}
 	s.escalateStalls()
+}
+
+// stallHolds is what a stall's nudge asks before it is read: whether the finding of raise gen still holds. A finding a later
+// sweep cleared does not (nor one cleared and raised again, whose new raise has a nudge of its own), and neither does one
+// whose task has since been decided, which the board shows before the next sweep: a manager was told "T23 has waited in review
+// for 5 minutes. Read it, then accept or reject it" right after its accept of T23 returned. Other changes (an orphan's task
+// reassigned, a blocked cycle broken) are seen by the next sweep.
+func (s *Swarm) stallHolds(f Stall, gen uint64) func() bool {
+	return func() bool {
+		if f.Task != "" {
+			t, ok := s.Board.Snapshot().Task(f.Task)
+			if !ok || t.Status == StatusDone || t.Status == StatusFailed || f.Kind == StallReviewStarved && t.Status != StatusReview {
+				return false
+			}
+		}
+		s.stalls.mu.Lock()
+		defer s.stalls.mu.Unlock()
+		_, ok := s.stalls.active[f.key()]
+		return ok && s.stalls.gen[f.key()] == gen
+	}
 }
 
 // mayMailIdle reports whether an idle_capacity finding raised at now may be mailed, and if so records the mail: at most one per

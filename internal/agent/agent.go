@@ -441,6 +441,7 @@ type inboxMsg struct {
 	text   string
 	steer  bool
 	person bool
+	still  func() bool // SendIf: whether the message still holds when it is taken; nil for one that always does
 }
 
 // New builds an agent with an empty thread.
@@ -549,6 +550,14 @@ const mailPrefix = "[mail"
 // verbatim in the instructions notes. Use Steer to say so explicitly.
 func (a *Agent) Send(text string) {
 	a.enqueue(inboxMsg{text: text, steer: !strings.HasPrefix(text, mailPrefix)})
+}
+
+// SendIf is Send for a message that may stop being true before the agent reads it: still is asked when the message is taken
+// for the next turn or tool results, and a message it says no longer holds is dropped unread. A harness notice ("T23 has
+// waited in review for 5 minutes") was queued while the manager was accepting T23, and reached it after the accept. still is
+// called without the agent's lock held, so it may read anything but the agent itself.
+func (a *Agent) SendIf(text string, still func() bool) {
+	a.enqueue(inboxMsg{text: text, steer: !strings.HasPrefix(text, mailPrefix), still: still})
 }
 
 // Steer queues human steering: text typed by the person driving this agent. It
@@ -1155,12 +1164,22 @@ func (a *Agent) drainInbox(resuming bool) {
 // nearest the model's next step.
 func (a *Agent) takeInbox() []core.Block {
 	a.mu.Lock()
+	taken := a.inbox
+	a.inbox = nil
+	a.mu.Unlock()
+	kept := taken[:0:0]
+	for _, m := range taken {
+		if m.still == nil || m.still() { // outside the lock: still reads the harness's state
+			kept = append(kept, m)
+		}
+	}
+	a.mu.Lock()
 	defer a.mu.Unlock()
-	if len(a.inbox) == 0 {
+	if len(kept) == 0 {
 		return nil
 	}
 	var steer, mail, person []string
-	for _, m := range a.inbox {
+	for _, m := range kept {
 		switch {
 		case m.person:
 			person = append(person, m.text)
@@ -1170,7 +1189,6 @@ func (a *Agent) takeInbox() []core.Block {
 			mail = append(mail, m.text)
 		}
 	}
-	a.inbox = nil
 	var blocks []core.Block
 	if len(steer) > 0 {
 		text, imgs := a.attachImages(strings.Join(steer, "\n\n"))
