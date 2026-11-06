@@ -449,12 +449,11 @@ func samePosixMeaning(command string) bool {
 	return len(f) == 0 || !windowsOwnMeaning[strings.ToLower(f[0])]
 }
 
-// slotHolder is how a heavy command is named to one that waits for its slot: the agent and the program, with its
-// subcommand when that is one of a few well-known ones ("be-2: go test", "be-1: npm run build", "be-3: python -m pytest").
-// The waiting command belongs to another agent, and any argument may be a secret (a flag's value, a header, credentials in
-// a URL, a word passed to a script), so no other word is shown. Only the line before its first quote, backslash or "$" is
-// read, so a quoted value is never split into words; leading KEY=value assignments are skipped. A command whose program is
-// not a plain name is "a command".
+// slotHolder is how a heavy command is named to one that waits for its slot: the agent and the command's tool and verb, each
+// only from a fixed list ("be-2: go test", "be-1: npm run build", "be-3: python -m pytest"). The waiting command belongs
+// to another agent, and any word it wrote may be a secret (a flag's value, a header, credentials in a URL, a path or a
+// script's name), so nothing it wrote is copied: a tool or verb not on the list is left out, and a command with neither is
+// "a command". Only the line before its first quote, backslash or "$" is read, and leading KEY=value assignments are skipped.
 func slotHolder(agent, command string) string {
 	line, _, _ := strings.Cut(strings.TrimSpace(command), "\n")
 	if i := strings.IndexAny(line, "\"'`\\$"); i >= 0 {
@@ -465,21 +464,17 @@ func slotHolder(agent, command string) string {
 		fields = fields[1:]
 	}
 	label := "a command"
-	if len(fields) > 0 && plainWord(strings.ReplaceAll(fields[0], "/", "")) {
+	if len(fields) > 0 && (knownTools[fields[0]] || pythonName(fields[0])) {
 		words := []string{fields[0]}
-		prog := strings.ToLower(fields[0][strings.LastIndex(fields[0], "/")+1:])
 		switch {
-		case len(fields) > 2 && fields[1] == "-m" && pythonName(prog) && plainWord(fields[2]): // python -m pytest
+		case len(fields) > 2 && fields[1] == "-m" && pythonName(fields[0]) && knownTools[fields[2]]: // python -m pytest
 			words = append(words, "-m", fields[2])
-		case len(fields) > 2 && fields[1] == "run" && scriptRunners[prog] && plainWord(fields[2]): // npm run build
+		case len(fields) > 2 && fields[1] == "run" && scriptRunners[fields[0]] && knownVerbs[fields[2]]: // npm run build
 			words = append(words, "run", fields[2])
-		case len(fields) > 1 && knownSubcommands[fields[1]]:
+		case len(fields) > 1 && knownVerbs[fields[1]]:
 			words = append(words, fields[1])
 		}
 		label = strings.Join(words, " ")
-	}
-	if r := []rune(label); len(r) > 60 {
-		label = string(r[:59]) + "…"
 	}
 	if agent == "" {
 		return label
@@ -487,30 +482,27 @@ func slotHolder(agent, command string) string {
 	return agent + ": " + label
 }
 
+// knownTools are the build, test and install programs a slot holder may be named by.
+var knownTools = map[string]bool{
+	"go": true, "cargo": true, "rustc": true, "npm": true, "pnpm": true, "yarn": true, "bun": true, "npx": true, "node": true,
+	"deno": true, "tsc": true, "jest": true, "vitest": true, "pytest": true, "pip": true, "pip3": true, "uv": true, "poetry": true,
+	"tox": true, "mypy": true, "unittest": true, "make": true, "cmake": true, "ninja": true, "bazel": true, "mvn": true,
+	"gradle": true, "dotnet": true, "docker": true, "gcc": true, "clang": true, "swift": true, "mix": true, "bundle": true,
+	"rake": true, "composer": true, "zig": true,
+}
+
 // scriptRunners run a named script from the project's manifest: "npm run build".
 var scriptRunners = map[string]bool{"npm": true, "pnpm": true, "yarn": true, "bun": true}
 
-// knownSubcommands are the build, test and install verbs a slot holder may be named by besides its program.
-var knownSubcommands = map[string]bool{
+// knownVerbs are the subcommands and script names a slot holder may be named by besides its tool.
+var knownVerbs = map[string]bool{
 	"build": true, "test": true, "check": true, "vet": true, "install": true, "ci": true, "lint": true, "run": true,
 	"compile": true, "package": true, "verify": true, "bench": true, "clippy": true, "sync": true, "restore": true,
+	"typecheck": true, "e2e": true, "coverage": true,
 }
 
 // pythonName reports whether w names a Python interpreter (python, python3, python3.12), whose -m names the program run.
 func pythonName(w string) bool {
 	rest, ok := strings.CutPrefix(w, "python")
 	return ok && strings.Trim(rest, "0123456789.") == ""
-}
-
-// plainWord reports whether w can only be a program or subcommand name: letters, digits and . _ + -, not starting with "-".
-func plainWord(w string) bool {
-	if w == "" || w[0] == '-' {
-		return false
-	}
-	for _, r := range w {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '+' || r == '-') {
-			return false
-		}
-	}
-	return true
 }
