@@ -108,9 +108,9 @@ func (h *holdHooks) lookLine(tool string, input json.RawMessage) string {
 				"its evidence says what the worker ran and how that ended. Check only what that leaves in doubt, then %s, or task reject with what to fix.",
 				joinNames(names), verb, strings.Join(decide, ", "))
 		}
-		evidence := "the harness has already run its verifier on each submission"
+		evidence := "the harness has already run its verifier (" + quoteLine(h.s.cfg.VerifyCmd) + ") on each submission"
 		if h.s.isolated() {
-			evidence = "the harness has already built and tested each submission on the merged tree"
+			evidence += " and on the merged tree"
 		}
 		if !code {
 			evidence = "a plan or report is its own text"

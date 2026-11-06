@@ -1,6 +1,7 @@
 package swarm
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -110,5 +111,29 @@ func TestLongNoteIsRefusedNotCut(t *testing.T) {
 	b := NewBoard(nil)
 	if _, err := b.AddNote("be-1", "shared", "be", strings.Repeat("n", maxNoteRunes+5)); err == nil || !strings.Contains(err.Error(), "5 over") {
 		t.Fatalf("long note: %v", err)
+	}
+}
+
+// A notice that may stop being true is kept whole when the inbox overflows, not folded into the digest, so that the agent still
+// asks it when it takes the mail; the table keeps a bounded number of them.
+func TestAConditionalNoticeIsNotFoldedIntoTheDigest(t *testing.T) {
+	var o overflow
+	o.init()
+	still := func() bool { return true }
+	o.add(Message{ID: "m1", From: "be-1", Kind: "info", Text: "plain"}, true)
+	for i := 0; i < maxConditional+2; i++ {
+		o.add(Message{ID: fmt.Sprintf("h%d", i), From: harnessSender, Kind: "request", Text: "Stall check", still: still}, false)
+	}
+	if len(o.conditional) != maxConditional || o.conditional[0].ID != "h2" {
+		t.Fatalf("kept %d conditional notices, the first %s", len(o.conditional), o.conditional[0].ID)
+	}
+	if d := o.digest("m9"); strings.Contains(d, "Stall check") || !strings.Contains(d, "1 more messages") {
+		t.Fatalf("the digest folded a conditional notice: %q", d)
+	}
+	var only overflow
+	only.init()
+	only.add(Message{ID: "h1", From: harnessSender, still: still}, false)
+	if only.empty() {
+		t.Fatal("an overflow that holds only a conditional notice reads as empty, so the notice would never be pumped")
 	}
 }

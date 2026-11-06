@@ -67,8 +67,9 @@ type CmdRecord struct {
 	// Masked marks a test whose exit status does not reach the shell's: it is
 	// piped into something, or followed by another command.
 	Masked bool
-	// Ending is the last line the command printed (harness notes left out), kept for a test whose status is masked: the
-	// summary line a runner prints ("131 passed", "FAILED (failures=2)") is then the only sign of how it went.
+	// Ending is the last line the command line printed (harness notes left out), kept for a test whose status is masked: the
+	// summary line a runner prints ("131 passed", "FAILED (failures=2)") is then the best sign of how it went, though a command
+	// after the test (an echo) may have printed it instead, which the summary's wording leaves open.
 	Ending string
 }
 
@@ -351,7 +352,7 @@ func (r *evRecord) summary() string {
 		case t.Masked:
 			verdict = "ran (exit status masked by the command line)"
 			if t.Ending != "" {
-				verdict = fmt.Sprintf("ran (exit status masked by the command line, its output ending %q)", t.Ending)
+				verdict = fmt.Sprintf("ran (exit status masked by the command line, whose output ended %q)", t.Ending)
 			}
 		case t.Exit != 0:
 			verdict = fmt.Sprintf("FAILED (exit %d)", t.Exit)

@@ -757,7 +757,7 @@ func TestEvidenceExitStatus(t *testing.T) {
 	ev = NewEvidence()
 	in, _ = json.Marshal(map[string]any{"command": "python -m pytest -q 2>&1 | tail -2"})
 	ev.Observe(core.ToolUse("1", "bash", in), &tools.Result{Text: "....\n2 failed, 129 passed in 3.1s; no files edited\n\n[exit code 0]"}, time.Now())
-	if s := ev.Summary(); !strings.Contains(s, `its output ending "2 failed, 129 passed in 3.1s, no files edited"`) || strings.Count(s, "; ") != 1 {
+	if s := ev.Summary(); !strings.Contains(s, `whose output ended "2 failed, 129 passed in 3.1s, no files edited"`) || strings.Count(s, "; ") != 1 {
 		t.Errorf("a piped test's ending: %q", s)
 	}
 	// The recorded command cannot carry a forged header or a tag.

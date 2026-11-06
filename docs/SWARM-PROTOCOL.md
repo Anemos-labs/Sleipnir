@@ -947,7 +947,9 @@ same findings; `idle_capacity`, `review_overrun` and `task_overrun` alone also r
 `StallTurns` is `swarm.Config.StallTurns` (default 12; negative turns the two turn-based kinds off). A finding is
 raised once while its condition holds: a `swarm.stall` event (`action: raise`) and one harness mail ("Stall check: ...",
 ids and counts only) that says what would end it. The mail is dropped unread when its finding no longer holds by the time
-its recipient takes it: a task in review that the manager decided while the mail waited for its next turn. `idle_capacity` is the exception: the manager gets at most one mail
+its recipient takes it: a sweep cleared it, it was raised again (the new raise has its own mail), or its task was decided
+while the mail waited for the recipient's next turn. A full inbox keeps such mail whole instead of folding it into the
+digest, so it is still checked when it is taken. `idle_capacity` is the exception: the manager gets at most one mail
 about it, first nudge or escalation diagnosis, in 30 minutes, so a raise inside that period is logged without a mail. When the condition no longer holds the finding clears itself
 (`action: clear`); it can be raised again only after that. The sweep recovers nothing on its own: it names the
 condition and the agent that can act (by handing a task over, failing it with a reason, resuming one side of a

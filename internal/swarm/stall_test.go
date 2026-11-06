@@ -455,10 +455,26 @@ func TestStallReviewStarved(t *testing.T) {
 		if !nudged(r, "mgr") {
 			t.Error("the manager was not told")
 		}
-		holds := r.sw.stallHolds(f)
+		r.sw.stalls.mu.Lock()
+		gen := r.sw.stalls.gen[f.key()]
+		r.sw.stalls.mu.Unlock()
+		holds := r.sw.stallHolds(f, gen)
 		if !holds() {
 			t.Fatal("the nudge of a task still waiting in review does not hold")
 		}
+		if r.sw.stallHolds(f, gen-1)() {
+			t.Fatal("the nudge of an earlier raise of the finding holds beside the current one's")
+		}
+		r.sw.stalls.mu.Lock()
+		cleared := r.sw.stalls.active[f.key()]
+		delete(r.sw.stalls.active, f.key()) // a sweep cleared it while the task is still in review
+		r.sw.stalls.mu.Unlock()
+		if holds() {
+			t.Fatal("the nudge of a cleared finding still holds")
+		}
+		r.sw.stalls.mu.Lock()
+		r.sw.stalls.active[f.key()] = cleared
+		r.sw.stalls.mu.Unlock()
 		if err := r.sw.Board.Accept("mgr", task.ID, ""); err != nil {
 			t.Fatal(err)
 		}

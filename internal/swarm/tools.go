@@ -145,7 +145,7 @@ func (s *Swarm) readTaskNoted(c *tools.Call, id, how string, note func(Task) str
 	}
 	shown := task
 	if c.Env.Agent != task.Owner && len(task.Agreements) > 0 {
-		shown.Agreements = agreementPointers(task.Agreements)
+		shown.Agreements = agreementPointers(s.Board.Snapshot(), task.Agreements)
 	}
 	data, err := json.MarshalIndent(shown, "", "  ")
 	if err != nil {
@@ -164,10 +164,16 @@ func (s *Swarm) readTaskNoted(c *tools.Call, id, how string, note func(Task) str
 // agreement it is and its size, and that task's own read holds the text. The owner builds to them and reads them whole; anyone
 // else has read them where they were made. A manager deciding the tasks that followed a plan got the plan's 12,000-character
 // agreement inline in every task get of them, eleven times in one run.
-func agreementPointers(in []TaskAgreement) []TaskAgreement {
+//
+// A pointer stands only where the task it points at still holds the same text: an agreement revised after this task inherited
+// it (its plan reopened and agreed again) is shown whole, since this task builds to the copy it inherited.
+func agreementPointers(sn *Snapshot, in []TaskAgreement) []TaskAgreement {
 	out := make([]TaskAgreement, len(in))
 	for i, a := range in {
-		out[i] = TaskAgreement{Task: a.Task, Text: fmt.Sprintf("(%d characters, inherited from %s: task get %s shows it)", len(a.Text), a.Task, a.Task)}
+		out[i] = a
+		if src, ok := sn.Task(a.Task); ok && (src.Agreement == a.Text || src.Pool != nil && src.Pool.Agreement == a.Text) {
+			out[i].Text = fmt.Sprintf("(%d characters, inherited from %s: task get %s shows it)", len(a.Text), a.Task, a.Task)
+		}
 	}
 	return out
 }
@@ -1187,7 +1193,7 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 				now := time.Now().UnixNano()
 				s.quietSince.CompareAndSwap(0, now-int64(timeout)) // the quiet began when this wait did, at the latest
 				if q := time.Duration(now - s.quietSince.Load()); q >= quietAfter {
-					why += fmt.Sprintf("; no task has changed state for %s. A worker whose line shows it at work (thinking, running a command) is on a long task, and waiting for it is right; one that shows the same step for many minutes may be stuck: look at what it is on (agents, task get, what a verifier prints), tell it, or end the run and say what is stuck", q.Round(time.Minute))
+					why += fmt.Sprintf("; no task has changed state for %s. That may be a long task or a stuck worker, and a status line alone does not tell which: look at what each worker is on (agents, task get, what a verifier prints), then wait again, tell it, or end the run and say what is stuck", q.Round(time.Minute))
 				}
 			}
 			return c.Env.Finish(report(cur, digest, why), false), nil

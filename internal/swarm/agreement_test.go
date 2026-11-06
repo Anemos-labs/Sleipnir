@@ -435,3 +435,12 @@ func TestATaskGetByAnotherAgentPointsAtTheInheritedAgreements(t *testing.T) {
 		t.Fatalf("the task that made the agreement does not show it:\n%.400s", got)
 	}
 }
+
+// A pointer stands only for an agreement its task still holds: one revised after the dependent inherited it is shown whole.
+func TestAnAgreementRevisedAfterItWasInheritedIsShownWhole(t *testing.T) {
+	sn := &Snapshot{Tasks: []Task{{ID: "T1", Agreement: "v2: the API answers XML"}, {ID: "T4", Agreement: "the store keeps UTC"}}}
+	got := agreementPointers(sn, []TaskAgreement{{Task: "T1", Text: "v1: the API answers JSON"}, {Task: "T4", Text: "the store keeps UTC"}})
+	if got[0].Text != "v1: the API answers JSON" || !strings.Contains(got[1].Text, "inherited from T4: task get T4 shows it") {
+		t.Fatalf("pointers = %+v", got)
+	}
+}

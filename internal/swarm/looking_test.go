@@ -204,6 +204,9 @@ func TestASubmissionIsSaidToBeTestedOnlyWhereAVerifierRuns(t *testing.T) {
 			got = call("read", readMain)
 		}
 		said := strings.Contains(got, "built and tested") || strings.Contains(got, "run its verifier")
+		if verify != "" && !strings.Contains(got, `run its verifier ("go test ./...") on each submission`) {
+			t.Fatalf("the verifier is not named as it is: %q", got)
+		}
 		if verify == "" && (said || !strings.Contains(got, "No verifier is configured") || !strings.Contains(got, "task accept id=T1")) {
 			t.Fatalf("without a verifier the line was %q", got)
 		}
