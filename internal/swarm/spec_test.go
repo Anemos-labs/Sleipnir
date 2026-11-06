@@ -766,10 +766,11 @@ func TestEvidenceExitStatus(t *testing.T) {
 		{`cd app && npm test; echo "exit=$?"; ls`, "# fail 2\nexit=1\nsrc", "which printed the test's status as 1)"},
 		{`go test ./... ; echo "status $? done"`, "FAIL\nstatus 2 done", "which printed the test's status as 2)"},
 		{`npm test; printf "code=$?\n"`, "ok\ncode=0", "which printed the test's status as 0)"},
-		{`npm test; printf 'EXIT: %s\n' "$?"`, "EXIT: 3", ""}, // the status is an argument, not in the template's text
-		{`npm test | tail -3; echo "exit=$?"`, "exit=0", ""},  // a pipe's status, not the test's
-		{`npm test; echo "exit=$?"`, "exit=ok\nexit=999", ""}, // no status a shell prints
-		{`npm test; echo "exit=$?"`, "status=0", ""},          // text that does not match the template
+		{`npm test; printf "status=$? run"; printf '\n'`, "FAIL\nstatus=1 run", "which printed the test's status as 1)"}, // a later printf's \n is not the template's
+		{`npm test; printf 'EXIT: %s\n' "$?"`, "EXIT: 3", ""},                                                            // the status is an argument, not in the template's text
+		{`npm test | tail -3; echo "exit=$?"`, "exit=0", ""},                                                             // a pipe's status, not the test's
+		{`npm test; echo "exit=$?"`, "exit=ok\nexit=999", ""},                                                            // no status a shell prints
+		{`npm test; echo "exit=$?"`, "status=0", ""},                                                                     // text that does not match the template
 	} {
 		ev = NewEvidence()
 		in, _ = json.Marshal(map[string]any{"command": tc.cmd})

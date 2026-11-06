@@ -207,18 +207,25 @@ func echoedStatus(cmd, out string) string {
 	if len(echo) < 2 || (echo[0] != "echo" && echo[0] != "printf") {
 		return ""
 	}
+	seen := 0 // the $? marks ahead of the template, to find its raw text in cmd
+	for _, c := range cs[:last+1] {
+		for _, w := range c.words {
+			seen += strings.Count(w, "$?")
+		}
+	}
 	var tmpl string
 	for _, w := range echo[1:] {
 		if strings.Contains(w, "$?") {
 			tmpl = w
 			break
 		}
+		seen += strings.Count(w, "$?")
 	}
 	before, after, ok := strings.Cut(tmpl, "$?")
 	if !ok || strings.Contains(after, "$?") {
 		return ""
 	}
-	if echo[0] == "printf" && strings.Contains(cmd, `\n`) {
+	if echo[0] == "printf" && rawEndsInNewline(cmd, seen) {
 		after = strings.TrimSuffix(after, "n") // splitShell keeps the n of a quoted \n
 	}
 	before, after = strings.TrimSpace(strings.ReplaceAll(before, `\n`, "")), strings.TrimSpace(strings.ReplaceAll(after, `\n`, ""))
@@ -242,6 +249,22 @@ func echoedStatus(cmd, out string) string {
 		}
 	}
 	return ""
+}
+
+// rawEndsInNewline reports whether the quoted text after the (skip+1)th $? in cmd ends in a \n escape.
+func rawEndsInNewline(cmd string, skip int) bool {
+	rest := cmd
+	for range skip + 1 {
+		i := strings.Index(rest, "$?")
+		if i < 0 {
+			return false
+		}
+		rest = rest[i+2:]
+	}
+	if end := strings.IndexAny(rest, "\"'"); end >= 0 {
+		rest = rest[:end]
+	}
+	return strings.HasSuffix(rest, `\n`)
 }
 
 // editedBy lists the paths a successful edit call changed, nil for any other call.
