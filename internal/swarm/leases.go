@@ -217,12 +217,23 @@ func (l *Leases) SetEmitter(ev events.Emitter) {
 }
 
 // SetRoots tells the guard which directories are the repository root: absolute
-// paths are made relative to them to be checked against a task's scope.
+// paths are made relative to them to be checked against a task's scope. A root
+// reached through a symlink is kept in its resolved form too, so a path the
+// permission engine resolved (a shell write through a link) still falls in it.
 func (l *Leases) SetRoots(roots ...string) {
 	var rs []string
+	add := func(r string) {
+		if !slices.Contains(rs, r) {
+			rs = append(rs, r)
+		}
+	}
 	for _, r := range roots {
-		if r != "" {
-			rs = append(rs, filepath.Clean(r))
+		if r == "" {
+			continue
+		}
+		add(filepath.Clean(r))
+		if real, err := filepath.EvalSymlinks(r); err == nil {
+			add(filepath.Clean(real))
 		}
 	}
 	l.mu.Lock()
