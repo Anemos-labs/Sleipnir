@@ -406,3 +406,32 @@ func TestAgreementPlanWithoutSubmissionHasBoundedRecovery(t *testing.T) {
 		t.Fatalf("planning made %d requests, want %d", n, maxGateTries+1)
 	}
 }
+
+// The agreements a task inherited are its owner's to build to: anyone else's task get shows where each comes from and how
+// long it is, and the task that made it shows the text.
+func TestATaskGetByAnotherAgentPointsAtTheInheritedAgreements(t *testing.T) {
+	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+	long := strings.Repeat("the API answers JSON. ", 200)
+	r.sw.Board.Restore(&Snapshot{Tasks: []Task{
+		{ID: "T1", Title: "agreement", Role: "architect", Kind: TaskKindPlan, Status: StatusDone, Agreement: long, Closure: closeAs(CloseAgreed)},
+		{ID: "T2", Title: "api", Role: "backend", Status: StatusTodo, Deps: []string{"T1"}},
+	}})
+	if err := r.sw.Board.Claim("be-1", "T2"); err != nil {
+		t.Fatal(err)
+	}
+	if cur, _ := r.sw.Board.Snapshot().Task("T2"); len(cur.Agreements) != 1 {
+		t.Fatalf("T2 inherited %d agreements, want 1", len(cur.Agreements))
+	}
+	get := func(agent, role string) string {
+		return r.callTool(context.Background(), "task", agent, role, map[string]any{"action": "get", "id": "T2"}).Text
+	}
+	if got := get("mgr", "manager"); strings.Contains(got, long) || !strings.Contains(got, fmt.Sprintf("(%d characters, inherited from T1: task get T1 shows it)", len(long))) {
+		t.Fatalf("the manager's task get of T2:\n%s", got)
+	}
+	if got := get("be-1", "backend"); !strings.Contains(got, strings.TrimSpace(long)) {
+		t.Fatalf("the owner's task get of T2 lost its agreement:\n%.400s", got)
+	}
+	if got := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "get", "id": "T1"}).Text; !strings.Contains(got, strings.TrimSpace(long)) {
+		t.Fatalf("the task that made the agreement does not show it:\n%.400s", got)
+	}
+}

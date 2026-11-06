@@ -27,6 +27,9 @@ type Message struct {
 	// changed).
 	Kind string `json:"kind,omitempty"`
 	Text string `json:"text"`
+	// still, for a harness notice that can stop being true before it is read, says whether it still holds: a notice it says
+	// no longer does is dropped unread (agent.SendIf). Nil for every other message.
+	still func() bool
 	// Via and Origins are set on a digest the mailman delivered (mailman.go), never on
 	// anything an agent sent: Via is the mailman that wrote the text (From), Origins the
 	// harness's own list of who sent the messages the digest stands for ("be-1 x2",

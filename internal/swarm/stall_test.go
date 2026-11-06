@@ -455,8 +455,15 @@ func TestStallReviewStarved(t *testing.T) {
 		if !nudged(r, "mgr") {
 			t.Error("the manager was not told")
 		}
+		holds := r.sw.stallHolds(f)
+		if !holds() {
+			t.Fatal("the nudge of a task still waiting in review does not hold")
+		}
 		if err := r.sw.Board.Accept("mgr", task.ID, ""); err != nil {
 			t.Fatal(err)
+		}
+		if holds() {
+			t.Fatal("the nudge still holds after the manager accepted the task, before any sweep: it would reach the manager stale")
 		}
 		r.sw.sweepStalls()
 		if _, ok := active(r, StallReviewStarved); ok {

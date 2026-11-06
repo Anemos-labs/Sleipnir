@@ -143,7 +143,11 @@ func (s *Swarm) readTaskNoted(c *tools.Call, id, how string, note func(Task) str
 	if !ok {
 		return tools.Errorf("no task %s", cleanText(id, 20))
 	}
-	data, err := json.MarshalIndent(task, "", "  ")
+	shown := task
+	if c.Env.Agent != task.Owner && len(task.Agreements) > 0 {
+		shown.Agreements = agreementPointers(task.Agreements)
+	}
+	data, err := json.MarshalIndent(shown, "", "  ")
 	if err != nil {
 		return tools.Errorf("%v", err)
 	}
@@ -154,6 +158,18 @@ func (s *Swarm) readTaskNoted(c *tools.Call, id, how string, note func(Task) str
 		}
 	}
 	return c.Env.Finish(string(data), false)
+}
+
+// agreementPointers stands in for the agreements a task inherited, in a read by anyone but its owner: each names the task whose
+// agreement it is and its size, and that task's own read holds the text. The owner builds to them and reads them whole; anyone
+// else has read them where they were made. A manager deciding the tasks that followed a plan got the plan's 12,000-character
+// agreement inline in every task get of them, eleven times in one run.
+func agreementPointers(in []TaskAgreement) []TaskAgreement {
+	out := make([]TaskAgreement, len(in))
+	for i, a := range in {
+		out[i] = TaskAgreement{Task: a.Task, Text: fmt.Sprintf("(%d characters, inherited from %s: task get %s shows it)", len(a.Text), a.Task, a.Task)}
+	}
+	return out
 }
 
 // reviewRefusal says why a worker may not accept, reject, reopen, fail, revise or resolve a task: these are the manager's, except
@@ -1171,7 +1187,7 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 				now := time.Now().UnixNano()
 				s.quietSince.CompareAndSwap(0, now-int64(timeout)) // the quiet began when this wait did, at the latest
 				if q := time.Duration(now - s.quietSince.Load()); q >= quietAfter {
-					why += fmt.Sprintf("; no task has changed state for %s: waiting again will not change that. Look at what the workers are stuck on (agents, task list, what a verifier prints), tell them, or end the run and say what is stuck", q.Round(time.Minute))
+					why += fmt.Sprintf("; no task has changed state for %s. A worker whose line shows it at work (thinking, running a command) is on a long task, and waiting for it is right; one that shows the same step for many minutes may be stuck: look at what it is on (agents, task get, what a verifier prints), tell it, or end the run and say what is stuck", q.Round(time.Minute))
 				}
 			}
 			return c.Env.Finish(report(cur, digest, why), false), nil

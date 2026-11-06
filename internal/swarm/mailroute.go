@@ -120,7 +120,11 @@ func (m *member) receiveAs(s *Swarm, msg Message, whole bool) error {
 	m.mailSeq++
 	m.autoRuns = 0
 	if m.box.empty() && m.a.PendingInbox() < s.cfg.InboxSoftCap {
-		m.a.Send(msg.Frame())
+		if msg.still != nil {
+			m.a.SendIf(msg.Frame(), msg.still)
+		} else {
+			m.a.Send(msg.Frame())
+		}
 		m.noteSent(peer)
 	} else {
 		// Coalesced, the message reaches the inbox as an excerpt: the router keeps it whole
@@ -222,11 +226,17 @@ func (s *Swarm) notify(to, kind, text string) bool { return s.notifyAs(to, kind,
 func (s *Swarm) notifyWhole(to, kind, text string) bool { return s.notifyAs(to, kind, text, true) }
 
 func (s *Swarm) notifyAs(to, kind, text string, whole bool) bool {
+	return s.notifyStill(to, kind, text, whole, nil)
+}
+
+// notifyStill is notify for a notice that may stop being true before it is read: still says whether it holds, and one that no
+// longer does is dropped unread (Message.still).
+func (s *Swarm) notifyStill(to, kind, text string, whole bool, still func() bool) bool {
 	m := s.get(to)
 	if m == nil {
 		return false
 	}
-	msg := Message{ID: s.nextHarnessID(), From: harnessSender, To: to, Kind: kind, Text: text}
+	msg := Message{ID: s.nextHarnessID(), From: harnessSender, To: to, Kind: kind, Text: text, still: still}
 	if whole && !m.hasRoom(s) {
 		return false
 	}

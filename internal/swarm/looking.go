@@ -93,12 +93,34 @@ func (h *holdHooks) lookLine(tool string, input json.RawMessage) string {
 		if len(waiting) > 1 {
 			verb = "wait"
 		}
-		evidence := "the harness has already built and tested each submission on the merged tree"
+		code := false
 		for _, w := range waiting {
-			if t, ok := snap.Task(w.ID); ok && !h.s.implementationTask(t) {
-				// a plan or a report is not built: its text is the evidence
-				evidence = "the harness has already built and tested each code change on the merged tree, and a plan or report is its own text"
+			if t, ok := snap.Task(w.ID); ok && h.s.implementationTask(t) {
+				code = true
 				break
+			}
+		}
+		if code && h.s.cfg.VerifyCmd == "" {
+			// No verifier runs on a submission, so the manager's own check is the only one beyond its worker's. A team run without
+			// one was told twenty times that "the harness has already built and tested each submission on the merged tree", which
+			// it had not, and that run's manager found a broken test discovery only by running the suite itself.
+			return fmt.Sprintf("Decide soon: %s %s in review. No verifier is configured, so nothing has checked a submission but its worker: "+
+				"its evidence says what the worker ran and how that ended. Check only what that leaves in doubt, then %s, or task reject with what to fix.",
+				joinNames(names), verb, strings.Join(decide, ", "))
+		}
+		evidence := "the harness has already run its verifier on each submission"
+		if h.s.isolated() {
+			evidence = "the harness has already built and tested each submission on the merged tree"
+		}
+		if !code {
+			evidence = "a plan or report is its own text"
+		} else {
+			for _, w := range waiting {
+				if t, ok := snap.Task(w.ID); ok && !h.s.implementationTask(t) {
+					// a plan or a report is not built: its text is the evidence
+					evidence += ", and a plan or report is its own text"
+					break
+				}
 			}
 		}
 		return fmt.Sprintf("Stop reading: %s %s in review, and %s. "+

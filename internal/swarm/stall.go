@@ -635,9 +635,27 @@ func (s *Swarm) sweepStalls() {
 		if f.Notify == "" || f.Kind == StallIdleCapacity && !s.stalls.mayMailIdle(s.deps.Now()) {
 			continue
 		}
-		s.notify(f.Notify, "request", stallNudge(f, s.stallTurns(), s.cfg.PersistentPools))
+		s.notifyStill(f.Notify, "request", stallNudge(f, s.stallTurns(), s.cfg.PersistentPools), false, s.stallHolds(f))
 	}
 	s.escalateStalls()
+}
+
+// stallHolds is what a stall's nudge asks before it is read: whether the finding still holds. A finding a later sweep cleared
+// does not, and neither does one whose task has since been decided, which the board shows before the next sweep: a manager was
+// told "T23 has waited in review for 5 minutes. Read it, then accept or reject it" right after its accept of T23 returned.
+func (s *Swarm) stallHolds(f Stall) func() bool {
+	return func() bool {
+		if f.Task != "" {
+			t, ok := s.Board.Snapshot().Task(f.Task)
+			if !ok || t.Status == StatusDone || t.Status == StatusFailed || f.Kind == StallReviewStarved && t.Status != StatusReview {
+				return false
+			}
+		}
+		s.stalls.mu.Lock()
+		defer s.stalls.mu.Unlock()
+		_, ok := s.stalls.active[f.key()]
+		return ok
+	}
 }
 
 // mayMailIdle reports whether an idle_capacity finding raised at now may be mailed, and if so records the mail: at most one per

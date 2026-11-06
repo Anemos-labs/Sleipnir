@@ -7,6 +7,17 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The manager's "Stop reading" line no longer says that the harness built and
+  tested each submission when no verifier is configured: it says that nothing
+  but the worker checked it, and to check what its evidence leaves in doubt.
+  A masked test's evidence (a test piped into `tail`) keeps the last line its
+  output printed. A `task get` by anyone but the task's owner shows inherited
+  agreements as pointers to the tasks that hold them. A stall check that no
+  longer holds when the manager reads its mail (a task it decided meanwhile)
+  is dropped unread, and a long `wait` with no task changes no longer says that
+  waiting again will not change that. No prompt bytes change in the system
+  prompt or tool specs.
+
 - An agent's status line says "thinking" once its last tool call has
   returned, instead of keeping the line of that call ("running a command")
   until the next one. Widening a task's scope names the open children that

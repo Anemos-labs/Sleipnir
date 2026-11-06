@@ -67,6 +67,9 @@ type CmdRecord struct {
 	// Masked marks a test whose exit status does not reach the shell's: it is
 	// piped into something, or followed by another command.
 	Masked bool
+	// Ending is the last line the command printed (harness notes left out), kept for a test whose status is masked: the
+	// summary line a runner prints ("131 passed", "FAILED (failures=2)") is then the only sign of how it went.
+	Ending string
 }
 
 // Passed reports whether the record is a test the harness saw succeed.
@@ -167,6 +170,21 @@ func exitOf(res *tools.Result) (code int, known bool) {
 	return 0, false
 }
 
+// outputEnding is the last line of a command's output that the command printed: the harness's own bracketed notes after it
+// ("[exit code 0]", "[working directory reset ...]") are left out. It is cut to a line a summary can carry, with no "; ": the
+// command's output is not the harness's, and must not read as a clause of its own in the summary (evidenceShowsNoEdits).
+func outputEnding(out string) string {
+	lines := strings.Split(out, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		l := strings.TrimSpace(lines[i])
+		if l == "" || strings.HasPrefix(l, "[") && strings.HasSuffix(l, "]") {
+			continue
+		}
+		return cleanText(strings.ReplaceAll(l, ";", ","), 80)
+	}
+	return ""
+}
+
 // editedBy lists the paths a successful edit call changed, nil for any other call.
 func editedBy(call core.Block, res *tools.Result) []string {
 	if res == nil || res.IsError || res.Unchanged { // a write that left every file as it was edited nothing
@@ -222,6 +240,9 @@ func (e *Evidence) Observe(call core.Block, res *tools.Result, now time.Time) {
 		isTest, masked := classifyCommand(cmd)
 		rec := CmdRecord{Cmd: cleanText(firstLine(cmd, 100), 100), At: now, Test: isTest, Masked: masked}
 		rec.Exit, rec.Known = exitOf(res)
+		if isTest && masked && res != nil {
+			rec.Ending = outputEnding(res.Text)
+		}
 		e.cur.commands = append(e.cur.commands, rec)
 		if len(e.cur.commands) > 40 {
 			e.cur.commands = e.cur.commands[len(e.cur.commands)-40:]
@@ -329,6 +350,9 @@ func (r *evRecord) summary() string {
 			verdict = "ran (exit status unknown)"
 		case t.Masked:
 			verdict = "ran (exit status masked by the command line)"
+			if t.Ending != "" {
+				verdict = fmt.Sprintf("ran (exit status masked by the command line, its output ending %q)", t.Ending)
+			}
 		case t.Exit != 0:
 			verdict = fmt.Sprintf("FAILED (exit %d)", t.Exit)
 		default:
