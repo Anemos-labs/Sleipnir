@@ -452,9 +452,13 @@ func samePosixMeaning(command string) bool {
 // slotHolder is how a heavy command is named to one that waits for its slot: the agent and the words that name the program
 // ("be-2: go test", "be-1: npm run build"). The waiting command belongs to another agent, and an argument may be a secret
 // (a flag's value, a header, credentials in a URL), so the name stops at the first word that is not a plain program or
-// subcommand name; a leading KEY=value assignment is skipped. At most four words, cut to 60 runes.
+// subcommand name. Only the line before its first quote, backslash or "$" is read, so a quoted value is never split into
+// words; leading KEY=value assignments are skipped. At most four words, cut to 60 runes; with none, the command is "a command".
 func slotHolder(agent, command string) string {
 	line, _, _ := strings.Cut(strings.TrimSpace(command), "\n")
+	if i := strings.IndexAny(line, "\"'`\\$"); i >= 0 {
+		line = line[:i]
+	}
 	fields := strings.Fields(line)
 	for len(fields) > 0 && strings.Contains(fields[0], "=") {
 		fields = fields[1:]
@@ -462,7 +466,7 @@ func slotHolder(agent, command string) string {
 	var words []string
 	for i := 0; i < len(fields) && len(words) < 4; i++ {
 		w := fields[i]
-		if w == "-m" && i+1 < len(fields) && plainWord(fields[i+1]) { // python -m pytest: the module is the program
+		if w == "-m" && i > 0 && pythonName(fields[i-1]) && i+1 < len(fields) && plainWord(fields[i+1]) { // python -m pytest
 			words = append(words, w, fields[i+1])
 			i++
 			continue
@@ -473,6 +477,9 @@ func slotHolder(agent, command string) string {
 		words = append(words, w)
 	}
 	line = strings.Join(words, " ")
+	if line == "" {
+		line = "a command"
+	}
 	if r := []rune(line); len(r) > 60 {
 		line = string(r[:59]) + "…"
 	}
@@ -480,6 +487,12 @@ func slotHolder(agent, command string) string {
 		return line
 	}
 	return agent + ": " + line
+}
+
+// pythonName reports whether w names a Python interpreter (python, python3, python3.12), whose -m names the program run.
+func pythonName(w string) bool {
+	rest, ok := strings.CutPrefix(w, "python")
+	return ok && strings.Trim(rest, "0123456789.") == ""
 }
 
 // plainWord reports whether w can only be a program or subcommand name: letters, digits and . _ + -, not starting with "-".
