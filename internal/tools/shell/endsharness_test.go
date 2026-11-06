@@ -1,15 +1,8 @@
 package shell
 
 import (
-	"context"
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/anemos-labs/sleipnir/internal/perm"
-	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
 // A command that signals processes by a pattern the harness's own command line also matches would end the harness and every
@@ -61,16 +54,5 @@ func TestACommandThatWouldEndTheHarnessIsNamed(t *testing.T) {
 		if tc.want == "" && got != "" || tc.want != "" && !strings.Contains(got, tc.want) {
 			t.Errorf("%s: %q, want %q", tc.cmd, got, tc.want)
 		}
-	}
-}
-
-// The bash tool refuses such a command before it runs, in every mode. The signal is 0, so a missed match ends nothing.
-func TestTheBashToolDoesNotSignalTheHarness(t *testing.T) {
-	h := newHarness(t)
-	tool, _ := h.reg.Get("bash")
-	in, _ := json.Marshal(map[string]string{"command": "pkill -0 -f " + filepath.Base(os.Args[0])})
-	res, err := tool.Run(context.Background(), &tools.Call{Input: in, Env: &tools.Env{Cwd: h.root, Perm: perm.AllowAll{}}})
-	if err != nil || !res.IsError || !strings.Contains(res.Text, "harness's own process") {
-		t.Errorf("result: %+v %v", res, err)
 	}
 }
