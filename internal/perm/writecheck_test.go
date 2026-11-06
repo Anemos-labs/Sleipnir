@@ -1,6 +1,7 @@
 package perm
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -65,5 +66,47 @@ func TestSetWriteCheckHoldsKnownWrites(t *testing.T) {
 	e.SetWriteCheck(nil)
 	if d := as("be-1", bash("echo x > cmd/main.go")); !d.Allow {
 		t.Errorf("a removed check still refuses: %s", d.Reason)
+	}
+}
+
+// A write through an in-scope symlink is checked where it lands: the shell overwrites the link's target, so a scope that names
+// the link's directory does not admit it. rm of the link itself acts on the link, which stays in the scope.
+func TestSetWriteCheckFollowsASymlinkToItsTarget(t *testing.T) {
+	f := newFixture(t)
+	store, cmd := filepath.Join(f.root, "internal", "store"), filepath.Join(f.root, "cmd")
+	for _, d := range []string{store, cmd} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(cmd, filepath.Join(store, "alias")); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	e, err := NewEngine(Config{Root: f.root, Home: f.home, Tmp: filepath.Join(f.base, "scratch"), Mode: ModeBypass})
+	if err != nil {
+		t.Fatal(err)
+	}
+	realStore, err := filepath.EvalSymlinks(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.SetWriteCheck(func(agent, path string, tree bool) string { // lexical, as the swarm's lease check is
+		for _, allowed := range []string{store, realStore} {
+			if path == allowed || strings.HasPrefix(path, allowed+string(filepath.Separator)) {
+				return ""
+			}
+		}
+		return path + " is outside the scope of your task T1"
+	})
+	as := func(q rq) Decision {
+		r := f.request(q)
+		r.Agent, r.Cwd = "be-1", f.root
+		return e.Check(bg, r)
+	}
+	if d := as(bash("echo x > internal/store/alias/main.go")); d.Allow {
+		t.Error("a write through an in-scope symlink to another area was allowed")
+	}
+	if d := as(bash("rm internal/store/alias")); !d.Allow {
+		t.Errorf("rm of the in-scope link itself was refused: %s", d.Reason)
 	}
 }

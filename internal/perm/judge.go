@@ -228,10 +228,14 @@ func (ev *evaluator) judge(u *unit) verdict {
 			if !a.write || a.dynamic || a.guess || a.format || a.lex == "" || ev.rs.inTmp(a.real) {
 				continue
 			}
-			if why := check(ev.r.Agent, a.lex, a.tree); why != "" {
-				v := deny(why)
-				v.origin, v.tier = OriginScope, TierHard
-				return v
+			// The lexical path is what the scope names; the resolved one is what the command changes (a write through an in-scope
+			// symlink lands where it points). real already stops at a no-follow operand's own name (rm), so both are checked.
+			for _, p := range uniq(a.lex, a.real) {
+				if why := check(ev.r.Agent, p, a.tree); why != "" {
+					v := deny(why)
+					v.origin, v.tier = OriginScope, TierHard
+					return v
+				}
 			}
 		}
 	}
