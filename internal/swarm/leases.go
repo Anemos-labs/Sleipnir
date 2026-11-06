@@ -43,9 +43,11 @@ import (
 // advisory one: two writers touching the same repository-relative path raise an alert
 // that names the agents (never the file) and warns of a merge conflict.
 //
-// The guard sees the writes of the file tools only. A shell command's writes are not
-// checked in a shared tree; in an isolated run the merge queue checks ownership and
-// scope again on what a submission changed, whichever tool changed it.
+// The guard sees the writes of the file tools. In a shared tree the permission engine
+// also holds the writes a shell command is known to make (redirections, cp, mv, rm,
+// sed -i, ...) to the same ownership and scope rules (ShellWriteCheck); what a program
+// writes by itself (a build, a script) is not seen. In an isolated run the merge queue
+// checks ownership and scope again on what a submission changed, whichever tool changed it.
 type Leases struct {
 	ttl   time.Duration
 	now   func() time.Time
@@ -215,12 +217,23 @@ func (l *Leases) SetEmitter(ev events.Emitter) {
 }
 
 // SetRoots tells the guard which directories are the repository root: absolute
-// paths are made relative to them to be checked against a task's scope.
+// paths are made relative to them to be checked against a task's scope. A root
+// reached through a symlink is kept in its resolved form too, so a path the
+// permission engine resolved (a shell write through a link) still falls in it.
 func (l *Leases) SetRoots(roots ...string) {
 	var rs []string
+	add := func(r string) {
+		if !slices.Contains(rs, r) {
+			rs = append(rs, r)
+		}
+	}
 	for _, r := range roots {
-		if r != "" {
-			rs = append(rs, filepath.Clean(r))
+		if r == "" {
+			continue
+		}
+		add(filepath.Clean(r))
+		if real, err := filepath.EvalSymlinks(r); err == nil {
+			add(filepath.Clean(real))
 		}
 	}
 	l.mu.Lock()
@@ -360,6 +373,26 @@ func (l *Leases) relFor(agent, path string) (string, bool) {
 	return l.rel(path)
 }
 
+// rootFor is the directory path is made relative to for agent's scopes (relFor): its own tree, else the first root that holds the
+// path; "" when none does.
+func (l *Leases) rootFor(agent, path string) string {
+	l.mu.Lock()
+	dir, has := l.trees[agent]
+	roots := append([]string(nil), l.roots...)
+	l.mu.Unlock()
+	if has {
+		if _, ok := relTo(dir, path); ok {
+			return dir
+		}
+	}
+	for _, r := range roots {
+		if _, ok := relTo(r, path); ok {
+			return r
+		}
+	}
+	return ""
+}
+
 // rel returns path relative to the repository root, as a slash path.
 func (l *Leases) rel(path string) (string, bool) {
 	if !filepath.IsAbs(path) {
@@ -424,6 +457,12 @@ func (l *Leases) checkScopeAt(agent, path, rel string, relOK bool) error {
 	hint := ""
 	if !relOK {
 		hint = "; a scratch file goes in $TMPDIR"
+	} else if root := l.rootFor(agent, path); root != "" && rel != "" {
+		// Scopes are matched against the path relative to the project root, which need not be the repository the work is in (a
+		// project made in a subdirectory of the session's directory): saying where the file lies relative to the root shows the
+		// scope that would hold it. A manager scoped tasks to internal/store/** for a project in a subdirectory, and every write
+		// was refused until it guessed the prefix.
+		hint = fmt.Sprintf(". Scopes are relative to the project root %s, where this file is %s", displayPath(root), cleanText(rel, 120))
 	}
 	return fmt.Errorf("%s is outside the scope of your task %s (scope: %s). Edit only inside your scope; if the task needs more, ask the manager to widen it (mail)%s",
 		displayPath(path), strings.Join(ids, ", "), strings.Join(shownScopes(scopes), ", "), hint)
@@ -820,4 +859,64 @@ func (l *Leases) Len() int {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return len(l.held) + len(l.marks)
+}
+
+// ShellWriteCheck is the permission engine's write check in a shared tree (perm.Engine.SetWriteCheck): a write that a shell
+// command is known to make (a redirection, cp's destination, rm's operand) is held to the ownership and scope rules the file tools
+// are held to (BeforeWrite), without taking a lease, since a command's writes have no end the guard sees. It returns why the write
+// is refused, or "". Not checked: an isolated run (each writer edits a tree of its own and the merge queue checks what changed,
+// whichever tool changed it), a path outside the repository (the engine's rules decide those), the repository's .git directory,
+// and the creation of a directory that leads to the agent's scope (mkdir -p of a parent). A worker whose scope was internal/store/**
+// wrote files outside it with cat > and cp while its file-tool writes there were refused.
+func (l *Leases) ShellWriteCheck(agent, path string, tree bool) string {
+	path = filepath.Clean(path)
+	l.mu.Lock()
+	isolated := l.isolated
+	l.mu.Unlock()
+	if isolated {
+		return ""
+	}
+	rel, relOK := l.rel(path)
+	if !relOK || rel == ".git" || strings.HasPrefix(rel, ".git/") {
+		return ""
+	}
+	if err := l.checkOwner(agent, rel, true); err != nil {
+		return err.Error()
+	}
+	scopes, _, scoped := l.scopeOf(agent)
+	if !scoped || inScope(scopes, rel) && !l.parentRefused(agent, rel) {
+		return ""
+	}
+	if !tree && leadsTo(scopes, rel) {
+		return ""
+	}
+	if err := l.checkScopeAt(agent, path, rel, true); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// parentRefused reports whether a pool child's parent refuses rel (parentRefuses).
+func (l *Leases) parentRefused(agent, rel string) bool {
+	_, refused := l.parentRefuses(agent, rel)
+	return refused
+}
+
+// leadsTo reports whether the repository-relative directory rel is an ancestor of the literal directory of one of scopes
+// ("internal" and "internal/store" lead to internal/store/**): creating it is the way into the scope, not a write outside it.
+func leadsTo(scopes []string, rel string) bool {
+	rel = strings.Trim(filepath.ToSlash(rel), "/")
+	if rel == "" || rel == "." {
+		return false
+	}
+	for _, sc := range scopes {
+		dir := docsDirOf(sc)
+		if dir == "" || dir == "." {
+			continue
+		}
+		if dir == rel || strings.HasPrefix(dir, rel+"/") {
+			return true
+		}
+	}
+	return false
 }

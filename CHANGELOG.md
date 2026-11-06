@@ -7,6 +7,19 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- In a shared tree a worker's shell is held to its task's scope and to
+  role-owned paths, as its file tools are: the permission engine refuses a
+  write a command is known to make (a redirection, `cp`/`mv`'s destination,
+  `rm`'s operand, `sed -i`'s file, `tee`) outside them, in every mode. What a
+  program writes by itself is not seen; worktree isolation still checks every
+  change at the merge. The new `perm.Engine.SetWriteCheck` lets an embedder
+  install such a check. A scope refusal names the project root and the
+  file's path relative to it; `task create` and `spawn` say which scope
+  would hold a directory that is missing under the root but present one
+  level down; a docs catch-up pass for a change inside a project of its own
+  below the root (a directory with `.git`, `go.mod`, `package.json`, ...)
+  is also scoped to that project's `README.md`. No prompt bytes change.
+
 - The manager's `spawn` of an existing todo task whose dependencies are not
   done is queued instead of refused: the harness starts it once they are
   done, on the member `agent=` names or the first free member of its role,

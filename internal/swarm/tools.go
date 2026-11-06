@@ -226,14 +226,15 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			return tools.Errorf("%v", err), nil
 		}
 		task := made[len(made)-1]
+		hint := s.scopeHint(task.Files)
 		if len(made) > 1 {
-			return text("created %s %q, waiting for %s; start with %s", task.ID, task.Title, rigorChain(made[:len(made)-1]), made[0].ID), nil
+			return text("created %s %q, waiting for %s; start with %s%s", task.ID, task.Title, rigorChain(made[:len(made)-1]), made[0].ID, hint), nil
 		}
 		if strings.TrimSpace(in.Description) == "" {
 			// Not refused: a title can say it all. But a worker sees only what the task holds, and a weak manager forgets.
-			return text("created %s %q. It has no description: the worker sees only the title and files, so if the title does not say what to do and how to know it is done, mail the worker that when it takes the task (and give the next task a description)", task.ID, task.Title), nil
+			return text("created %s %q. It has no description: the worker sees only the title and files, so if the title does not say what to do and how to know it is done, mail the worker that when it takes the task (and give the next task a description)%s", task.ID, task.Title, hint), nil
 		}
-		return text("created %s %q", task.ID, task.Title), nil
+		return text("created %s %q%s", task.ID, task.Title, hint), nil
 	case "list":
 		return c.Env.Finish(renderTaskList(s.Board.Snapshot()), false), nil
 	case "get":
@@ -912,7 +913,13 @@ func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error)
 	if r.Reserved {
 		return text("%s is still in a turn, so %s is reserved for it: it was told to claim it, and is started on it if its run ends first. Use wait to sleep until something changes.", r.Agent, req.TaskID), nil
 	}
-	return text("%s started; it will report through the board. Use wait to sleep until something changes.", r.Agent), nil
+	hint := ""
+	if task, ok := t.s.Board.Snapshot().Task(req.TaskID); ok {
+		hint = t.s.scopeHint(task.Files)
+	} else {
+		hint = t.s.scopeHint(req.Files)
+	}
+	return text("%s started; it will report through the board. Use wait to sleep until something changes.%s", r.Agent, hint), nil
 }
 
 // queueBehindDeps queues the manager's spawn of an existing todo task whose dependencies are not done yet, and answers what was

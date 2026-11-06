@@ -223,6 +223,22 @@ func (ev *evaluator) judge(u *unit) verdict {
 			return v
 		}
 	}
+	if check := ev.e.writeChecker(); check != nil && ev.r.Agent != "" && !(ev.r.VerifiedIntegration && ev.r.Role == "manager") {
+		for _, a := range all {
+			if !a.write || a.dynamic || a.guess || a.format || a.lex == "" || ev.rs.inTmp(a.real) {
+				continue
+			}
+			// The lexical path is what the scope names; the resolved one is what the command changes (a write through an in-scope
+			// symlink lands where it points). real already stops at a no-follow operand's own name (rm), so both are checked.
+			for _, p := range uniq(a.lex, a.real) {
+				if why := check(ev.r.Agent, p, a.tree); why != "" {
+					v := deny(why)
+					v.origin, v.tier = OriginScope, TierHard
+					return v
+				}
+			}
+		}
+	}
 	if r := ev.restrictMatch(ev.v.deny, u, all); r != nil {
 		return deny("denied by rule " + r.String()).by(r)
 	}

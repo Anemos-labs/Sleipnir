@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -41,7 +42,8 @@ var docsScope = []string{"*.md", "docs/**"}
 // of the nearest directory above it that has some (svc/README.md for a change to svc/ratelimit/: a docs worker scoped without it
 // mailed the manager for it and waited a minute for an answer that never came). The root's Markdown is in docsScope. Named files, never globs, so a
 // later code task on that directory collides with those files alone and only while the pass runs. Entries whose directory cannot
-// be told (a glob with no literal directory) add nothing.
+// be told (a glob with no literal directory) add nothing. A change inside a project of its own below the root (a directory with a
+// project marker: projectDirOf) adds that project's README.md, whether or not it exists yet.
 func (s *Swarm) docsScopeFor(b []docsChange) []string {
 	out := append([]string(nil), docsScope...)
 	root := s.deps.Root
@@ -71,6 +73,41 @@ func (s *Swarm) docsScopeFor(b []docsChange) []string {
 					out = append(out, filepath.ToSlash(rel))
 				}
 			}
+			if proj := projectDirOf(root, dir); proj != "" && !seen["project:"+proj] {
+				seen["project:"+proj] = true
+				out = append(out, proj+"/README.md")
+			}
+		}
+	}
+	return dedupe(out)
+}
+
+// projectMarkers are the files that make a directory the root of a project of its own (a module, a package, a repository).
+var projectMarkers = []string{".git", "go.mod", "package.json", "Cargo.toml", "pyproject.toml", "setup.py", "pom.xml", "build.gradle", "Gemfile", "mix.exs", "composer.json", "CMakeLists.txt"}
+
+// projectDirOf is the nearest directory at or above dir (repository-relative, below root) that holds a project marker, "" when
+// none does below the root. Its README.md is that project's front page, as the root's is the root's: a project made in a
+// subdirectory of the session's directory had its README refused to every catch-up pass, since "*.md" names the session's
+// directory alone. It is named, as a file, for a pass whose change lies in that project (docsScopeFor).
+func projectDirOf(root, dir string) string {
+	for d := dir; d != "." && d != "/" && d != ""; d = path.Dir(d) {
+		for _, m := range projectMarkers {
+			if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(d), m)); err == nil {
+				return d
+			}
+		}
+	}
+	return ""
+}
+
+// dedupe returns in without repeated entries, in their first order.
+func dedupe(in []string) []string {
+	seen := make(map[string]bool, len(in))
+	out := in[:0]
+	for _, v := range in {
+		if !seen[v] {
+			seen[v] = true
+			out = append(out, v)
 		}
 	}
 	return out

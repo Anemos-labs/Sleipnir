@@ -778,9 +778,19 @@ Layered, cheapest first:
 7. **Role-owned paths** (optional; an RL task's `team.owns`, `swarm.Deps.Owners`): a path owned by roles is written only
    by agents of those roles. The lease guard refuses another agent's write, the manager's included, before scope and
    leases are considered, with a message naming the owning role and how to hand the work to it, a fixed-text alert and
-   a `lease` event of action `owner`. The guard sees the file tools only: a shell command's writes to an owned path
-   are not checked in a shared tree. In an isolated run the merge queue also refuses a submission that changed a path
-   another role owns, whichever tool changed it, and the worker is told to revert those files.
+   a `lease` event of action `owner`. In a shared tree the writes a shell command is known to make (a redirection,
+   `cp`/`mv`'s destination, `rm`'s operand, `sed -i`'s file, `tee`) are held to the same ownership and task-scope rules
+   by the permission engine (`Engine.SetWriteCheck`, `Leases.ShellWriteCheck`), in every mode and without a lease; the
+   repository's `.git` directory, the scratch directory and the creation of a directory that leads to the scope
+   (`mkdir -p` of a parent) are not checked. What a program writes by itself (a build, a script, an unlisted
+   program's operand) is not seen: worktree isolation is the mode that holds every write to the scope. In an isolated
+   run the merge queue also refuses a submission that changed a path another role owns, whichever tool changed it,
+   and the worker is told to revert those files.
+   Scopes are relative to the project root (the repository root, or the session's directory when it is in no
+   repository). A refused write names the root and the file's path relative to it, and a `task create` or `spawn`
+   whose scope names a directory missing under the root but present under one of the root's own directories says
+   which scope would hold it. A catch-up pass whose change lies in a project of its own below the root (a directory
+   holding `.git`, `go.mod`, `package.json` or another project marker) is also scoped to that project's `README.md`.
 
 ## 8. The hot view and the governor
 
