@@ -470,7 +470,8 @@ run may end (`swarm.Config.HoldManager`, set for every session that is not inter
 While workers are running, or tasks are in review, doing, blocked or todo, a final answer is vetoed with one short
 harness-written reason that lists ids only (`Not finished: running: be-1 (T3), te-1 (T4); in review: T2; not started:
 T5. Use wait, accept or reject submissions, and fail tasks you abandon, then give your final answer.`: sorted,
-deterministic, at most about 400 characters, the lists shrink before the instruction is cut). A worker that is running
+deterministic, at most about 400 characters, the lists shrink before the instruction is cut; a task that waits for an
+unfinished dependency is listed apart, as `waiting for dependencies: T5 (after T3)`). A worker that is running
 but holds nothing on the board (it handed its task in, the manager accepted it, and it is writing its closing message)
 is not unfinished work: the guard waits for it, at most 20 seconds in all, before it decides, instead of spending a veto
 and a manager request on it; a worker that outlasts the wait does not hold the answer either (the manager can do

@@ -7,6 +7,17 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- An agent's status line says "thinking" once its last tool call has
+  returned, instead of keeping the line of that call ("running a command")
+  until the next one. Widening a task's scope names the open children that
+  keep their own scopes. A refusal to enter another agent's worktree names
+  that tree (or the directory of every tree) and no longer tells the
+  manager to ask the manager. The stop guard lists a task that waits for an
+  unfinished dependency as `waiting for dependencies: T5 (after T3)`
+  instead of "not started". No prompt bytes change in the system prompt or
+  tool specs; the live board's status lines read "thinking" where they
+  named the last call.
+
 - The manager's stop guard no longer holds the final answer for a worker
   that holds no task: it still waits up to 20 seconds for such a worker to
   end its turn, then lets the answer through (a batch run still reports the

@@ -164,3 +164,24 @@ func TestMailToolSendsToAnAgentAndSaysNoToOneThatIsNotThere(t *testing.T) {
 		}
 	}
 }
+
+// Widening a parent does not widen its open children, and the manager is told which children keep their own scopes: in a team run
+// the manager widened T4 for a file, T9's worker was refused writing it, and T9 needed a second widening.
+func TestWideningAParentNamesTheChildrenThatKeepTheirScopes(t *testing.T) {
+	r := newPoolRig(t)
+	if err := r.sw.Board.poolUpdate("mgr", r.parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	kid, err := r.sw.Board.CreateTask(r.lead, TaskSpec{Parent: r.parent.ID, Title: "pages", Role: "backend", Files: []string{"app/pages/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := r.must(r.task("mgr", map[string]any{"action": "update", "id": r.parent.ID, "files": []string{"app/**", "types/**"}}), "widen the parent")
+	if !strings.Contains(got, "keep their own scopes") || !strings.Contains(got, kid.ID+" (todo: app/pages/**)") || !strings.Contains(got, "widen that child too") {
+		t.Fatalf("widening a parent with an open child: %q", got)
+	}
+	got = r.must(r.task("mgr", map[string]any{"action": "update", "id": kid.ID, "files": []string{"app/pages/**", "types/**"}}), "widen the child")
+	if got != "updated "+kid.ID {
+		t.Fatalf("a task with no children: %q", got)
+	}
+}

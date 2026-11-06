@@ -806,3 +806,22 @@ func TestAPersistentManagerAtItsStepLimitBesideATasklessWorkerGoesOn(t *testing.
 		t.Fatal("a persistent team's manager was held by a worker that holds no task")
 	}
 }
+
+// A task that waits for an unfinished one is named with what it waits for, apart from the work the manager could start now: in a
+// team run the veto listed "not started: T4" while T4 waited for T3, and the manager went to start work the board refused.
+func TestTheGuardNamesWhatAnUnstartedTaskWaitsFor(t *testing.T) {
+	r := newRVRig(t, Config{HoldManager: true, MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+	lib, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "library"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cli, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "cli", Deps: []string{lib.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := r.sw.unfinishedWork().reason()
+	want := "not started: " + lib.ID + "; waiting for dependencies: " + cli.ID + " (after " + lib.ID + ")."
+	if !strings.Contains(got, want) {
+		t.Fatalf("veto %q, want it to contain %q", got, want)
+	}
+}
