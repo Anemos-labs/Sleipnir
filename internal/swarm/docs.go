@@ -206,6 +206,9 @@ type docsKeeper struct {
 	retryAt time.Time // no new attempt before this
 	stops   int       // the counted stops of open (its Attempts) that retryAt already waits out
 	coded   bool      // an implementation task has been accepted: agreements alone may start a pass
+	// pendingAt is when the oldest change in pending was added (zero while pending is empty): a pass is held while the team is
+	// still building, at most docsHoldMax after it (docsHeld).
+	pendingAt time.Time
 
 	// edited are the product files the manager changed by itself since the last pass took them (noteManagerEdit), and
 	// editedAt is when it last changed one: no task's acceptance covers those edits, so they become one change of their
@@ -245,14 +248,17 @@ func (s *Swarm) noteManagerEdit(p string) {
 func (s *Swarm) flushManagerEdits() {
 	if k := s.docs; k != nil {
 		k.mu.Lock()
-		k.takeEditsLocked()
+		k.takeEditsLocked(s.deps.Now())
 		k.mu.Unlock()
 	}
 }
 
 // addPendingLocked adds c to the changes waiting for a pass. A task accepted again before a pass took its first
 // acceptance (a repair, a reopened review) replaces its entry, so one pass reads it once, at its latest scope.
-func (k *docsKeeper) addPendingLocked(c docsChange) {
+func (k *docsKeeper) addPendingLocked(c docsChange, now time.Time) {
+	if len(k.pending) == 0 {
+		k.pendingAt = now
+	}
 	for i := range k.pending {
 		if k.pending[i].task == c.task {
 			k.pending[i] = c
@@ -263,9 +269,12 @@ func (k *docsKeeper) addPendingLocked(c docsChange) {
 }
 
 // takeEditsLocked moves the manager's edits into pending as one change.
-func (k *docsKeeper) takeEditsLocked() {
+func (k *docsKeeper) takeEditsLocked(now time.Time) {
 	if len(k.edited) == 0 {
 		return
+	}
+	if len(k.pending) == 0 {
+		k.pendingAt = now
 	}
 	k.pending = append(k.pending, docsChange{task: managerEdits, title: "edits the manager made itself", kind: "change", files: k.edited})
 	k.edited, k.coded = nil, true
@@ -321,10 +330,10 @@ func (s *Swarm) docsTick(now time.Time) {
 		} else {
 			k.coded = true
 		}
-		k.addPendingLocked(docsChange{task: t.ID, title: t.Title, kind: kind, files: t.Files})
+		k.addPendingLocked(docsChange{task: t.ID, title: t.Title, kind: kind, files: t.Files}, now)
 	}
 	if len(k.edited) > 0 && now.Sub(k.editedAt) >= docsEditQuiet {
-		k.takeEditsLocked()
+		k.takeEditsLocked(now)
 	}
 	if k.open != "" {
 		t, ok := snap.Task(k.open)
@@ -363,6 +372,11 @@ func (s *Swarm) docsTick(now time.Time) {
 		k.mu.Unlock()
 		return
 	}
+	if open := s.stillBuilding(snap); open != "" && now.Sub(k.pendingAt) < docsHoldMax {
+		k.waiting = "held while the team is still building (" + open + ")"
+		k.mu.Unlock()
+		return
+	}
 	batch := append([]docsChange(nil), k.pending...)
 	k.mu.Unlock()
 
@@ -381,6 +395,11 @@ func (s *Swarm) docsTick(now time.Time) {
 		return
 	}
 	k.pending = k.pending[len(batch):]
+	if len(k.pending) > 0 {
+		k.pendingAt = now
+	} else {
+		k.pendingAt = time.Time{}
+	}
 	k.open, k.waiting, k.stops = task.ID, "", 0
 	for i := len(batch) - 1; i >= 0; i-- {
 		if batch[i].task != managerEdits {
@@ -397,6 +416,28 @@ func (s *Swarm) docsTick(now time.Time) {
 		return
 	}
 	s.emit("docs.pass", map[string]any{"agent": id, "task": task.ID, "changes": len(batch)})
+}
+
+// docsHoldMax bounds how long a catch-up pass is held while the team is still building (stillBuilding), counted from the oldest
+// change it covers: a long build still gets its documents updated along the way.
+const docsHoldMax = 20 * time.Minute
+
+// stillBuilding names an implementation task that is still open (todo, doing, blocked or in review, other than docs and test-only
+// work, the tester's suites included), "" when none is. A pass is held while one is, at most docsHoldMax: a pass started while the code it describes was still
+// being built or fixed documented defects as the current behaviour, and was rewritten twice as the rounds of review fixed them.
+func (s *Swarm) stillBuilding(snap *Snapshot) string {
+	for _, t := range snap.Tasks {
+		switch t.Status {
+		case StatusTodo, StatusDoing, StatusBlocked, StatusReview:
+		default:
+			continue
+		}
+		if t.Parent != "" || !s.implementationTask(t) || testsOnly(t.Files) || t.Role == "tester" || t.Owner != "" && s.roleOf(t.Owner) == "tester" {
+			continue
+		}
+		return t.ID + " " + string(t.Status)
+	}
+	return ""
 }
 
 // isDocsTask reports whether t is the docs worker's own work: a catch-up task, or a

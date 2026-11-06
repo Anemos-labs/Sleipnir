@@ -393,6 +393,12 @@ type Swarm struct {
 	verifyWrote map[string]bool
 	bounces     map[string]int
 	treeAgents  map[string]bool // agents that ever had a tree of their own
+	// sharedCommits are the commit messages of submissions in a shared tree, by task id (sharedCommitHint): nothing commits there
+	// by itself, so the manager is given the worker's message when it accepts the task.
+	sharedCommits map[string]string
+	// sharedCommitStep is a test hook run at a named step of the kept commit messages ("cleanup": before noteSharedCommit takes
+	// the lock; "accepted": after the manager's accept, before its hint); nil in production.
+	sharedCommitStep func(step string)
 	// gateMu serializes the gates that run in gateTree, the harness's checkout of the integration tip (gateDir).
 	gateMu   sync.Mutex
 	gateTree *workspace.Tree
