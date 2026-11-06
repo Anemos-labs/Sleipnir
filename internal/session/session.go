@@ -1106,7 +1106,15 @@ func (s *Session) build(ctx context.Context) error {
 			if o.TrustProject {
 				proj = filepath.Join(o.Root, filepath.FromSlash(memory.ProjectNotes))
 			}
-			reg.Register(memtool.NewScoped(filepath.Join(o.Home, ".sleipnir", "MEMORY.md"), proj).OnProjectSave(func() func() {
+			why := ""
+			if proj == "" {
+				// The refusal says what would change it: trust is the person's word (sleipnir trust, --trust-project), never the agent's.
+				why = "this session's project " + o.Root + " is not trusted, and only a project the person trusted keeps notes; the person trusts it with `sleipnir trust` or --trust-project"
+				if o.Root == "" {
+					why = "it has no project"
+				}
+			}
+			reg.Register(memtool.NewScoped(filepath.Join(o.Home, ".sleipnir", "MEMORY.md"), proj).WithoutProject(why).OnProjectSave(func() func() {
 				renew := s.trustWrite()
 				return func() { renew([]string{memory.ProjectNotes}, "a note the memory tool saved") }
 			}))

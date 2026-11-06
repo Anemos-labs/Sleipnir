@@ -328,3 +328,21 @@ func TestProjectNotesAreNotReadOrRemovedThroughALink(t *testing.T) {
 		t.Errorf("the other file changed: %q", b)
 	}
 }
+
+// A session without project notes refuses scope project with the reason the session gave and what to do instead, and saves nothing.
+func TestProjectScopeRefusalSaysWhyAndWhatToDo(t *testing.T) {
+	dir := t.TempDir()
+	user := filepath.Join(dir, "home", "MEMORY.md")
+	why := "this session's project /work is not trusted; the person trusts it with `sleipnir trust`"
+	r := run(t, NewScoped(user, "").WithoutProject(why), &recording{allow: true}, map[string]any{"action": "add", "scope": "project", "text": "make gen regenerates the client."})
+	if !r.IsError || !strings.Contains(r.Text, why) || !strings.Contains(r.Text, "scope user") {
+		t.Fatalf("refusal = %+v", r)
+	}
+	if _, err := os.Stat(user); err == nil {
+		t.Error("a refused project note was saved to the user's notes")
+	}
+	r = run(t, NewScoped(user, ""), &recording{allow: true}, map[string]any{"action": "add", "scope": "project", "text": "x"})
+	if !r.IsError || !strings.Contains(r.Text, "no project, or the project is not trusted") {
+		t.Fatalf("generic refusal = %+v", r)
+	}
+}

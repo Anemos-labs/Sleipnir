@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -773,10 +774,10 @@ func (t *noteTool) Spec() core.ToolSpec {
 	return core.ToolSpec{
 		Name:         "note",
 		NoTreeWrites: true, // tree mutations use the verified integration bridge
-		Description: "Record one true, durable fact for the team (a command, convention or gotcha). It shows up on every agent's " +
+		Description: "Record one true, durable fact for the team (a command, convention or gotcha), at most " + strconv.Itoa(maxNoteRunes) + " characters: a longer note is refused, not cut. It shows up on every agent's " +
 			"live board while it fits; older notes can be evicted. For a durable shared contract use task done agreement and dependent tasks. scope: shared (default) or role; " +
 			"a role note is also kept, when your task is accepted, for the agents of your role in later sessions of this project (a command, a trap, where a thing lives).",
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"},"scope":{"type":"string","enum":["shared","role"]}},"required":["text"]}`),
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string","description":"one fact, at most ` + strconv.Itoa(maxNoteRunes) + ` characters"},"scope":{"type":"string","enum":["shared","role"]}},"required":["text"]}`),
 	}
 }
 

@@ -96,6 +96,11 @@ var reviewOverrunFloor = 10 * time.Minute
 // counts toward StallIdleCapacity.
 var idleCapacityAfter = 15 * time.Minute
 
+// idleCapacityQuiet is how long after an idle_capacity mail the manager is not mailed of it again. A finding clears when the idle
+// workers go to work and is raised anew when they are idle again: in a run whose last stretch was serial (each task waiting on the
+// one before it) the manager was told three times to assign work now that did not exist. The finding is still raised and logged.
+var idleCapacityQuiet = 30 * time.Minute
+
 // StallKinds lists every stall kind in a fixed order.
 var StallKinds = []StallKind{StallClaimedNoProgress, StallManagerWaitingOnIdle, StallOrphanedTask, StallBlockedCycle, StallReviewStarved, StallIdleCapacity, StallReviewOverrun, StallTaskOverrun}
 
@@ -135,6 +140,8 @@ type stallState struct {
 	since     map[string]time.Time
 	escalated map[string]bool
 	stopped   map[string]bool
+	// mailed is when the manager was last told of idle capacity (idleCapacityQuiet).
+	mailed time.Time
 	// between, set only by tests before the swarm runs, is called at the two points a review read and a sweep can interleave:
 	// "get" after task get read the task and before it is noted, "sweep" after the sweep's board snapshot and before its lock.
 	between func(at string)
@@ -625,11 +632,36 @@ func (s *Swarm) sweepStalls() {
 	}
 	for _, f := range raised {
 		s.emit(events.TypeSwarmStall, stallEvent("raise", f))
-		if f.Notify != "" {
-			s.notify(f.Notify, "request", stallNudge(f, s.stallTurns(), s.cfg.PersistentPools))
+		if f.Notify == "" || f.Kind == StallIdleCapacity && !s.stalls.mayMailIdle(s.deps.Now()) {
+			continue
 		}
+		s.notify(f.Notify, "request", stallNudge(f, s.stallTurns(), s.cfg.PersistentPools))
 	}
 	s.escalateStalls()
+}
+
+// mayMailIdle reports whether an idle_capacity finding raised at now may be mailed, and if so records the mail: at most one per
+// idleCapacityQuiet.
+func (st *stallState) mayMailIdle(now time.Time) bool {
+	if st.idleQuiet(now) {
+		return false
+	}
+	st.noteIdleMailed(now)
+	return true
+}
+
+// idleQuiet reports whether the manager was told of idle capacity less than idleCapacityQuiet before now.
+func (st *stallState) idleQuiet(now time.Time) bool {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return !st.mailed.IsZero() && now.Sub(st.mailed) < idleCapacityQuiet
+}
+
+// noteIdleMailed records that the manager was told of idle capacity at now.
+func (st *stallState) noteIdleMailed(now time.Time) {
+	st.mu.Lock()
+	st.mailed = now
+	st.mu.Unlock()
 }
 
 // stallEvent is the payload of a swarm.stall event.
@@ -659,7 +691,8 @@ func stallNudge(f Stall, k int64, pools bool) string {
 		return fmt.Sprintf("Stall check: %s. Read it (task get %s), then accept or reject it.", f.Detail, f.Task)
 	case StallIdleCapacity:
 		return "Stall check: " + f.Detail + ". If the objective needs more than the open tasks (a requirement nobody has started, a gap you found), " +
-			"create that work and assign it now: an idle worker starts at once. If the open tasks are all that is left, keep waiting."
+			"create that work and assign it: an idle worker starts at once. If the open tasks are all that is left (the rest waits on them), keep waiting: " +
+			"this is not said again for " + strconv.Itoa(int(idleCapacityQuiet/time.Minute)) + " minutes."
 	case StallReviewOverrun:
 		return "Stall check: " + f.Detail + ". A second walk over the same code finds what the first did. Write the report now with what you have: " +
 			"the findings so far in priority order, what you checked and found fine, and what you did not reach, named as unverified; then task done."
