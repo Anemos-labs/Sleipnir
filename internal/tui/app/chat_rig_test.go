@@ -203,7 +203,6 @@ type chatRig struct {
 	cols, rows int
 	cancelled  bool // CancelStart was called
 	mu         sync.Mutex
-	started    int
 }
 
 type chatExit struct {
@@ -301,16 +300,6 @@ func (r *chatRig) attachSession() {
 		Sessions: func() []input.Choice {
 			return []input.Choice{{Text: "20260101-000000-aaaaaa", Detail: "2m ago $0.0001 fix the two failing tests"}}
 		}}
-}
-
-// frame waits for the next frame the program draws.
-func (r *chatRig) frame() {
-	r.t.Helper()
-	select {
-	case <-r.scr.frames:
-	case <-time.After(time.Minute):
-		r.t.Fatalf("the program drew no frame (a hang guard); the screen:\n%s", r.screen())
-	}
 }
 
 // screen is everything a person would see: the scrollback, then the screen, without the blank rows at the end.

@@ -19,14 +19,6 @@ func runes(s string, m Mod) []Key {
 	return out
 }
 
-func cat(parts ...[]Key) []Key {
-	var out []Key
-	for _, p := range parts {
-		out = append(out, p...)
-	}
-	return out
-}
-
 func one(k Key) []Key { return []Key{k} }
 
 // decodeWhole feeds s in one piece and then flushes.

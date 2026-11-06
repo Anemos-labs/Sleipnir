@@ -31,16 +31,6 @@ func bestOfFour(t *testing.T) []export.Source {
 	}
 }
 
-func episodesOf(recs []map[string]any, field string) map[string]int {
-	out := map[string]int{}
-	for _, r := range recs {
-		if id, ok := r[field].(string); ok {
-			out[id]++
-		}
-	}
-	return out
-}
-
 func TestSelectBestPicksTheCacheFriendlyVerifiedRun(t *testing.T) {
 	srcs := bestOfFour(t)
 	if !srcs[3].Episode.Has(rl.FlagLooped) || srcs[2].Episode.Signals[rl.SigRepeatedReads] != 2 {

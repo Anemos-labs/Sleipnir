@@ -42,7 +42,6 @@ type webModel struct {
 	script func(c *mock.Call) mock.Reply
 	seen   []string
 	holds  map[string]chan struct{}
-	ts     interface{ Close() }
 }
 
 // newWebModel starts the provider and returns the base options of a session that uses it.
