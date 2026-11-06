@@ -392,7 +392,8 @@ func (t *taskTool) update(c *tools.Call, in taskIn) *tools.Result {
 		if err != nil {
 			return tools.Errorf("%v", err)
 		}
-		if err := s.Board.SetScope(me, in.ID, files, s.scopeCheck(false)); err != nil {
+		check := func(sn *Snapshot, cand Task) error { return s.scopeCheck(s.ownerReadOnly(sn, cand.Owner))(sn, cand) }
+		if err := s.Board.SetScope(me, in.ID, files, check); err != nil {
 			return tools.Errorf("cannot change the scope: %v", err)
 		}
 	}
@@ -872,7 +873,25 @@ func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error)
 			}
 		}
 	}
+	if c.Env.Role == "manager" {
+		if r := t.queueBehindDeps(req); r != nil {
+			return r, nil
+		}
+	}
 	r, err := t.s.spawn(req)
+	var mb *memberBusy
+	if errors.As(err, &mb) && req.TaskID != "" && c.Env.Role == "manager" {
+		if task, ok := t.s.Board.Snapshot().Task(req.TaskID); ok && task.Status == StatusTodo && (task.Owner == "" || task.Owner == mb.id) {
+			// The member named is in a run: the harness gives it the task when the run ends, so re-tasking a busy worker is not a
+			// guess at when it is free.
+			was := "is queued"
+			if !t.s.queueSpawn(req, task.Rev) {
+				was = "was already queued"
+			}
+			return text("%s %s for %s, which is still working: the harness starts it on %s when its run ends and tells you. Use wait.",
+				req.TaskID, was, mb.id, mb.id), nil
+		}
+	}
 	var busy *noSpareMember
 	if errors.As(err, &busy) && req.TaskID != "" && c.Env.Role == "manager" {
 		if task, ok := t.s.Board.Snapshot().Task(req.TaskID); ok && task.Status == StatusTodo && task.Owner == "" {
@@ -894,6 +913,48 @@ func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error)
 		return text("%s is still in a turn, so %s is reserved for it: it was told to claim it, and is started on it if its run ends first. Use wait to sleep until something changes.", r.Agent, req.TaskID), nil
 	}
 	return text("%s started; it will report through the board. Use wait to sleep until something changes.", r.Agent), nil
+}
+
+// queueBehindDeps queues the manager's spawn of an existing todo task whose dependencies are not done yet, and answers what was
+// done; nil when that does not apply (no such task, not todo or already owned, its dependencies done, or one of them failed, which
+// the spawn's own refusal explains). A blocked task can be assigned ahead of time: the harness starts it as soon as the last of its
+// dependencies is done (queueTick), on the member agent= names or the first free member of its role.
+func (t *spawnTool) queueBehindDeps(req SpawnReq) *tools.Result {
+	if req.TaskID == "" {
+		return nil
+	}
+	sn := t.s.Board.Snapshot()
+	task, ok := sn.Task(req.TaskID)
+	if !ok || task.Status != StatusTodo || task.Owner != "" {
+		return nil
+	}
+	done, dep := depsDone(sn, task)
+	if done || dep.Status == StatusFailed {
+		return nil
+	}
+	role := req.Role
+	if m := t.s.get(req.Agent); m != nil {
+		role = m.role
+	}
+	if t.s.roleMismatch(sn, task, req.Agent, role) != nil {
+		return nil // the spawn's own refusal names the task's role and its members
+	}
+	if req.Role == "" {
+		req.Role = task.Role
+	}
+	was := "is queued"
+	if !t.s.queueSpawn(req, task.Rev) {
+		was = "was already queued"
+	}
+	on := "the first free " + req.Role + " member"
+	if req.Role == "" {
+		on = "a free member"
+	}
+	if req.Agent != "" {
+		on = req.Agent
+	}
+	return text("%s waits for %s (%s), so it %s: the harness starts it on %s once its dependencies are done, and tells you. Do not spawn it again; use wait.",
+		task.ID, dep.ID, dep.Status, was, on)
 }
 
 // ---- wait -------------------------------------------------------------------

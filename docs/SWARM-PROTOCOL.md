@@ -55,6 +55,12 @@ harness starts the task on the first member of the role that is free, on the sup
 pass, and tells the manager; a queued task that is assigned, revised or closed meanwhile is
 dropped from the queue, and a resumed session starts with none. Any other caller is refused
 with what to do (wait, or have the busy parent's leader take the work as a child).
+The manager's `spawn` of an existing todo task whose dependencies are not done is queued the
+same way (`T3 waits for T2 (doing), so it is queued`): the harness starts it once the last
+of them is done, on the member `agent=` names or the first free member of its role, and a
+dependency that fails drops it with a mail that says so. A `spawn agent=<id>` of an existing
+todo task while that member is in a run it cannot be told of is queued for that member and
+started when its run ends.
 
 A task goes to a member of its own role. Roles exist to run each kind of work on the model and instructions chosen for it
 (`--role-model frontend=<model>`), so a task whose `role` names a role the team can staff is refused to every agent of
@@ -739,7 +745,9 @@ Layered, cheapest first:
    under it), files, and globs (`api/**`, `web/*.tsx`, `src/{a,b}/**`; `**` spans directories, `*` does not), relative to
    the repository root. Overlapping scopes between active *writer* tasks (doing or blocked) are refused at spawn and
    claim, comparing normalised patterns (`src//a`, `./src/a`, `src/../src/a`, absolute paths, case and `\` variants are
-   the same directory; `src/a` and `src/ab` are not); read-only roles neither take part nor are blocked. Two scopes
+   the same directory; `src/a` and `src/ab` are not); read-only roles and reviewers neither take part nor are blocked
+   (a reviewer's scope names the work it reviews, `**` for the merged result; its own writes stay held to that scope
+   and to the per-file leases). Two scopes
    overlap when some path could lie in both, with `**` aligned as in matching: `**/*.md` overlaps `docs/**` and
    `web/*` (`web/README.md`), not `*.md` with `web/**`, nor `**/*.md` with `**/*.go`. Two globs in one segment
    count as overlapping unless both are `*` and a suffix (`*.md`, `*_test.go`) and neither suffix ends the other.
