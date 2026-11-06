@@ -3,6 +3,7 @@ package swarm
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -49,5 +50,30 @@ func TestSharedCommitHintNamesTheRepositoryWhole(t *testing.T) {
 	got := s.sharedCommitHint(Task{ID: "T1", Title: "store", Files: []string{"internal/store/**"}})
 	if !strings.Contains(got, "commit this change now in the project root,") || strings.Contains(got, "…") {
 		t.Fatalf("hint = %q", got)
+	}
+}
+
+// The kept messages are bounded, and the messages of submissions that were never accepted do not crowd out a current one: at the
+// bound they are dropped first. A message kept for a task is replaced by its next submission's.
+func TestSharedCommitMessagesStayBoundedWithoutLosingCurrentOnes(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s := New(Config{SessionID: "t"}, Deps{Root: root}, nil)
+	for i := range maxSharedCommits {
+		s.noteSharedCommit(Task{ID: "gone-" + strconv.Itoa(i)}, "fix: an abandoned submission")
+	}
+	cur := Task{ID: "T1", Title: "store", Files: []string{"internal/store/**"}}
+	s.noteSharedCommit(cur, "feat(store): first try")
+	s.noteSharedCommit(cur, "feat(store): keep on-the-day records")
+	if got := s.sharedCommitHint(cur); !strings.Contains(got, `"feat(store): keep on-the-day records"`) {
+		t.Fatalf("stale messages crowded out the current one: %q", got)
+	}
+	s.mu.Lock()
+	n := len(s.sharedCommits)
+	s.mu.Unlock()
+	if n > maxSharedCommits {
+		t.Fatalf("%d messages kept, bound %d", n, maxSharedCommits)
 	}
 }

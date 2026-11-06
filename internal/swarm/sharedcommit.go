@@ -14,18 +14,28 @@ import (
 // maxSharedCommits bounds the messages kept: one per task in review, dropped when the task is accepted.
 const maxSharedCommits = 256
 
-// noteSharedCommit keeps msg, the commit message of t's submission in a shared tree, for the manager's accept.
+// noteSharedCommit keeps msg, the commit message of t's submission in a shared tree, for the manager's accept. At the bound, the
+// messages of tasks no longer in review (sent back, failed, closed) are dropped first: a submission that was never accepted
+// leaves its message behind, and those must not crowd out the current ones.
 func (s *Swarm) noteSharedCommit(t Task, msg string) {
 	if strings.TrimSpace(msg) == "" {
 		return
 	}
+	sn := s.Board.Snapshot()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.sharedCommits == nil {
 		s.sharedCommits = map[string]string{}
 	}
 	if _, ok := s.sharedCommits[t.ID]; !ok && len(s.sharedCommits) >= maxSharedCommits {
-		return
+		for id := range s.sharedCommits {
+			if cur, ok := sn.Task(id); !ok || cur.Status != StatusReview {
+				delete(s.sharedCommits, id)
+			}
+		}
+		if len(s.sharedCommits) >= maxSharedCommits {
+			return
+		}
 	}
 	s.sharedCommits[t.ID] = msg
 }
