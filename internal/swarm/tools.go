@@ -617,6 +617,7 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 			return &tools.Result{IsError: true, Text: fmt.Sprintf("%s was not accepted: verification `%s` failed (exit %d). Reject it with feedback, or fix it.\n%s",
 				in.ID, ExpandVerify(s.cfg.VerifyCmd, c.Env.Cwd, task.Files), vr.code, tail)}
 		}
+		commitMsg := s.sharedCommitMessage(in.ID) // before the accept: once done, the message may be dropped at the bound
 		if err := s.Board.Accept(me, in.ID, in.Text, taskGateCheck(task), empty, s.noteAcceptedCheck(task)); err != nil {
 			return tools.Errorf("%v", err)
 		}
@@ -624,7 +625,7 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 		s.flushLearned(task)
 		commit := ""
 		if !s.hadTree(task.Owner) {
-			commit = s.sharedCommitHint(task)
+			commit = s.sharedCommitHint(task, commitMsg)
 		}
 		if last := s.reviewPending(); last != "" && s.roleOf(task.Owner) != ReviewerRole {
 			return text("%s accepted. The merged result is not reviewed yet: a reviewer task is due before the goal is reported met%s%s", in.ID, commit, s.planNudge(me))

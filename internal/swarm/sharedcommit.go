@@ -15,8 +15,10 @@ import (
 const maxSharedCommits = 256
 
 // noteSharedCommit keeps msg, the commit message of t's submission in a shared tree, for the manager's accept. At the bound, the
-// messages of tasks no longer in review (sent back, failed, closed) are dropped first: a submission that was never accepted
-// leaves its message behind, and those must not crowd out the current ones.
+// messages of abandoned submissions are dropped first: a submission that was never accepted leaves its message behind, and those
+// must not crowd out the current ones. A message is dropped only when its task is gone, todo, blocked, failed or done: a doing
+// task may be submitting now (its message is kept before it enters review), and a done task's message was read before the accept
+// (sharedCommitMessage), so neither loses a current message. A doing task's stale message is replaced by its next submission.
 func (s *Swarm) noteSharedCommit(t Task, msg string) {
 	if strings.TrimSpace(msg) == "" {
 		return
@@ -29,7 +31,7 @@ func (s *Swarm) noteSharedCommit(t Task, msg string) {
 	}
 	if _, ok := s.sharedCommits[t.ID]; !ok && len(s.sharedCommits) >= maxSharedCommits {
 		for id := range s.sharedCommits {
-			if cur, ok := sn.Task(id); !ok || cur.Status != StatusReview {
+			if cur, ok := sn.Task(id); !ok || cur.Status != StatusReview && cur.Status != StatusDoing {
 				delete(s.sharedCommits, id)
 			}
 		}
@@ -40,12 +42,20 @@ func (s *Swarm) noteSharedCommit(t Task, msg string) {
 	s.sharedCommits[t.ID] = msg
 }
 
-// sharedCommitHint is what the manager's accept of t adds in a shared tree whose work lies in a git repository: commit the change
-// now, with the message its worker wrote (or one made from the task), naming the repository and the task's scope. "" when the
-// project is in no git repository, or t changed nothing (a plan, a report).
-func (s *Swarm) sharedCommitHint(t Task) string {
+// sharedCommitMessage is the kept commit message of t's submission, read while t is still in review (before the accept), so that
+// no cleanup at the bound can take it in between.
+func (s *Swarm) sharedCommitMessage(id string) string {
 	s.mu.Lock()
-	msg := s.sharedCommits[t.ID]
+	defer s.mu.Unlock()
+	return s.sharedCommits[id]
+}
+
+// sharedCommitHint is what the manager's accept of t adds in a shared tree whose work lies in a git repository: commit the change
+// now, with msg, the message its worker wrote (sharedCommitMessage; one made from the task when ""), naming the repository and
+// the task's scope. The kept message is dropped. "" when the project is in no git repository, or t changed nothing (a plan, a
+// report).
+func (s *Swarm) sharedCommitHint(t Task, msg string) string {
+	s.mu.Lock()
 	delete(s.sharedCommits, t.ID)
 	s.mu.Unlock()
 	if t.Kind == TaskKindPlan || s.roles[s.roleOf(t.Owner)].Reports() {

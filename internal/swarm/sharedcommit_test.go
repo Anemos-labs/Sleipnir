@@ -23,18 +23,18 @@ func TestSharedTreeAcceptSaysToCommitWithTheWorkersMessage(t *testing.T) {
 	s := New(Config{SessionID: "t"}, Deps{Root: root}, nil)
 	task := Task{ID: "T3", Title: "store", Files: []string{"check/internal/store/**"}}
 	s.noteSharedCommit(task, "feat(store): keep on-the-day records\n\nThe store keeps a record dated today.")
-	got := s.sharedCommitHint(task)
+	got := s.sharedCommitHint(task, s.sharedCommitMessage(task.ID))
 	if !strings.Contains(got, "commit this change now in check (below the project root)") || !strings.Contains(got, `"feat(store): keep on-the-day records"`) || !strings.Contains(got, "check/internal/store/**") {
 		t.Fatalf("hint = %q", got)
 	}
-	if again := s.sharedCommitHint(task); !strings.Contains(again, `"Store"`) {
+	if again := s.sharedCommitHint(task, s.sharedCommitMessage(task.ID)); !strings.Contains(again, `"Store"`) {
 		t.Fatalf("without a kept message the subject comes from the title: %q", again)
 	}
-	if none := s.sharedCommitHint(Task{ID: "T4", Title: "web", Files: []string{"web/**"}}); none != "" {
+	if none := s.sharedCommitHint(Task{ID: "T4", Title: "web", Files: []string{"web/**"}}, ""); none != "" {
 		t.Fatalf("hint for work in no repository below the root: %q", none)
 	}
 	plan := Task{ID: "T5", Title: "plan", Kind: TaskKindPlan, Files: []string{"check/**"}}
-	if got := s.sharedCommitHint(plan); got != "" {
+	if got := s.sharedCommitHint(plan, s.sharedCommitMessage(plan.ID)); got != "" {
 		t.Fatalf("a plan commits nothing: %q", got)
 	}
 }
@@ -47,7 +47,7 @@ func TestSharedCommitHintNamesTheRepositoryWhole(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := New(Config{SessionID: "t"}, Deps{Root: root}, nil)
-	got := s.sharedCommitHint(Task{ID: "T1", Title: "store", Files: []string{"internal/store/**"}})
+	got := s.sharedCommitHint(Task{ID: "T1", Title: "store", Files: []string{"internal/store/**"}}, "")
 	if !strings.Contains(got, "commit this change now in the project root,") || strings.Contains(got, "…") {
 		t.Fatalf("hint = %q", got)
 	}
@@ -67,13 +67,51 @@ func TestSharedCommitMessagesStayBoundedWithoutLosingCurrentOnes(t *testing.T) {
 	cur := Task{ID: "T1", Title: "store", Files: []string{"internal/store/**"}}
 	s.noteSharedCommit(cur, "feat(store): first try")
 	s.noteSharedCommit(cur, "feat(store): keep on-the-day records")
-	if got := s.sharedCommitHint(cur); !strings.Contains(got, `"feat(store): keep on-the-day records"`) {
+	if n := sharedCommitsKept(s); n > maxSharedCommits {
+		t.Fatalf("%d messages kept after the submission, bound %d", n, maxSharedCommits)
+	}
+	if got := s.sharedCommitHint(cur, s.sharedCommitMessage(cur.ID)); !strings.Contains(got, `"feat(store): keep on-the-day records"`) {
 		t.Fatalf("stale messages crowded out the current one: %q", got)
 	}
-	s.mu.Lock()
-	n := len(s.sharedCommits)
-	s.mu.Unlock()
-	if n > maxSharedCommits {
+	if n := sharedCommitsKept(s); n > maxSharedCommits {
 		t.Fatalf("%d messages kept, bound %d", n, maxSharedCommits)
 	}
+}
+
+// A cleanup at the bound must not take the message of a task submitting now (still doing: its message is kept before it enters
+// review) or of a task being accepted (done once the board accepts it, its message read before that).
+func TestSharedCommitCleanupKeepsInFlightSubmissionsAndAccepts(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s := New(Config{SessionID: "t"}, Deps{Root: root}, nil)
+	submitting := Task{ID: "T1", Title: "store", Status: StatusDoing, Owner: "be-1", Files: []string{"internal/store/**"}}
+	accepting := Task{ID: "T2", Title: "web", Status: StatusReview, Owner: "be-2", Files: []string{"web/**"}}
+	s.noteSharedCommit(submitting, "feat(store): keep on-the-day records")
+	s.noteSharedCommit(accepting, "feat(web): show the day")
+	msg := s.sharedCommitMessage(accepting.ID) // the accept reads the message while the task is in review
+	accepting.Status = StatusDone              // then the board accepts it, before the hint drops the message
+	s.Board.RestoreKeeping(&Snapshot{Tasks: []Task{submitting, accepting}}, nil, map[string]bool{"T1": true, "T2": true})
+	if got, _ := s.Board.Snapshot().Task("T2"); got.Status != StatusDone {
+		t.Fatalf("T2 is %s, want done", got.Status)
+	}
+	for i := range maxSharedCommits {
+		s.noteSharedCommit(Task{ID: "gone-" + strconv.Itoa(i)}, "fix: an abandoned submission")
+	}
+	if n := sharedCommitsKept(s); n > maxSharedCommits {
+		t.Fatalf("%d messages kept, bound %d", n, maxSharedCommits)
+	}
+	if got := s.sharedCommitMessage(submitting.ID); got != "feat(store): keep on-the-day records" {
+		t.Fatalf("the cleanup took the message of a task submitting now: %q", got)
+	}
+	if got := s.sharedCommitHint(accepting, msg); !strings.Contains(got, `"feat(web): show the day"`) {
+		t.Fatalf("the cleanup took the message of a task being accepted: %q", got)
+	}
+}
+
+func sharedCommitsKept(s *Swarm) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.sharedCommits)
 }
