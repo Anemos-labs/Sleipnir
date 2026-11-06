@@ -190,8 +190,10 @@ func outputEnding(out string) string {
 }
 
 // echoedStatus is the status a command line printed for its test right after it, as in `npm test; echo "exit=$?"`: the
-// command after the last test is an echo or printf of "$?", and its output line is found by the text around "$?". It is ""
-// when the line prints none, or when the test is piped (then "$?" is the pipe's status).
+// command after the last test (after its pipeline, when it is piped) is an echo or printf of the test's status, and its output
+// line is found by the text around it. The test's status is "$?" when the test ends its pipeline, and "${PIPESTATUS[k]}" (bash)
+// for the test at place k of a pipeline (`make test | tail; echo "EXIT=${PIPESTATUS[0]}"`); "$?" after a pipe is the pipe's.
+// It is "" when the line prints none.
 func echoedStatus(cmd, out string) string {
 	cs := splitShell(cmd)
 	last := -1
@@ -200,32 +202,52 @@ func echoedStatus(cmd, out string) string {
 			last = i
 		}
 	}
-	if last < 0 || last+1 >= len(cs) || cs[last].op == "|" || cs[last].op == "&" {
+	if last < 0 {
 		return ""
 	}
-	echo := cs[last+1].words
+	first, end := last, last // the test's pipeline
+	for first > 0 && cs[first-1].op == "|" {
+		first--
+	}
+	for end < len(cs) && cs[end].op == "|" {
+		end++
+	}
+	if end+1 >= len(cs) || cs[end].op == "&" {
+		return ""
+	}
+	marks := []string{fmt.Sprintf("${PIPESTATUS[%d]}", last-first)}
+	if end == last {
+		marks = append(marks, "$?")
+	}
+	echo := cs[end+1].words
 	if len(echo) < 2 || (echo[0] != "echo" && echo[0] != "printf") {
 		return ""
 	}
-	seen := 0 // the $? marks ahead of the template, to find its raw text in cmd
-	for _, c := range cs[:last+1] {
-		for _, w := range c.words {
-			seen += strings.Count(w, "$?")
+	var mark, tmpl string
+	seen := 0 // the marks ahead of the template, to find its raw text in cmd
+	for _, m := range marks {
+		seen = 0
+		for _, c := range cs[:end+1] {
+			for _, w := range c.words {
+				seen += strings.Count(w, m)
+			}
 		}
-	}
-	var tmpl string
-	for _, w := range echo[1:] {
-		if strings.Contains(w, "$?") {
-			tmpl = w
+		for _, w := range echo[1:] {
+			if strings.Contains(w, m) {
+				mark, tmpl = m, w
+				break
+			}
+			seen += strings.Count(w, m)
+		}
+		if mark != "" {
 			break
 		}
-		seen += strings.Count(w, "$?")
 	}
-	before, after, ok := strings.Cut(tmpl, "$?")
-	if !ok || strings.Contains(after, "$?") {
+	before, after, ok := strings.Cut(tmpl, mark)
+	if mark == "" || !ok || strings.Contains(after, mark) {
 		return ""
 	}
-	if echo[0] == "printf" && rawEndsInNewline(cmd, seen) {
+	if echo[0] == "printf" && rawEndsInNewline(cmd, mark, seen) {
 		after = strings.TrimSuffix(after, "n") // splitShell keeps the n of a quoted \n
 	}
 	before, after = strings.TrimSpace(strings.ReplaceAll(before, `\n`, "")), strings.TrimSpace(strings.ReplaceAll(after, `\n`, ""))
@@ -251,15 +273,15 @@ func echoedStatus(cmd, out string) string {
 	return ""
 }
 
-// rawEndsInNewline reports whether the quoted text after the (skip+1)th $? in cmd ends in a \n escape.
-func rawEndsInNewline(cmd string, skip int) bool {
+// rawEndsInNewline reports whether the quoted text after the (skip+1)th mark in cmd ends in a \n escape.
+func rawEndsInNewline(cmd, mark string, skip int) bool {
 	rest := cmd
 	for range skip + 1 {
-		i := strings.Index(rest, "$?")
+		i := strings.Index(rest, mark)
 		if i < 0 {
 			return false
 		}
-		rest = rest[i+2:]
+		rest = rest[i+len(mark):]
 	}
 	if end := strings.IndexAny(rest, "\"'"); end >= 0 {
 		rest = rest[:end]

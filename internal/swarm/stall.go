@@ -400,8 +400,10 @@ func (s *Swarm) stallFindings() []Stall {
 		}
 		task := currentTask(snap, id)
 		t, ok := snap.Task(task)
-		if !ok || t.Status != StatusDoing || t.Kind == TaskKindPlan {
-			continue // a reviewer's planning task (a team without an architect) is an agreement to write, not a review
+		if !ok || t.Status != StatusDoing || t.Kind == TaskKindPlan || t.Pool != nil {
+			// a reviewer's planning task (a team without an architect) is an agreement to write, not a review; a pooled review's
+			// leader runs its members' parts, and each part is a review task of its own, held to this bound
+			continue
 		}
 		since, ok := s.review.beganAt(t.ID, t.Rev) // the assignment's own start: a task claimed mid-run is not older than the claim
 		if !ok {

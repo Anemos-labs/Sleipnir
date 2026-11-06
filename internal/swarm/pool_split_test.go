@@ -31,6 +31,13 @@ func TestASecondParentTakesTheMembersAnExecutingPoolCanSpare(t *testing.T) {
 	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: second.ID, By: "mgr"}); err == nil || !strings.Contains(err.Error(), "still agreeing on "+first.ID) {
 		t.Fatalf("a second parent while the first plans: %v", err)
 	}
+	// reconciling its finished parts: every member votes, and the refusal says that is what holds them
+	if err := r.sw.Board.poolUpdate("mgr", first.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "reconciling"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: second.ID, By: "mgr"}); err == nil || !strings.Contains(err.Error(), "still reconciling "+first.ID+"'s finished parts") {
+		t.Fatalf("a second parent while the first reconciles: %v", err)
+	}
 	// executing, with the leader and one member busy
 	if err := r.sw.Board.poolUpdate("mgr", first.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
 		t.Fatal(err)

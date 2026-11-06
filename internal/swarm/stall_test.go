@@ -753,6 +753,19 @@ func TestStallReviewOverrun(t *testing.T) {
 	if !nudged(r, id) {
 		t.Error("the reviewer was not told")
 	}
+	// a pooled review's leader runs its members' parts, each a review held to the bound itself: the parent is not overrun
+	if err := r.sw.Board.mutate("mgr", "update", func(d *draft) error {
+		i := taskIdx(d.Snapshot, task)
+		tk := d.Tasks[i]
+		tk.Pool = &PoolState{Members: []string{id}, Phase: "reconciling", Revision: 1}
+		return d.put(i, tk)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.sweepStalls()
+	if _, ok := active(r, StallReviewOverrun); ok {
+		t.Fatal("a pooled review's parent was found overrun")
+	}
 	r.sw.stopRun(r.sw.get(id), "test over", false)
 	rvWait(t, "the reviewer to stop", func() bool { return r.idle(id) })
 	r.sw.sweepStalls()
