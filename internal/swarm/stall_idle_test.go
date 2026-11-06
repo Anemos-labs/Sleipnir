@@ -277,3 +277,28 @@ func TestStallIdleCapacityEscalationSharesTheQuietPeriod(t *testing.T) {
 		t.Fatalf("%d stall checks", n)
 	}
 }
+
+// A diagnosis that could not be delivered (the manager's inbox is full) does not start the quiet period: it stays due and is
+// sent once there is room.
+func TestAnUndeliveredIdleCapacityDiagnosisStartsNoQuietPeriod(t *testing.T) {
+	r := idleCapacityRig(t, 20*time.Minute)
+	r.sw.sweepStalls()
+	m := r.sw.get("mgr")
+	rvWait(t, "the manager's inbox to fill", func() bool {
+		r.sw.notify("mgr", "info", "filler")
+		return !m.hasRoom(r.sw)
+	})
+	r.sw.stalls.mu.Lock()
+	r.sw.stalls.mailed = time.Time{} // the first nudge's quiet period is over
+	for k := range r.sw.stalls.since {
+		r.sw.stalls.since[k] = r.sw.deps.Now().Add(-stallEscalateAfter - time.Minute)
+	}
+	r.sw.stalls.mu.Unlock()
+	r.sw.sweepStalls()
+	r.sw.stalls.mu.Lock()
+	mailed, escalated := r.sw.stalls.mailed, len(r.sw.stalls.escalated)
+	r.sw.stalls.mu.Unlock()
+	if !mailed.IsZero() || escalated != 0 {
+		t.Fatalf("an undelivered diagnosis started the quiet period (%v) or was marked escalated (%d)", mailed, escalated)
+	}
+}

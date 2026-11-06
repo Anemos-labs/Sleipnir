@@ -643,13 +643,25 @@ func (s *Swarm) sweepStalls() {
 // mayMailIdle reports whether an idle_capacity finding raised at now may be mailed, and if so records the mail: at most one per
 // idleCapacityQuiet.
 func (st *stallState) mayMailIdle(now time.Time) bool {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	if !st.mailed.IsZero() && now.Sub(st.mailed) < idleCapacityQuiet {
+	if st.idleQuiet(now) {
 		return false
 	}
-	st.mailed = now
+	st.noteIdleMailed(now)
 	return true
+}
+
+// idleQuiet reports whether the manager was told of idle capacity less than idleCapacityQuiet before now.
+func (st *stallState) idleQuiet(now time.Time) bool {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return !st.mailed.IsZero() && now.Sub(st.mailed) < idleCapacityQuiet
+}
+
+// noteIdleMailed records that the manager was told of idle capacity at now.
+func (st *stallState) noteIdleMailed(now time.Time) {
+	st.mu.Lock()
+	st.mailed = now
+	st.mu.Unlock()
 }
 
 // stallEvent is the payload of a swarm.stall event.
