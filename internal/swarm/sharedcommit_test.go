@@ -23,7 +23,7 @@ func TestSharedTreeAcceptSaysToCommitWithTheWorkersMessage(t *testing.T) {
 	task := Task{ID: "T3", Title: "store", Files: []string{"check/internal/store/**"}}
 	s.noteSharedCommit(task, "feat(store): keep on-the-day records\n\nThe store keeps a record dated today.")
 	got := s.sharedCommitHint(task)
-	if !strings.Contains(got, "commit this change now in "+repo) || !strings.Contains(got, `"feat(store): keep on-the-day records"`) || !strings.Contains(got, "check/internal/store/**") {
+	if !strings.Contains(got, "commit this change now in check (below the project root)") || !strings.Contains(got, `"feat(store): keep on-the-day records"`) || !strings.Contains(got, "check/internal/store/**") {
 		t.Fatalf("hint = %q", got)
 	}
 	if again := s.sharedCommitHint(task); !strings.Contains(again, `"Store"`) {
@@ -35,5 +35,19 @@ func TestSharedTreeAcceptSaysToCommitWithTheWorkersMessage(t *testing.T) {
 	plan := Task{ID: "T5", Title: "plan", Kind: TaskKindPlan, Files: []string{"check/**"}}
 	if got := s.sharedCommitHint(plan); got != "" {
 		t.Fatalf("a plan commits nothing: %q", got)
+	}
+}
+
+// The repository is named so the manager can run git there whatever the length of its path: relative to the project root, or
+// "the project root" itself, never cut.
+func TestSharedCommitHintNamesTheRepositoryWhole(t *testing.T) {
+	root := filepath.Join(t.TempDir(), strings.Repeat("deep", 40))
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s := New(Config{SessionID: "t"}, Deps{Root: root}, nil)
+	got := s.sharedCommitHint(Task{ID: "T1", Title: "store", Files: []string{"internal/store/**"}})
+	if !strings.Contains(got, "commit this change now in the project root,") || strings.Contains(got, "…") {
+		t.Fatalf("hint = %q", got)
 	}
 }

@@ -53,8 +53,24 @@ func (s *Swarm) sharedCommitHint(t Task) string {
 	if len(t.Files) > 0 {
 		where = "the files of its scope (" + strings.Join(shownScopes(t.Files), ", ") + ")"
 	}
-	return ". Nothing in a shared tree is committed for you: commit this change now in " + displayPath(repo) + ", " + where +
+	return ". Nothing in a shared tree is committed for you: commit this change now in " + s.repoName(repo) + ", " + where +
 		" only, so each accepted task is one commit, with the subject " + quoteLine(subject)
+}
+
+// repoName names repo for the manager, whose commands run at the project root: "the project root", its path relative to the root,
+// or (above the root) its absolute path, whole: a cut path would name no directory.
+func (s *Swarm) repoName(repo string) string {
+	root := s.deps.Root
+	if root == "" {
+		root = s.deps.Workdir
+	}
+	if rel, err := filepath.Rel(root, repo); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		if rel == "." {
+			return "the project root"
+		}
+		return filepath.ToSlash(rel) + " (below the project root)"
+	}
+	return repo
 }
 
 // quoteLine quotes one line of text for an answer.
