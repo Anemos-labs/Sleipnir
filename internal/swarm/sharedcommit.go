@@ -23,9 +23,11 @@ func (s *Swarm) noteSharedCommit(t Task, msg string) {
 	if strings.TrimSpace(msg) == "" {
 		return
 	}
-	sn := s.Board.Snapshot()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// The snapshot is read under the lock that every message is written under, so each kept message's task is seen at least as
+	// new as when its message was written: a task claimed and submitted after a snapshot read before the lock would look todo.
+	sn := s.Board.Snapshot()
 	if s.sharedCommits == nil {
 		s.sharedCommits = map[string]string{}
 	}

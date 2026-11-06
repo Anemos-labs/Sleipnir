@@ -1,6 +1,7 @@
 package swarm
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -114,4 +115,25 @@ func sharedCommitsKept(s *Swarm) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.sharedCommits)
+}
+
+// Through the task tool: the manager's accept of a submission in a shared tree carries its worker's commit subject, though the
+// kept messages are at their bound.
+func TestTheAcceptToolCarriesTheWorkersSubjectAtTheBound(t *testing.T) {
+	r := newRVRig(t, Config{}, gatedWorkers(nil))
+	if err := os.MkdirAll(filepath.Join(r.sw.deps.Root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	task := inReview(t, r.sw.Board, "frontend", "fe-4", `edited 1 (Alerts.tsx); last test "npm test" passed`)
+	for i := range maxSharedCommits - 1 {
+		r.sw.noteSharedCommit(Task{ID: "gone-" + strconv.Itoa(i)}, "fix: an abandoned submission")
+	}
+	r.sw.noteSharedCommit(task, "feat(web): show the alerts page")
+	res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "accept", "id": task.ID, "text": "looks good"})
+	if res.IsError || !strings.Contains(res.Text, `"feat(web): show the alerts page"`) {
+		t.Fatalf("the accept does not carry the worker's subject: %s", res.Text)
+	}
+	if got := r.sw.sharedCommitMessage(task.ID); got != "" {
+		t.Fatalf("the accepted task's message is still kept: %q", got)
+	}
 }
