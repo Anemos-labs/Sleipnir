@@ -449,11 +449,12 @@ func samePosixMeaning(command string) bool {
 	return len(f) == 0 || !windowsOwnMeaning[strings.ToLower(f[0])]
 }
 
-// slotHolder is how a heavy command is named to one that waits for its slot: the agent and the words that name the program
-// ("be-2: go test", "be-1: npm run build"). The waiting command belongs to another agent, and an argument may be a secret
-// (a flag's value, a header, credentials in a URL), so the name stops at the first word that is not a plain program or
-// subcommand name. Only the line before its first quote, backslash or "$" is read, so a quoted value is never split into
-// words; leading KEY=value assignments are skipped. At most four words, cut to 60 runes; with none, the command is "a command".
+// slotHolder is how a heavy command is named to one that waits for its slot: the agent and the program, with its
+// subcommand when that is one of a few well-known ones ("be-2: go test", "be-1: npm run build", "be-3: python -m pytest").
+// The waiting command belongs to another agent, and any argument may be a secret (a flag's value, a header, credentials in
+// a URL, a word passed to a script), so no other word is shown. Only the line before its first quote, backslash or "$" is
+// read, so a quoted value is never split into words; leading KEY=value assignments are skipped. A command whose program is
+// not a plain name is "a command".
 func slotHolder(agent, command string) string {
 	line, _, _ := strings.Cut(strings.TrimSpace(command), "\n")
 	if i := strings.IndexAny(line, "\"'`\\$"); i >= 0 {
@@ -463,30 +464,36 @@ func slotHolder(agent, command string) string {
 	for len(fields) > 0 && strings.Contains(fields[0], "=") {
 		fields = fields[1:]
 	}
-	var words []string
-	for i := 0; i < len(fields) && len(words) < 4; i++ {
-		w := fields[i]
-		if w == "-m" && i > 0 && pythonName(fields[i-1]) && i+1 < len(fields) && plainWord(fields[i+1]) { // python -m pytest
-			words = append(words, w, fields[i+1])
-			i++
-			continue
+	label := "a command"
+	if len(fields) > 0 && plainWord(strings.ReplaceAll(fields[0], "/", "")) {
+		words := []string{fields[0]}
+		prog := strings.ToLower(fields[0][strings.LastIndex(fields[0], "/")+1:])
+		switch {
+		case len(fields) > 2 && fields[1] == "-m" && pythonName(prog) && plainWord(fields[2]): // python -m pytest
+			words = append(words, "-m", fields[2])
+		case len(fields) > 2 && fields[1] == "run" && scriptRunners[prog] && plainWord(fields[2]): // npm run build
+			words = append(words, "run", fields[2])
+		case len(fields) > 1 && knownSubcommands[fields[1]]:
+			words = append(words, fields[1])
 		}
-		if !plainWord(w) {
-			break
-		}
-		words = append(words, w)
+		label = strings.Join(words, " ")
 	}
-	line = strings.Join(words, " ")
-	if line == "" {
-		line = "a command"
-	}
-	if r := []rune(line); len(r) > 60 {
-		line = string(r[:59]) + "…"
+	if r := []rune(label); len(r) > 60 {
+		label = string(r[:59]) + "…"
 	}
 	if agent == "" {
-		return line
+		return label
 	}
-	return agent + ": " + line
+	return agent + ": " + label
+}
+
+// scriptRunners run a named script from the project's manifest: "npm run build".
+var scriptRunners = map[string]bool{"npm": true, "pnpm": true, "yarn": true, "bun": true}
+
+// knownSubcommands are the build, test and install verbs a slot holder may be named by besides its program.
+var knownSubcommands = map[string]bool{
+	"build": true, "test": true, "check": true, "vet": true, "install": true, "ci": true, "lint": true, "run": true,
+	"compile": true, "package": true, "verify": true, "bench": true, "clippy": true, "sync": true, "restore": true,
 }
 
 // pythonName reports whether w names a Python interpreter (python, python3, python3.12), whose -m names the program run.
