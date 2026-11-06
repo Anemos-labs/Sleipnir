@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The manager's stop guard no longer holds the final answer for a worker
+  that holds no task: it still waits up to 20 seconds for such a worker to
+  end its turn, then lets the answer through (a batch run still reports the
+  worker it left running). In a persistent team, where the guard has no
+  veto bound, a worker sitting in wait loops after its work was accepted
+  held a finished team's answer for over an hour. No prompt bytes change.
+
 - The `note` tool takes `withdraw=<id>` to take back one of the agent's own
   notes, and refuses a field it does not have (an `action: "remove"` was
   taken as a new note) instead of dropping it. An agent at its 8-note limit

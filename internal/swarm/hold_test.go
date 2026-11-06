@@ -489,7 +489,10 @@ func TestGuardWaitsForAWorkerThatIsOnlyFinishing(t *testing.T) {
 }
 
 // The wait is short, and the guard has only so much of it: a worker that will not end is
-// waited for once, and after that it is an ordinary running worker that vetoes the answer.
+// waited for once. It holds nothing on the board, so after that wait it does not hold the
+// answer back either: the manager could do nothing about it, and in a persistent team (no
+// veto bound) such a worker, sitting in wait loops after its work was accepted, held a
+// finished team's answer for over an hour. The run still reports the worker it left running.
 func TestGuardsWaitForAFinishingWorkerIsBounded(t *testing.T) {
 	prev := holdSettleMax
 	holdSettleMax = 100 * time.Millisecond
@@ -507,8 +510,11 @@ func TestGuardsWaitForAFinishingWorkerIsBounded(t *testing.T) {
 	if took := time.Since(start); took > 8*time.Second {
 		t.Fatalf("the run took %s: the wait for a finishing worker is not bounded", took)
 	}
-	if n := len(r.log.OfType(events.TypeSwarmHold)); n != 3 {
-		t.Fatalf("%d swarm.hold events, want 3 (the veto bound: the wait is spent once, then each answer is vetoed)", n)
+	if n := len(r.log.OfType(events.TypeSwarmHold)); n != 0 {
+		t.Fatalf("%d swarm.hold events, want none: a worker that holds no task is waited for once, then let go", n)
+	}
+	if n := managerCalls(r); n != 4 {
+		t.Fatalf("the manager made %d requests, want 4: it was sent back for a worker it can do nothing about", n)
 	}
 	if !strings.Contains(res.Text, "[harness] Unfinished when the manager stopped: running: be-1.") {
 		t.Fatalf("the run must report the worker it left running: %q", res.Text)
