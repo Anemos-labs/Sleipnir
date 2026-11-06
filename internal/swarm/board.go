@@ -1584,7 +1584,9 @@ func (b *Board) AddNote(from, scope, role, text string) (int, error) {
 			}
 		}
 		if mine >= b.lim.MaxNotesPerAgent {
-			return fmt.Errorf("you already have %d proposed notes waiting to be merged: wait for them, or fold your facts into one note", mine)
+			// Nothing merges or expires a note but eviction by newer notes, so waiting frees nothing: say how to make room.
+			return fmt.Errorf("you already have %d notes on the board (%s), the most one agent may have; they stay until newer notes push them out. "+
+				"Take back one that is wrong or no longer needed with note withdraw=<id>, or fold your facts into one note", mine, noteIDs(d.Notes, from))
 		}
 		b.note++
 		id = b.note
@@ -1605,6 +1607,52 @@ func (b *Board) AddNote(from, scope, role, text string) (int, error) {
 		return nil
 	})
 	return id, err
+}
+
+// WithdrawNote takes back a note its author put on the board (a fact that turned out wrong, or one to fold into another).
+// Only the author may withdraw a note; the error names the author's notes, so the agent can pick the right one.
+func (b *Board) WithdrawNote(from string, id int) error {
+	err := b.mutate(from, "notes-take", func(d *draft) error {
+		keep := make([]Note, 0, len(d.Notes))
+		found := false
+		for _, n := range d.Notes {
+			if n.ID == id && n.From == from {
+				found = true
+				continue
+			}
+			keep = append(keep, n)
+		}
+		if !found {
+			for _, n := range d.Notes {
+				if n.ID == id {
+					return fmt.Errorf("note #%d is %s's: only its author can withdraw it; mail %s if it is wrong", id, n.From, n.From)
+				}
+			}
+			mine := noteIDs(d.Notes, from)
+			if mine == "none" {
+				return fmt.Errorf("there is no note #%d on the board, and you have no notes on it", id)
+			}
+			return fmt.Errorf("there is no note #%d on the board; yours are %s", id, mine)
+		}
+		d.Notes, d.cn = keep, true
+		d.set("notes", []int{id})
+		return nil
+	})
+	return err
+}
+
+// noteIDs lists the ids of one author's notes ("#3, #7"), or "none".
+func noteIDs(notes []Note, from string) string {
+	var ids []string
+	for _, n := range notes {
+		if n.From == from {
+			ids = append(ids, "#"+strconv.Itoa(n.ID))
+		}
+	}
+	if len(ids) == 0 {
+		return "none"
+	}
+	return strings.Join(ids, ", ")
 }
 
 // TakeNotes removes and returns the pending notes with the given ids (the curator

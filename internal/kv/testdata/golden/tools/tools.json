@@ -295,7 +295,7 @@
   },
   {
     "name": "note",
-    "description": "Record one true, durable fact for the team (a command, convention or gotcha), at most 300 characters: a longer note is refused, not cut. It shows up on every agent's live board while it fits; older notes can be evicted. For a durable shared contract use task done agreement and dependent tasks. scope: shared (default) or role; a role note is also kept, when your task is accepted, for the agents of your role in later sessions of this project (a command, a trap, where a thing lives).",
+    "description": "Record one true, durable fact for the team (a command, convention or gotcha), at most 300 characters: a longer note is refused, not cut. It shows up on every agent's live board while it fits; older notes can be evicted. For a durable shared contract use task done agreement and dependent tasks. scope: shared (default) or role; a role note is also kept, when your task is accepted, for the agents of your role in later sessions of this project (a command, a trap, where a thing lives). A note stays on the board until newer notes push it out; withdraw=<id> takes back one of your own (a fact that turned out wrong).",
     "input_schema": {
       "properties": {
         "scope": {
@@ -308,11 +308,12 @@
         "text": {
           "description": "one fact, at most 300 characters",
           "type": "string"
+        },
+        "withdraw": {
+          "description": "the id of one of your own notes to take off the board (text and scope are then not needed)",
+          "type": "integer"
         }
       },
-      "required": [
-        "text"
-      ],
       "type": "object"
     }
   },

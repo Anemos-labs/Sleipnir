@@ -190,7 +190,7 @@ func RenderHot(s *Snapshot, agent, role string, isManager bool, cfg HotConfig, e
 	namesAt := len(lines) // the "not shown" line ends the team section
 	lines = append(lines, hline{prio: 1, sec: 3})
 
-	// 5: notes proposed for shared context but not yet merged: the newest few.
+	// 5: the team's notes on the board: the newest few, each with its id (so its author can withdraw it).
 	var notes []Note
 	for _, n := range s.Notes {
 		if n.Scope == "role" && n.Role != role {
@@ -204,7 +204,7 @@ func RenderHot(s *Snapshot, agent, role string, isManager bool, cfg HotConfig, e
 		notes = notes[len(notes)-maxHotNotes:]
 	}
 	for _, n := range notes {
-		add(5, 4, "- %s (%s)", n.Text, n.From)
+		add(5, 4, "- #%d %s (%s)", n.ID, n.Text, n.From)
 	}
 
 	// Assemble under budget: drop the highest priority numbers first (within one
@@ -439,7 +439,7 @@ func assemble(lines []hline, keep []bool, version uint64, agents, running, idle,
 				}
 				sb.WriteString("):\n")
 			case 4:
-				sb.WriteString("proposed shared notes (not yet merged):\n")
+				sb.WriteString("team notes (unverified facts from teammates):\n")
 			}
 			last = l.sec
 		}

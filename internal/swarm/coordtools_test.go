@@ -89,8 +89,53 @@ func TestNoteToolStopsAnAgentThatFloodsTheTeamsContext(t *testing.T) {
 			break
 		}
 	}
-	if !strings.Contains(last, "proposed notes waiting") || !strings.Contains(last, "fold your facts into one note") {
+	if !strings.Contains(last, "8 notes on the board (#1,") || !strings.Contains(last, "withdraw=<id>") || !strings.Contains(last, "fold your facts into one note") {
 		t.Fatalf("an agent that adds notes without end was told %q", last)
+	}
+	// Withdrawing one makes room: nothing else ever would.
+	if r := secRevCall(t, note, "chatty", "backend", map[string]any{"withdraw": 3}); r.IsError || !strings.Contains(r.Text, "withdrew note #3") {
+		t.Fatalf("withdraw: %q (error %v)", r.Text, r.IsError)
+	}
+	if r := secRevCall(t, note, "chatty", "backend", map[string]any{"text": "the corrected fact"}); r.IsError {
+		t.Fatalf("a note after a withdrawal: %q", r.Text)
+	}
+}
+
+// A note is withdrawn only by its author, and a wrong id names the agent's own notes.
+func TestNoteWithdrawIsTheAuthorsAndSaysWhichNotesAreYours(t *testing.T) {
+	s := secRevSwarm()
+	note := secRevTool(t, s, "note")
+	secRevCall(t, note, "be-1", "backend", map[string]any{"text": "tests run with npm test"})
+	secRevCall(t, note, "be-2", "backend", map[string]any{"text": "the CLI is bin/cronx"})
+	r := secRevCall(t, note, "be-2", "backend", map[string]any{"withdraw": 1})
+	if !r.IsError || !strings.Contains(r.Text, "be-1's") {
+		t.Errorf("withdrawing another's note: %q (error %v)", r.Text, r.IsError)
+	}
+	r = secRevCall(t, note, "be-2", "backend", map[string]any{"withdraw": 9})
+	if !r.IsError || !strings.Contains(r.Text, "yours are #2") {
+		t.Errorf("withdrawing a note that is not there: %q (error %v)", r.Text, r.IsError)
+	}
+	if n := len(s.Board.Snapshot().Notes); n != 2 {
+		t.Errorf("%d notes after refused withdrawals, want 2", n)
+	}
+	if r := secRevCall(t, note, "be-2", "backend", map[string]any{"withdraw": 2}); r.IsError {
+		t.Fatalf("withdrawing one's own note: %q", r.Text)
+	}
+	if ns := s.Board.Snapshot().Notes; len(ns) != 1 || ns[0].ID != 1 {
+		t.Errorf("notes after the withdrawal: %+v", ns)
+	}
+}
+
+// A field the note tool does not have is refused and adds nothing: in a real run {"action": "remove", "text": ...} was taken as a
+// new note with the text meant to be removed, and the agent was told "noted".
+func TestNoteToolRefusesAFieldItDoesNotHave(t *testing.T) {
+	s := secRevSwarm()
+	r := secRevCall(t, secRevTool(t, s, "note"), "be-1", "backend", map[string]any{"action": "remove", "text": "a stale fact"})
+	if !r.IsError || !strings.Contains(r.Text, `no field "action"`) || !strings.Contains(r.Text, "withdraw=<id>") {
+		t.Errorf("a note with an action: %q (error %v)", r.Text, r.IsError)
+	}
+	if n := len(s.Board.Snapshot().Notes); n != 0 {
+		t.Errorf("%d notes after a refused call", n)
 	}
 }
 

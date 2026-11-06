@@ -1,6 +1,7 @@
 package swarm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -43,6 +44,23 @@ func decode(in json.RawMessage, v any) *tools.Result {
 		in = json.RawMessage(`{}`)
 	}
 	if err := json.Unmarshal(in, v); err != nil {
+		return tools.Errorf("invalid arguments: %v", err)
+	}
+	return nil
+}
+
+// decodeOnly is decode for a tool whose fields a model tends to guess at: a field the tool does not have is refused with what
+// the tool does take (usage), instead of being dropped and the call doing something other than what was asked.
+func decodeOnly(in json.RawMessage, v any, usage string) *tools.Result {
+	if len(in) == 0 {
+		in = json.RawMessage(`{}`)
+	}
+	dec := json.NewDecoder(bytes.NewReader(in))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		if f, ok := strings.CutPrefix(err.Error(), "json: unknown field "); ok {
+			return tools.Errorf("nothing was done: there is no field %s; %s", f, usage)
+		}
 		return tools.Errorf("invalid arguments: %v", err)
 	}
 	return nil
@@ -787,8 +805,10 @@ func (t *noteTool) Spec() core.ToolSpec {
 		NoTreeWrites: true, // tree mutations use the verified integration bridge
 		Description: "Record one true, durable fact for the team (a command, convention or gotcha), at most " + strconv.Itoa(maxNoteRunes) + " characters: a longer note is refused, not cut. It shows up on every agent's " +
 			"live board while it fits; older notes can be evicted. For a durable shared contract use task done agreement and dependent tasks. scope: shared (default) or role; " +
-			"a role note is also kept, when your task is accepted, for the agents of your role in later sessions of this project (a command, a trap, where a thing lives).",
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string","description":"one fact, at most ` + strconv.Itoa(maxNoteRunes) + ` characters"},"scope":{"type":"string","enum":["shared","role"]}},"required":["text"]}`),
+			"a role note is also kept, when your task is accepted, for the agents of your role in later sessions of this project (a command, a trap, where a thing lives). " +
+			"A note stays on the board until newer notes push it out; withdraw=<id> takes back one of your own (a fact that turned out wrong).",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string","description":"one fact, at most ` + strconv.Itoa(maxNoteRunes) + ` characters"},"scope":{"type":"string","enum":["shared","role"]},` +
+			`"withdraw":{"type":"integer","description":"the id of one of your own notes to take off the board (text and scope are then not needed)"}}}`),
 	}
 }
 
@@ -796,9 +816,21 @@ func (t *noteTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error) 
 	if r := t.s.refuseService(c.Env.Role); r != nil {
 		return r, nil
 	}
-	var in struct{ Text, Scope string }
-	if r := decode(c.Input, &in); r != nil {
+	var in struct {
+		Text, Scope string
+		Withdraw    int
+	}
+	if r := decodeOnly(c.Input, &in, "note takes text and scope to add a fact, or withdraw=<id> to take back one of your own notes"); r != nil {
 		return r, nil
+	}
+	if in.Withdraw != 0 {
+		if strings.TrimSpace(in.Text) != "" {
+			return tools.Errorf("note: give withdraw=<id> or text, not both: withdraw the old note, then add the corrected one"), nil
+		}
+		if err := t.s.Board.WithdrawNote(c.Env.Agent, in.Withdraw); err != nil {
+			return tools.Errorf("%v", err), nil
+		}
+		return text("withdrew note #%d", in.Withdraw), nil
 	}
 	if in.Scope == "" {
 		in.Scope = "shared"
