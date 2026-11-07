@@ -520,9 +520,9 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	s.Leases.SetEmitter(deps.Events)
 	s.Leases.SetRoots(s.roots()...)
 	s.Leases.SetScratch(deps.Tmp)
-	if deps.Owners != nil {
-		s.Leases.SetOwners(deps.Owners, s.roleOf)
-	}
+	// Always: the roles are also what lets a manager's lease give way to a worker (yields), which without path owners never
+	// happened, and a worker sat refused behind a file the manager had edited once.
+	s.Leases.SetOwners(deps.Owners, s.roleOf)
 	if s.isolated() {
 		s.Leases.Isolate()
 		s.Leases.SetTreeParent(deps.Isolation.Manager.Dir)

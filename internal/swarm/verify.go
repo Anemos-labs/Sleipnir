@@ -235,7 +235,8 @@ func (s *Swarm) emptyWorkCheck(t Task, note string) TaskCheck {
 // emptyWorkError is the refusal of an accept that emptyWorkCheck holds back: what was seen, and the two ways on.
 func emptyWorkError(id, seen string) error {
 	return fmt.Errorf("%s was not accepted: the harness saw no file change in it (%s). If work is missing, reject it with what to do; "+
-		"if the task needs no change, accept it with text %q followed by why", id, seen, nothingToChange+" ")
+		"if the task needs no change, or changed files only through bash (a deletion, a sed -i), which the harness does not count as an edit, "+
+		"accept it with text %q followed by why", id, seen, nothingToChange+" ")
 }
 
 // checkTaskGate rejects an obsolete result before further merge or retry work.

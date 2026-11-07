@@ -530,12 +530,17 @@ func (s *Swarm) reviewPending() string {
 // reviewLine is the review gate's sentence for the manager: what is unreviewed and what to do. After an accepted review it
 // names the merges since, so the next review covers them and not the whole result again.
 func (s *Swarm) reviewLine(last string) string {
-	what, subject := last+" and the work merged before it have", "the merged result"
+	what, subject := shownMerge(last)+" and the work merged before it have", "the merged result"
 	if s.reviewedBefore() {
 		_, ids := s.review.unreviewedWork()
 		if len(ids) == 0 {
 			ids = []string{last}
 		}
+		shown := make([]string, len(ids))
+		for i, id := range ids {
+			shown[i] = shownMerge(id)
+		}
+		ids = shown
 		plural := "s"
 		if len(ids) == 1 {
 			plural = ""
@@ -583,6 +588,15 @@ func (s *Swarm) reviewerModels() string {
 	}
 	g.mu.Unlock()
 	return ". Reviewer slots: " + strings.Join(parts, ", ")
+}
+
+// shownMerge names a merge for the review line: a task id, or the manager's own edits, which the gate records as "manager
+// changes" and a manager read as a commit it could not find.
+func shownMerge(id string) string {
+	if id == "manager changes" {
+		return "the manager's own edits"
+	}
+	return id
 }
 
 // reviewedBefore reports whether an accepted review covers some merge of this run.
@@ -892,10 +906,18 @@ func offerLines(ready []Task, idle map[string][]string, held map[string]string, 
 			nfree += n
 		}
 	}
+	// Only the ready tasks a free slot can take count: a free architect slot beside two ready backend tasks read as "start
+	// workers" for work no architect could take, while those tasks waited for a backend member.
+	fits := 0
+	for _, t := range ready {
+		if t.Role == "" || slices.Contains(free, t.Role) {
+			fits++
+		}
+	}
 	var out []string
-	if nfree > 0 {
-		out = append(out, fmt.Sprintf("%d free slot(s) (%s), %d ready task(s) with no owner: start workers (spawn), in parallel where the tasks are independent",
-			nfree, strings.Join(free, ", "), len(ready)))
+	if nfree > 0 && fits > 0 {
+		out = append(out, fmt.Sprintf("%d free slot(s) (%s), %d ready task(s) of those roles with no owner: start workers (spawn), in parallel where the tasks are independent",
+			nfree, strings.Join(free, ", "), fits))
 	}
 	byRole := map[string][]string{}
 	isReady := map[string]bool{}

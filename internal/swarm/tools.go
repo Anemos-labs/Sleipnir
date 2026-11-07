@@ -128,6 +128,9 @@ func (t *taskTool) failUse() string {
 	return "fail (id, reason = blocked_on, superseded, canceled, denied or verifier; target = the task id for blocked_on and superseded; text = one-line note)."
 }
 
+// taskFields is what the task tool takes, for the refusal of a field it does not have.
+const taskFields = "the task tool takes action, id, title, description, role, parent, kind, rigor, deps, files, text (a done's result, a reject's feedback, a note), commit, agreement, assumptions, reason and target"
+
 type taskIn struct {
 	Action, ID, Title, Description, Role, Kind, Text, Agreement, Reason, Target, Parent, Rigor, Commit string
 	Deps                                                                                               idList
@@ -248,7 +251,9 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		return r, nil
 	}
 	var in taskIn
-	if r := decode(c.Input, &in); r != nil {
+	// Fields are checked: a tester's 5,600-character table sent as result= (not text=) was dropped, its task read "completed",
+	// and the manager had to take the table by mail.
+	if r := decodeOnly(c.Input, &in, taskFields); r != nil {
 		return r, nil
 	}
 	in.ID = strings.TrimSpace(in.ID)
@@ -1074,13 +1079,19 @@ func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error)
 	if r.Reserved {
 		return text("%s is still in a turn, so %s is reserved for it: it was told to claim it, and is started on it if its run ends first. Use wait to sleep until something changes.", r.Agent, req.TaskID), nil
 	}
-	hint := ""
+	hint, pool := "", ""
 	if task, ok := t.s.Board.Snapshot().Task(req.TaskID); ok {
 		hint = t.s.scopeHint(task.Files)
+		if task.Pool != nil && len(task.Pool.Members) > 1 {
+			// The task went to the role's pool: a manager that named one member read "be-1 started" and expected one owner, and
+			// learned of the pool only when its plan round held both members.
+			pool = fmt.Sprintf(" %s leads %s as the %s pool (%s): its members agree on a plan before they divide the work. For small work with one owner, spawn with solo=true instead.",
+				r.Agent, task.ID, task.Role, strings.Join(task.Pool.Members, ", "))
+		}
 	} else {
 		hint = t.s.scopeHint(req.Files)
 	}
-	return text("%s started; it will report through the board. Use wait to sleep until something changes.%s", r.Agent, hint), nil
+	return text("%s started; it will report through the board. Use wait to sleep until something changes.%s%s", r.Agent, pool, hint), nil
 }
 
 // queueBehindDeps queues the manager's spawn of an existing todo task whose dependencies are not done yet, and answers what was

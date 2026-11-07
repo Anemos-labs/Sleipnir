@@ -365,7 +365,9 @@ func (s *Swarm) precheckScope(req SpawnReq, files []string, role Role) error {
 func (s *Swarm) spawnReuse(req SpawnReq, files []string) (SpawnResult, error) {
 	m := s.get(req.Agent)
 	if m == nil || m.service {
-		return SpawnResult{}, fmt.Errorf("no agent %q", cleanText(req.Agent, 40))
+		// A member has no id until it first starts: a manager that named the tester it expected (ts-1) was told only "no agent".
+		return SpawnResult{}, fmt.Errorf("no agent %q: a member gets its id when it first starts, so leave out agent= to start the "+
+			"first free member of the role; agents now: %s", cleanText(req.Agent, 40), strings.Join(s.everyMember(), ", "))
 	}
 	if m.manager {
 		return SpawnResult{}, errors.New("the manager cannot be given a worker's task")

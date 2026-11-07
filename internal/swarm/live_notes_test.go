@@ -1,6 +1,7 @@
 package swarm
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -50,5 +51,53 @@ func TestAPersistentTeamDescribesNoFail(t *testing.T) {
 	plain := &taskTool{s: New(Config{SessionID: "t"}, Deps{}, nil)}
 	if d := plain.Spec().Description; !strings.Contains(d, "fail (id, reason") {
 		t.Errorf("plain: %s", d)
+	}
+}
+
+// A spawn that gives the task to the role's pool says so, and how to give small work to one member: a manager that named be-1
+// read "be-1 started" and learned of the pool only when its plan round held both members.
+func TestASpawnThatStartsAPoolSaysSo(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 3, Team: []string{"backend", "backend"}}, idleModel)
+	task, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "stdin for --write", Role: "backend"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := r.callTool(context.Background(), "spawn", "mgr", "manager", map[string]any{"role": "backend", "task": task.ID})
+	if res.IsError || !strings.Contains(res.Text, "leads "+task.ID+" as the backend pool (") || !strings.Contains(res.Text, "spawn with solo=true") {
+		t.Fatalf("spawn: %s", res.Text)
+	}
+	other, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "--version", Role: "backend"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2 := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 3, Team: []string{"backend", "backend"}}, idleModel)
+	solo, _ := r2.sw.Board.CreateTask("mgr", TaskSpec{Title: other.Title, Role: "backend"})
+	if res := r2.callTool(context.Background(), "spawn", "mgr", "manager", map[string]any{"role": "backend", "task": solo.ID, "solo": true}); res.IsError || strings.Contains(res.Text, "pool") {
+		t.Errorf("a solo spawn: %s", res.Text)
+	}
+}
+
+// The task tool refuses a field it does not have, naming what it takes: a tester's 5,600-character table sent as result= was
+// dropped, and its task read "completed". A member's id that does not exist yet is explained.
+func TestTheTaskToolRefusesAFieldItDoesNotHave(t *testing.T) {
+	r := newRVRig(t, Config{MaxWorkers: 3, Team: []string{"backend", "tester"}}, idleModel)
+	res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "list", "result": "a long table"})
+	if !res.IsError || !strings.Contains(res.Text, `no field "result"`) || !strings.Contains(res.Text, "text (a done's result") {
+		t.Errorf("result=: %s", res.Text)
+	}
+	task, _ := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "e2e", Role: "tester"})
+	res = r.callTool(context.Background(), "spawn", "mgr", "manager", map[string]any{"role": "tester", "task": task.ID, "agent": "ts-1"})
+	if !res.IsError || !strings.Contains(res.Text, "gets its id when it first starts") {
+		t.Errorf("agent=ts-1 before it exists: %s", res.Text)
+	}
+}
+
+// The review line names the manager's own edits as such, not as "manager changes", which a manager took for a commit.
+func TestTheReviewLineNamesTheManagersEdits(t *testing.T) {
+	if got := shownMerge("manager changes"); got != "the manager's own edits" {
+		t.Errorf("shownMerge = %q", got)
+	}
+	if got := shownMerge("T7"); got != "T7" {
+		t.Errorf("shownMerge(T7) = %q", got)
 	}
 }
