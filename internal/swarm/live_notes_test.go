@@ -123,3 +123,27 @@ func TestCurrentWorkersLeaveOutRetiredMembers(t *testing.T) {
 		t.Errorf("with none = %q", got)
 	}
 }
+
+func TestARefusedSpawnListsOnlyCurrentWorkers(t *testing.T) {
+	s := New(Config{SessionID: "t"}, Deps{}, nil)
+	s.mu.Lock()
+	s.members = map[string]*member{
+		"mgr":  {id: "mgr", manager: true},
+		"be-1": {id: "be-1", role: "backend"},
+		"be-2": {id: "be-2", role: "backend", life: lifeRetired},
+		"svc":  {id: "svc", service: true},
+	}
+	s.mu.Unlock()
+	// be-2 retired and is not offered; the manager asked for a tester id that was never started.
+	for _, agent := range []string{"ts-1", "be-3"} {
+		_, err := s.spawnReuse(SpawnReq{Agent: agent, Role: "backend"}, nil)
+		if err == nil {
+			t.Fatalf("spawn of %s was not refused", agent)
+		}
+		msg := err.Error()
+		if !strings.Contains(msg, "agents now: be-1") || strings.Contains(msg, "be-2") ||
+			strings.Contains(msg, "mgr") || strings.Contains(msg, "svc") {
+			t.Errorf("refusal for %s = %q", agent, msg)
+		}
+	}
+}
