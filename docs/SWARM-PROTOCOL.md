@@ -775,7 +775,8 @@ Layered, cheapest first:
    workspace, is no edit of the project: no scope, ownership or tree check refuses it and it takes no lease; the permission
    engine judges it by the session's mode. An isolated writer without a tree (a read-only role) still writes nothing.
 2. **Write leases** with a TTL and conflict alerts (visible in the hot view of the agents involved; the alert names the
-   agents, never a file name, and goes away when the lease is released or expires).
+   agents and, in a shared tree, the file's path in the project, cut and cleaned as the scope alert's is; it goes away
+   when the lease is released or expires). A manager's lease gives way to a worker's write; a worker's lease holds against everyone.
 3. **Content-hash staleness** on every edit: an edit is accepted only if the file is what the agent last read, whichever
    agent changed it since. Correct even if a lease were stolen. A refused edit of a text file of up to 48 KiB carries the
    file's current content, line-numbered, and counts as the read, so the agent makes the change again against it at once.

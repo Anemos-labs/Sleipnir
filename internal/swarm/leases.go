@@ -638,7 +638,11 @@ func (l *Leases) BeforeWrite(agent, path string) error {
 		// the roles are looked up without the lease lock (roleOf reads the swarm); a manager's lease gives way to a worker
 		if !yields(roleOf, holder, agent) {
 			if l.board != nil {
-				l.board.RaiseAlertKey("lease", path, fmt.Sprintf("%s wanted a file leased to %s", safeToken(agent, 24), safeToken(holder, 24)))
+				what := "a file"
+				if relOK && rel != "" {
+					what = safeToken(rel, 72) // the manager is told which file, not left to ask
+				}
+				l.board.RaiseAlertKey("lease", path, fmt.Sprintf("%s wanted %s, leased to %s", safeToken(agent, 24), what, safeToken(holder, 24)))
 			}
 			l.emit(agent, "conflict", path, holder)
 			return fmt.Errorf("%s is being edited by %s (last write %s ago). Work on something else, or mail %s if you need a change there", path, holder, ago, holder)

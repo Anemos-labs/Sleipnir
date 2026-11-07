@@ -7,6 +7,18 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A manager's write lease now gives way to a worker's write in every team, as
+  documented: it did only when the session had role-owned paths, and a worker
+  was otherwise refused behind a file the manager had edited once. In a shared
+  tree a lease alert names the file. The `task` tool refuses a field it does not have
+  (`result=` for `text=`), naming the fields it takes, instead of dropping it.
+  A spawn that starts the role's pool says so and points at `solo=true`. A
+  spawn naming a member that has not started yet explains how ids are given.
+  The free-slot line counts only ready tasks a free slot's role can take. The
+  review line names the manager's own edits as such. The refusal of an accept
+  with no file edit says changes made through bash alone are not counted.
+  No prompt bytes change in the system prompt or tool specs.
+
 - The docs keeper's state stops naming a hold once the team is no longer
   building, and says when a pass waits for a docs worker busy on another task.
   An agent's line in the live view and in `task list` marks a task the board

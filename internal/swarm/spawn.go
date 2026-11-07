@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
@@ -362,10 +363,37 @@ func (s *Swarm) precheckScope(req SpawnReq, files []string, role Role) error {
 	return s.scopeConflictIn(sn, t)
 }
 
+// currentWorkers lists the ids of the members that can be given a task now: not the manager, a service or a retired member.
+func (s *Swarm) currentWorkers() []string {
+	s.mu.Lock()
+	ms := make([]*member, 0, len(s.members))
+	for _, m := range s.members {
+		if !m.manager && !m.service {
+			ms = append(ms, m)
+		}
+	}
+	s.mu.Unlock()
+	var ids []string
+	for _, m := range ms {
+		m.mu.Lock()
+		if m.life != lifeRetired {
+			ids = append(ids, m.id)
+		}
+		m.mu.Unlock()
+	}
+	sort.Strings(ids)
+	if len(ids) == 0 {
+		return []string{"none started yet"}
+	}
+	return ids
+}
+
 func (s *Swarm) spawnReuse(req SpawnReq, files []string) (SpawnResult, error) {
 	m := s.get(req.Agent)
 	if m == nil || m.service {
-		return SpawnResult{}, fmt.Errorf("no agent %q", cleanText(req.Agent, 40))
+		// A member has no id until it first starts: a manager that named the tester it expected (ts-1) was told only "no agent".
+		return SpawnResult{}, fmt.Errorf("no agent %q: a member gets its id when it first starts, so leave out agent= to start the "+
+			"first free member of the role; agents now: %s", cleanText(req.Agent, 40), strings.Join(s.currentWorkers(), ", "))
 	}
 	if m.manager {
 		return SpawnResult{}, errors.New("the manager cannot be given a worker's task")
