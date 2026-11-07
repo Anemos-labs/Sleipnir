@@ -377,11 +377,16 @@ func (s *Swarm) docsTick(now time.Time) {
 		k.mu.Unlock()
 		return
 	}
+	// The hold is over: its reason no longer stands, and a live view that kept it named a task accepted forty minutes before.
+	k.waiting = ""
 	batch := append([]docsChange(nil), k.pending...)
 	k.mu.Unlock()
 
 	agentID, busy := s.docsWorker()
 	if busy {
+		k.mu.Lock()
+		k.waiting = "the docs worker is at work on another task"
+		k.mu.Unlock()
 		return // the docs worker is at work: the changes wait for it
 	}
 	// The pass is put on the board first and then assigned by id: a start that fails

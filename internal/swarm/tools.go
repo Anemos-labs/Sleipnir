@@ -106,7 +106,7 @@ func (t *taskTool) Spec() core.ToolSpec {
 			"block (id, text = reason, optional target = the id of the task it waits for), resume (id), " +
 			"handover (id, text = a short summary for your successor: what is done, what is left, what you learned; the harness gives your task, your work and the summary to a fresh worker of your role; the manager may hand over a worker's task). Manager only: create (title, description, role, deps, files = scope, kind = work or plan; a plan's deliverable is an agreement, not code: its owner changes no file while it plans; rigor = plan adds a plan task the work waits for and inherits, rigor = reviewed also a reviewer's check of that plan, for work that is risky or hard to undo), " +
 			"update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback the worker can act on alone: what is wrong and how you saw it, what to keep, what will show it is fixed) or reopen, " +
-			"fail (id, reason = blocked_on, superseded, canceled, denied or verifier; target = the task id for blocked_on and superseded; text = one-line note).",
+			t.failUse(),
 		InputSchema: json.RawMessage(`{"type":"object","properties":{
 "action":{"type":"string","enum":["create","list","get","claim","update","done","block","resume","handover","accept","reject","reopen","fail","revise","resolve","deliver"]},
 "id":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"},"role":{"type":"string"},
@@ -117,6 +117,15 @@ func (t *taskTool) Spec() core.ToolSpec {
 "text":{"type":"string"},"commit":{"type":"string"},"agreement":{"type":"string"},"assumptions":{"type":"array","items":{"type":"string"}},
 "reason":{"type":"string","enum":["blocked_on","superseded","canceled","denied","verifier"]},"target":{"type":"string"}},"required":["action"]}`),
 	}
+}
+
+// failUse is the task tool's line for fail. A team that keeps its workers repairs a task instead (revise) or closes it (resolve),
+// and refuses fail: a manager that read fail and its reasons here called it for a superseded task and was refused.
+func (t *taskTool) failUse() string {
+	if t.s != nil && t.s.cfg.PersistentPools {
+		return "This team keeps its workers, so a task is not failed: revise repairs it, resolve closes one that is superseded, canceled or no longer needed."
+	}
+	return "fail (id, reason = blocked_on, superseded, canceled, denied or verifier; target = the task id for blocked_on and superseded; text = one-line note)."
 }
 
 type taskIn struct {
@@ -710,8 +719,8 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 				return tools.Errorf("%s was not accepted: verification could not run (%v). Retry, or reject it.", in.ID, cleanText(vr.err.Error(), 200))
 			}
 			tail, _ := tools.Truncate(vr.out, 3000)
-			return &tools.Result{IsError: true, Text: fmt.Sprintf("%s was not accepted: verification `%s` failed (exit %d). Reject it with feedback, or fix it.\n%s",
-				in.ID, ExpandVerify(s.cfg.VerifyCmd, c.Env.Cwd, task.Files), vr.code, tail)}
+			return &tools.Result{IsError: true, Text: fmt.Sprintf("%s was not accepted: verification `%s` failed (exit %d). Reject it with feedback, or fix it.%s\n%s",
+				in.ID, ExpandVerify(s.cfg.VerifyCmd, c.Env.Cwd, task.Files), vr.code, s.inFlightNote(task), tail)}
 		}
 		commitMsg := s.sharedCommitMessage(in.ID) // before the accept: once done, the message may be dropped at the bound
 		if err := s.Board.Accept(me, in.ID, in.Text, taskGateCheck(task), empty, s.noteAcceptedCheck(task)); err != nil {
@@ -774,7 +783,8 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 		return text("%s sent back to %s with feedback", in.ID, task.Owner)
 	default: // fail
 		if s.cfg.PersistentPools {
-			return tools.Errorf("repair this task with revise; use resolve with an explanation only if it is no longer needed")
+			return tools.Errorf("%s was not failed: this team keeps its workers, so a task is repaired with revise (text = what to change), "+
+				"or closed with resolve (text = why) when it is superseded, canceled or no longer needed", in.ID)
 		}
 		c, err := managerFailClosure(in.Reason, in.Target)
 		if err != nil {
@@ -788,6 +798,33 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 		}
 		return text("%s marked failed (%s)", in.ID, c.String())
 	}
+}
+
+// inFlightNote is what a failed verification of t in the shared checkout adds when other tasks are being worked on there: the
+// verifier ran over their unfinished edits too, so a failure in their files is theirs. A manager twice rejected nothing: the
+// failures it was shown (an assignment mismatch in main.go, an undefined helper in a test) came from two other workers' edits
+// in progress, while the tasks it was accepting were a review report and a README line. "" when no other task is in progress.
+func (s *Swarm) inFlightNote(t Task) string {
+	var open []string
+	for _, o := range s.Board.Snapshot().Tasks {
+		if o.ID == t.ID || o.Status != StatusDoing || o.Owner == "" || o.Owner == t.Owner || s.hadTree(o.Owner) {
+			continue
+		}
+		line := o.ID + " (" + o.Owner
+		if len(o.Files) > 0 {
+			line += ": " + strings.Join(shownScopes(o.Files), ", ")
+		}
+		open = append(open, line+")")
+	}
+	if len(open) == 0 {
+		return ""
+	}
+	more := ""
+	if len(open) > 3 {
+		more, open = fmt.Sprintf(" and %d more", len(open)-3), open[:3]
+	}
+	return " Other work is in progress in this checkout (" + strings.Join(open, ", ") + more + "), and the verifier ran over its " +
+		"unfinished edits too: if the failure is in files of that work, not of " + t.ID + ", accept again once that work is submitted."
 }
 
 func renderTaskList(s *Snapshot) string {
@@ -810,7 +847,7 @@ func renderTaskList(s *Snapshot) string {
 		sb.WriteByte('\n')
 	}
 	for _, a := range s.Agents {
-		sb.WriteString(agentLine(a) + "\n")
+		sb.WriteString(agentLine(a, s) + "\n")
 	}
 	return sb.String()
 }
@@ -1027,7 +1064,7 @@ func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error)
 			}
 			// It waits for its own role: each role runs on the model chosen for its kind of work, so a member of another role that
 			// happens to be free is not offered.
-			return text("%s %s for the next free %s member (%s). The harness starts it then and tells you: do not spawn it on %s or on another role; use wait.",
+			return text("%s %s for the next free %s member (%s). The harness starts it then and tells you, so do not spawn it again (on another %s member or another role); use wait.",
 				req.TaskID, was, busy.role, busy.held, busy.role), nil
 		}
 	}

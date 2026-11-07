@@ -34,6 +34,10 @@ func TestSharedTreeAcceptSaysToCommitWithTheWorkersMessage(t *testing.T) {
 	if none := s.sharedCommitHint(Task{ID: "T4", Title: "web", Files: []string{"web/**"}}, ""); none != "" {
 		t.Fatalf("hint for work in no repository below the root: %q", none)
 	}
+	unchanged := Task{ID: "T6", Title: "store", Files: []string{"check/internal/store/**"}, Evidence: "ran go test ./... (passed); " + evidenceNoEdits}
+	if got := s.sharedCommitHint(unchanged, ""); got != "" {
+		t.Fatalf("a task that edited no file has nothing to commit: %q", got)
+	}
 	plan := Task{ID: "T5", Title: "plan", Kind: TaskKindPlan, Files: []string{"check/**"}}
 	if got := s.sharedCommitHint(plan, s.sharedCommitMessage(plan.ID)); got != "" {
 		t.Fatalf("a plan commits nothing: %q", got)

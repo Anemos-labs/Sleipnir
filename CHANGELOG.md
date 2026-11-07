@@ -7,6 +7,21 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The docs keeper's state stops naming a hold once the team is no longer
+  building, and says when a pass waits for a docs worker busy on another task.
+  An agent's line in the live view and in `task list` marks a task the board
+  has already closed (`dc-1 docs running T29 (done)`). A verification that
+  fails at accept in a shared checkout names the other work in progress there,
+  whose unfinished edits it also ran over. The review gate's line names each
+  reviewer slot's model and which model has covered the newest merge. The
+  commit reminder after an accept is left out when the task edited no file.
+  A queued spawn's result says not to spawn the task again, instead of reading
+  as "do not spawn it on reviewer". In a team that keeps its workers
+  (`--team`, or the default team), the `task` tool's description no longer
+  offers `fail`, which such a team refuses, and the refusal names `revise` and
+  `resolve`: the `task` tool spec's bytes change for those teams. No other
+  prompt bytes change.
+
 - A test piped into another command whose line echoes its status through
   bash's `PIPESTATUS` (`make test | tail; echo "EXIT=${PIPESTATUS[0]}"`) now
   reports that status as the line's own, as `$?` after an unpiped test does.

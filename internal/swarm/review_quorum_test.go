@@ -47,6 +47,10 @@ func TestTwoReviewerModelsMustBothCoverAMerge(t *testing.T) {
 	if line := s.reviewLine("T1"); !strings.Contains(line, "two reviewers on different models") {
 		t.Errorf("review line: %s", line)
 	}
+	// the line names each reviewer slot's model, and which model has covered the newest merge, so the slot to give it to is named
+	if line, want := s.reviewLine("T1"), "Reviewer slots: "+rv1+" on "+s.memberModel(rv1)+" (its model has reviewed the newest merge), "+rv2+" on "+s.memberModel(rv2); !strings.HasSuffix(line, want) {
+		t.Errorf("review line %q does not end %q", line, want)
+	}
 	review("R2", rv1)
 	if got := s.reviewPending(); got != "T1" {
 		t.Fatalf("a second review by the same model counted: %q", got)

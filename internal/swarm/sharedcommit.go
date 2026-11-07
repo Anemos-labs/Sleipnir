@@ -63,12 +63,12 @@ func (s *Swarm) sharedCommitMessage(id string) string {
 // sharedCommitHint is what the manager's accept of t adds in a shared tree whose work lies in a git repository: commit the change
 // now, with msg, the message its worker wrote (sharedCommitMessage; one made from the task when ""), naming the repository and
 // the task's scope. The kept message is dropped. "" when the project is in no git repository, or t changed nothing (a plan, a
-// report).
+// report, a task whose evidence shows no file edited and was accepted as needing no change).
 func (s *Swarm) sharedCommitHint(t Task, msg string) string {
 	s.mu.Lock()
 	delete(s.sharedCommits, t.ID)
 	s.mu.Unlock()
-	if t.Kind == TaskKindPlan || s.roles[s.roleOf(t.Owner)].Reports() {
+	if t.Kind == TaskKindPlan || s.roles[s.roleOf(t.Owner)].Reports() || evidenceShowsNoEdits(t.Evidence) {
 		return ""
 	}
 	repo := s.gitRepoFor(t.Files)
