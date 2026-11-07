@@ -101,3 +101,25 @@ func TestTheReviewLineNamesTheManagersEdits(t *testing.T) {
 		t.Errorf("shownMerge(T7) = %q", got)
 	}
 }
+
+// The agents a refused spawn lists are those that can take a task: a retired member, the manager and a service are left out.
+func TestCurrentWorkersLeaveOutRetiredMembers(t *testing.T) {
+	s := New(Config{SessionID: "t"}, Deps{}, nil)
+	s.mu.Lock()
+	s.members = map[string]*member{
+		"mgr":  {id: "mgr", manager: true},
+		"be-1": {id: "be-1", role: "backend"},
+		"be-2": {id: "be-2", role: "backend", life: lifeRetired},
+		"svc":  {id: "svc", service: true},
+	}
+	s.mu.Unlock()
+	if got := strings.Join(s.currentWorkers(), ","); got != "be-1" {
+		t.Errorf("current workers = %q", got)
+	}
+	s.mu.Lock()
+	s.members = map[string]*member{"be-2": {id: "be-2", life: lifeRetired}}
+	s.mu.Unlock()
+	if got := strings.Join(s.currentWorkers(), ","); got != "none started yet" {
+		t.Errorf("with none = %q", got)
+	}
+}
