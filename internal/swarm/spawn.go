@@ -151,7 +151,11 @@ func (s *Swarm) spawn(req SpawnReq) (SpawnResult, error) {
 						return SpawnResult{}, namedNotFree(s.Board.Snapshot(), req, one.id)
 					}
 					req.Solo, req.Agent = true, one.id
-					return s.spawnReuse(req, files)
+					res, err := s.spawnReuse(req, files)
+					if err == nil && len(one.release) > 0 {
+						s.leaveSparingPools(req, one.release)
+					}
+					return res, err
 				}
 				return started(id, err)
 			}
@@ -904,5 +908,25 @@ func (s *Swarm) detach(m *member) {
 			ids[i] = t.ID
 		}
 		s.notifyManager(fmt.Sprintf("%s was retired; %s returned to todo", m.id, strings.Join(ids, ", ")))
+	}
+}
+
+// leaveSparingPools takes a member that now works alone on the task req asked for out of the executing pools that spared it, and
+// tells their leaders. A member that has meanwhile become a leader there, or holds an open part, stays (releaseMembers).
+func (s *Swarm) leaveSparingPools(req SpawnReq, release map[string][]string) {
+	released, err := s.Board.releaseMembers(req.By, release)
+	if err != nil {
+		return
+	}
+	next := taskOrTitle(req)
+	if m := s.get(req.Agent); m != nil {
+		m.mu.Lock()
+		if m.task != "" {
+			next = m.task
+		}
+		m.mu.Unlock()
+	}
+	for parent, left := range released {
+		s.notifyPoolRelease(parent, left, next)
 	}
 }
