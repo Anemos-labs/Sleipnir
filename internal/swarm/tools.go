@@ -1080,7 +1080,15 @@ func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error)
 		return text("%s is still in a turn, so %s is reserved for it: it was told to claim it, and is started on it if its run ends first. Use wait to sleep until something changes.", r.Agent, req.TaskID), nil
 	}
 	hint, pool := "", ""
-	if task, ok := t.s.Board.Snapshot().Task(req.TaskID); ok {
+	id := req.TaskID
+	if id == "" { // a spawn by title: the task it made is the started member's
+		if m := t.s.get(r.Agent); m != nil {
+			m.mu.Lock()
+			id = m.task
+			m.mu.Unlock()
+		}
+	}
+	if task, ok := t.s.Board.Snapshot().Task(id); ok && id != "" {
 		hint = t.s.scopeHint(task.Files)
 		if task.Pool != nil && len(task.Pool.Members) > 1 {
 			// The task went to the role's pool: a manager that named one member read "be-1 started" and expected one owner, and

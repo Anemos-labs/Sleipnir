@@ -9,8 +9,8 @@ they do not indicate whether a change has been released.
 
 - A manager's write lease now gives way to a worker's write in every team, as
   documented: it did only when the session had role-owned paths, and a worker
-  was otherwise refused behind a file the manager had edited once. A lease
-  alert names the file. The `task` tool refuses a field it does not have
+  was otherwise refused behind a file the manager had edited once. In a shared
+  tree a lease alert names the file. The `task` tool refuses a field it does not have
   (`result=` for `text=`), naming the fields it takes, instead of dropping it.
   A spawn that starts the role's pool says so and points at `solo=true`. A
   spawn naming a member that has not started yet explains how ids are given.

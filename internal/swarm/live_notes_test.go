@@ -66,12 +66,12 @@ func TestASpawnThatStartsAPoolSaysSo(t *testing.T) {
 	if res.IsError || !strings.Contains(res.Text, "leads "+task.ID+" as the backend pool (") || !strings.Contains(res.Text, "spawn with solo=true") {
 		t.Fatalf("spawn: %s", res.Text)
 	}
-	other, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "--version", Role: "backend"})
-	if err != nil {
-		t.Fatal(err)
+	byTitle := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 3, Team: []string{"backend", "backend"}}, idleModel)
+	if res := byTitle.callTool(context.Background(), "spawn", "mgr", "manager", map[string]any{"role": "backend", "task": "stdin for --check"}); res.IsError || !strings.Contains(res.Text, "as the backend pool (") {
+		t.Errorf("a spawn by title: %s", res.Text)
 	}
 	r2 := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 3, Team: []string{"backend", "backend"}}, idleModel)
-	solo, _ := r2.sw.Board.CreateTask("mgr", TaskSpec{Title: other.Title, Role: "backend"})
+	solo, _ := r2.sw.Board.CreateTask("mgr", TaskSpec{Title: "--version", Role: "backend"})
 	if res := r2.callTool(context.Background(), "spawn", "mgr", "manager", map[string]any{"role": "backend", "task": solo.ID, "solo": true}); res.IsError || strings.Contains(res.Text, "pool") {
 		t.Errorf("a solo spawn: %s", res.Text)
 	}
