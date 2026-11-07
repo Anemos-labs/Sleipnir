@@ -30,6 +30,13 @@ type Tool interface {
 	Run(ctx context.Context, c *Call) (*Result, error)
 }
 
+// ArgSynonyms is implemented by a tool that accepts input keys besides the properties of its schema, spellings other harnesses
+// use for one of them ("file_path" for "path"). Each key maps to the property it stands for. The dispatcher reads it to tell
+// whether a call written under another harness's name for the tool has arguments the tool understands.
+type ArgSynonyms interface {
+	ArgSynonyms() map[string]string
+}
+
 // Call is one tool invocation.
 type Call struct {
 	ID    string

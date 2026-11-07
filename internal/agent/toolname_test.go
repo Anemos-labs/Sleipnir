@@ -143,3 +143,46 @@ func TestAPersonIsShownTheToolThatRanNotTheLeakedName(t *testing.T) {
 		t.Errorf("the sink was shown %q, want the tool that ran", sink.names)
 	}
 }
+
+// A model trained on another harness calls its tools by that harness's names: Claude Code's "Read", Gemini CLI's "read_file". The
+// call runs as the tool when its arguments are the tool's, the thread keeps the name as the model wrote it, and the event says
+// which tool ran; an alias whose arguments are not the tool's is answered as an unknown tool, with a suggestion.
+func TestAnotherHarnesssToolNameRuns(t *testing.T) {
+	read := fakeTool{name: "read", schema: `{"type":"object","properties":{"path":{"type":"string"},"limit":{"type":"integer"}},"required":["path"]}`,
+		run: func(in json.RawMessage) *tools.Result { return &tools.Result{Text: "read:" + string(in)} }}
+	r := newRig(t, rigOpts{noCompact: true, tools: []fakeTool{read}}, func(c *mock.Call) mock.Reply {
+		if len(c.Messages) < 4 {
+			return mock.Reply{ToolCalls: []mock.ToolCall{
+				{ID: "a1", Name: "Read", Args: `{"path":"a"}`},
+				{ID: "a2", Name: "read_file", Args: `{"path":"b","limit":5}`},
+				{ID: "a3", Name: "read_file", Args: `{"absolute_path":"c"}`},
+			}}
+		}
+		return mock.Reply{Text: "done"}
+	})
+	if _, err := r.agent.Run(context.Background(), "go"); err != nil {
+		t.Fatal(err)
+	}
+	snap := r.agent.Thread().Snapshot()
+	results := snap.Turns[2].Blocks
+	for i, want := range []string{`read:{"path":"a"}`, `read:{"path":"b","limit":5}`} {
+		if results[i].IsError || results[i].PlainText() != want {
+			t.Errorf("call %d = %+v, want %q", i+1, results[i], want)
+		}
+	}
+	if !results[2].IsError || !strings.Contains(results[2].PlainText(), `Did you mean "read"?`) {
+		t.Errorf("an alias with arguments the tool does not take must be refused with a suggestion: %+v", results[2])
+	}
+	if calls := snap.Turns[1].Blocks; calls[0].ToolName != "Read" || calls[1].ToolName != "read_file" {
+		t.Errorf("the thread must keep the names as the model wrote them: %q, %q", calls[0].ToolName, calls[1].ToolName)
+	}
+	n := 0
+	for _, e := range r.log.OfType("tool.call") {
+		if strings.Contains(string(e.Data), `"as":"read"`) {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Errorf("%d tool.call events say which tool ran, want 2", n)
+	}
+}

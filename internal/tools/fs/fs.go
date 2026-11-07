@@ -113,6 +113,18 @@ func (k *call) same(text string) *tools.Result {
 	return r
 }
 
+// filePath is the spelling of path that read, write and edit also accept (see oneOf).
+var filePath = map[string]string{"file_path": "path"}
+
+// ArgSynonyms implements tools.ArgSynonyms.
+func (Read) ArgSynonyms() map[string]string { return filePath }
+
+// ArgSynonyms implements tools.ArgSynonyms.
+func (Write) ArgSynonyms() map[string]string { return filePath }
+
+// ArgSynonyms implements tools.ArgSynonyms.
+func (Edit) ArgSynonyms() map[string]string { return filePath }
+
 // oneOf settles the file a call names when it may spell it path or file_path: path, else file_path. Two spellings that name
 // different files are refused, so a hook or rule that looked at one of them cannot have been looking at another file.
 func (k *call) oneOf(path *string, alias string) *tools.Result {
