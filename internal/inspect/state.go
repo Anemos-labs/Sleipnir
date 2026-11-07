@@ -105,51 +105,42 @@ type agent struct {
 	endState                      string
 	evidence                      string
 
-	reqs             []*req // retained window, in request order
-	nMain, nSide     int
-	nDone            int
-	prompt           int64
-	usage            core.Usage
-	usd, noCache     float64
-	naive            float64
-	hitRead, hitAll  int64 // main requests only, for the agent's hit ratio
-	ctxLast, ctxMax  int
-	ctxSum           int64
-	ctxN             int
-	naiveCtxSum      int64
-	commits          int
-	netFolded        int64
-	anomalies        int
-	turns            int
-	toolCalls        int
-	toolErrs         int
-	tools            map[string]*toolAgg
-	open             map[string]*openCall
-	openReq          int
-	waiting          bool
-	line             string
-	lastTool         string
-	lastToolAt       time.Time
-	failedReqs       int
-	mainSeen         int // main requests started (drives first)
-	prevMain         *req
-	foldedCum        int64
-	naivePrev        int64
-	naiveT           time.Time
-	naiveAny         bool
-	rebasePending    string
-	pendingDrift     *anomaly
-	ep               *compaction // open compaction episode
-	lastCommit       *compaction // committed, waiting for the next main response
-	lastPlan         *planNote
-	lastThreadTokens int
-}
-
-// planNote remembers the planner's last statement for an agent.
-type planNote struct {
-	warm   *bool
-	thread int
-	reason string
+	reqs            []*req // retained window, in request order
+	nMain, nSide    int
+	nDone           int
+	prompt          int64
+	usage           core.Usage
+	usd, noCache    float64
+	naive           float64
+	hitRead, hitAll int64 // main requests only, for the agent's hit ratio
+	ctxLast, ctxMax int
+	ctxSum          int64
+	ctxN            int
+	naiveCtxSum     int64
+	commits         int
+	netFolded       int64
+	anomalies       int
+	turns           int
+	toolCalls       int
+	toolErrs        int
+	tools           map[string]*toolAgg
+	open            map[string]*openCall
+	openReq         int
+	waiting         bool
+	line            string
+	lastTool        string
+	lastToolAt      time.Time
+	failedReqs      int
+	mainSeen        int // main requests started (drives first)
+	prevMain        *req
+	foldedCum       int64
+	naivePrev       int64
+	naiveT          time.Time
+	naiveAny        bool
+	rebasePending   string
+	pendingDrift    *anomaly
+	ep              *compaction // open compaction episode
+	lastCommit      *compaction // committed, waiting for the next main response
 }
 
 // compaction is the mutable form of Compaction.

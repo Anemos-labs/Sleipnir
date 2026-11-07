@@ -100,7 +100,7 @@ func DefaultApplyPolicy() ApplyPolicy {
 		UserInstructionKey:       "instructions",
 		UserInstructionMaxTokens: 2000,
 		TaskMaxTokens:            8000,
-		MaxAssignmentBytes:       32000,
+		MaxAssignmentBytes:       100000, // above the swarm's bound on one claimed assignment (96000), so a contract it accepted is never cut
 		MaxInstructionTokens:     12000,
 		MaxSpineTokens:           3000,
 		MaxNoteOps:               64,
@@ -936,7 +936,7 @@ func userEntries(tr core.Turn, est core.Estimator, pol ApplyPolicy) (entries, cu
 	default:
 		for _, b := range tr.Blocks {
 			if IsSteer(b) {
-				add(b.Text, pol.UserInstructionMaxTokens)
+				add(SteerText(b), pol.UserInstructionMaxTokens)
 			}
 		}
 	}
@@ -1180,11 +1180,26 @@ var ErrNothingToCompact = errors.New("nothing to compact")
 var ErrNothingToMask = errors.New("nothing worth masking")
 
 // maskOnlyPolicy is the masking policy of MaskOnly: every result older than the
-// protected units, at half the usual size threshold.
-func maskOnlyPolicy(pol ApplyPolicy) ApplyPolicy {
+// protected units, at half the usual size threshold. With a KeepTarget it also spares
+// the newest units that fit in it: a cold mask runs whenever the cache has expired, far
+// below any limit, and an agent whose turns outlast the cache would otherwise lose
+// every file it read two turns ago and read it again, mask after mask.
+func maskOnlyPolicy(turns []core.Turn, units []Unit, pol ApplyPolicy, est core.Estimator) ApplyPolicy {
 	protect := pol.MinKeepUnits
 	if protect < 1 {
 		protect = 1
+	}
+	if pol.KeepTarget > 0 {
+		z := Sizer{Est: est, Caps: pol.Caps}
+		kept, n := 0, 0
+		for i := len(units) - 1; i >= 0; i-- {
+			kept += z.Turns(turns[units[i].Start:units[i].End])
+			if kept > pol.KeepTarget {
+				break
+			}
+			n++
+		}
+		protect = max(protect, n)
 	}
 	mp := pol
 	mp.AutoMaskAfterUnits = protect
@@ -1210,13 +1225,13 @@ func MaskableTokens(s *Stack, est core.Estimator, pol ApplyPolicy) int {
 	}
 	res := &ApplyResult{}
 	pol.StripThinking = false
-	retain(turns, units, 0, &Patch{}, maskOnlyPolicy(pol), est, res)
+	retain(turns, units, 0, &Patch{}, maskOnlyPolicy(turns, units, pol, est), est, res)
 	return res.MaskedTokens
 }
 
 // MaskOnly is the deterministic compaction: no turn is folded, the spine and
 // notes are untouched, and no model is involved. Bulky tool results older than
-// the newest units are replaced by recallable placeholders, and stale thinking
+// the newest units (and the newest KeepTarget tokens) are replaced by recallable placeholders, and stale thinking
 // and notices are dropped along the way. It is what the planner chooses when the
 // cache is cold (the next request re-prefills everything anyway, so a smaller
 // prompt is free). It only counts as a compaction when something was masked:
@@ -1237,7 +1252,7 @@ func MaskOnly(s *Stack, est core.Estimator, pol ApplyPolicy) (*ApplyResult, erro
 	res := &ApplyResult{Spine: s.Spine, Notes: s.Notes, KeepFrom: turns[0].ID,
 		SnapTokens: z.Turns(turns), SpineBefore: s.Spine.Tokens(est), SpineAfter: s.Spine.Tokens(est),
 		NotesBefore: s.Notes.Tokens(est), NotesAfter: s.Notes.Tokens(est)}
-	res.Replacement = retain(turns, units, 0, &Patch{}, maskOnlyPolicy(pol), est, res)
+	res.Replacement = retain(turns, units, 0, &Patch{}, maskOnlyPolicy(turns, units, pol, est), est, res)
 	res.RetainedTokens = z.Turns(res.Replacement)
 	res.RemovedTokens = res.SnapTokens - res.RetainedTokens
 	if res.MaskedResults == 0 {

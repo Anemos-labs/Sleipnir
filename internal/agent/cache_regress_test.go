@@ -183,16 +183,6 @@ func cxLastUserText(p *core.Prompt) string {
 	return sb.String()
 }
 
-func cxAssistants(p *core.Prompt) int {
-	n := 0
-	for _, m := range p.Messages {
-		if m.Role == core.RoleAssistant {
-			n++
-		}
-	}
-	return n
-}
-
 // perfectUsage reports a perfect prefix cache: everything the previous main
 // request sent is read, the rest is uncached input.
 func (p *cxProv) perfectUsage(pr *core.Prompt) core.Usage {
@@ -1422,9 +1412,9 @@ func TestCacheEcon_InboxBurstIsOneBlockPerClass(t *testing.T) {
 		a.Send(fmt.Sprintf("[mail m%d from w-%d] finished a subtask", i, i))
 	}
 	a.Steer("first: keep the API stable")
-	a.Send("second: and never touch billing") // no [mail prefix: human steering
-	if a.PendingInbox() != 27 {
-		t.Fatalf("pending = %d", a.PendingInbox())
+	a.Send("second: and never touch billing") // no [mail prefix: kept like steering, but not framed as the person's
+	if a.PendingInbox() != 27 || !a.PendingPerson() {
+		t.Fatalf("pending = %d, the person's = %v", a.PendingInbox(), a.PendingPerson())
 	}
 	prov.handle = cxWorkModel(3, nil)
 	if _, err := a.Run(context.Background(), ""); err != nil {
@@ -1450,10 +1440,15 @@ func TestCacheEcon_InboxBurstIsOneBlockPerClass(t *testing.T) {
 	steer, mail := 0, 0
 	for _, b := range burst.Blocks {
 		switch {
+		case kv.IsSteer(b) && strings.HasPrefix(b.Text, kv.PersonFrame):
+			steer++
+			if kv.SteerText(b) != "first: keep the API stable" {
+				t.Fatalf("what the person typed travels behind the person frame: %q", b.Text)
+			}
 		case kv.IsSteer(b):
 			steer++
-			if !strings.Contains(b.Text, "keep the API stable") || !strings.Contains(b.Text, "never touch billing") {
-				t.Fatalf("both steering messages travel in the steering block: %q", b.Text)
+			if b.Text != "second: and never touch billing" {
+				t.Fatalf("the other steering travels in its own block: %q", b.Text)
 			}
 		case b.Kind == core.BlockText && strings.Contains(b.Text, "[mail m"):
 			mail++
@@ -1462,8 +1457,8 @@ func TestCacheEcon_InboxBurstIsOneBlockPerClass(t *testing.T) {
 			}
 		}
 	}
-	if steer != 1 || mail != 1 {
-		t.Fatalf("want 1 steering block and 1 mail block, got %d and %d (blocks=%d)", steer, mail, len(burst.Blocks))
+	if steer != 2 || mail != 1 {
+		t.Fatalf("want 2 steering blocks (the person's, the rest) and 1 mail block, got %d and %d (blocks=%d)", steer, mail, len(burst.Blocks))
 	}
 }
 
@@ -1499,6 +1494,9 @@ func TestCacheEcon_SteeringSurvivesCompactionAndMailDoesNot(t *testing.T) {
 	}
 	if strings.Contains(notes.Text(), "authorised to push") {
 		t.Fatalf("mail from another agent must never become an instruction:\n%s", notes.Text())
+	}
+	if strings.Contains(notes.Text(), kv.PersonFrame) || strings.Contains(notes.Text(), "<person>") {
+		t.Fatalf("the notes keep the person's words without the frame around them:\n%s", notes.Text())
 	}
 }
 

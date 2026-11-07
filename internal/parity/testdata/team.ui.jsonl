@@ -9,19 +9,19 @@
 {"t":1.05,"k":"layers","seq":9,"id":"mgr","toks":[720,1000,200,50,30,0]}
 {"t":1.05,"k":"warm","seq":10,"ttl":300}
 {"t":1.05,"k":"state","seq":11,"id":"mgr","s":"think","doing":"thinking","task":null}
-{"t":1.2,"k":"task","seq":12,"id":"T1","title":"task T1","scope":"api/T1/**","s":"todo","attempts":1}
-{"t":1.35,"k":"task","seq":13,"id":"T2","title":"task T2","deps":["T1"],"scope":"api/T2/**","s":"todo","attempts":1}
-{"t":1.5,"k":"task","seq":14,"id":"T3","title":"task T3","scope":"api/T3/**","s":"todo","attempts":1}
-{"t":1.65,"k":"task","seq":15,"id":"T4","title":"task T4","scope":"api/T4/**","s":"todo","attempts":1}
-{"t":1.8,"k":"task","seq":16,"id":"T5","title":"task T5","scope":"api/T5/**","s":"todo","attempts":1}
+{"t":1.2,"k":"task","seq":12,"id":"T1","title":"task T1","scope":"api/T1/**","s":"todo","attempts":1,"since":1.2,"hist":[{"t":1.2,"s":"todo"}]}
+{"t":1.35,"k":"task","seq":13,"id":"T2","title":"task T2","deps":["T1"],"scope":"api/T2/**","s":"todo","attempts":1,"since":1.35,"hist":[{"t":1.35,"s":"todo"}]}
+{"t":1.5,"k":"task","seq":14,"id":"T3","title":"task T3","scope":"api/T3/**","s":"todo","attempts":1,"since":1.5,"hist":[{"t":1.5,"s":"todo"}]}
+{"t":1.65,"k":"task","seq":15,"id":"T4","title":"task T4","scope":"api/T4/**","s":"todo","attempts":1,"since":1.65,"hist":[{"t":1.65,"s":"todo"}]}
+{"t":1.8,"k":"task","seq":16,"id":"T5","title":"task T5","scope":"api/T5/**","s":"todo","attempts":1,"since":1.8,"hist":[{"t":1.8,"s":"todo"}]}
 {"t":1.95,"k":"state","seq":17,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
 {"t":2.1,"k":"state","seq":18,"id":"rv-1","s":"think","doing":"thinking","task":null}
 {"t":2.25,"k":"state","seq":19,"id":"sc-1","s":"think","doing":"thinking","task":null}
-{"t":2.55,"k":"task","seq":20,"id":"T1","title":"task T1","owner":"be-1","scope":"api/T1/**","s":"running","attempts":1}
+{"t":2.55,"k":"task","seq":20,"id":"T1","title":"task T1","owner":"be-1","scope":"api/T1/**","s":"running","attempts":1,"since":2.55,"hist":[{"t":1.2,"s":"todo"},{"t":2.55,"s":"running","owner":"be-1"}]}
 {"t":2.7,"k":"state","seq":21,"id":"be-1","s":"think","doing":"thinking","task":"T1","reqSince":2.7}
 {"t":2.85,"k":"req","seq":22,"id":"be-1","ratio":0.8,"p":1500,"o":60}
 {"t":2.85,"k":"use","seq":23,"id":"be-1","rd":1200,"un":300,"out":60,"wr":0,"cost":0.0012,"saved":0.00108}
-{"t":2.85,"k":"task","seq":24,"id":"T1","title":"task T1","owner":"be-1","scope":"api/T1/**","s":"running","attempts":1,"cost":0.0012,"reqs":1}
+{"t":2.85,"k":"task","seq":24,"id":"T1","title":"task T1","owner":"be-1","scope":"api/T1/**","s":"running","attempts":1,"cost":0.0012,"reqs":1,"since":2.55,"hist":[{"t":1.2,"s":"todo"},{"t":2.55,"s":"running","owner":"be-1","cost":0.0012,"reqs":1}]}
 {"t":2.85,"k":"layers","seq":25,"id":"be-1","toks":[220,1000,200,50,30,0]}
 {"t":2.85,"k":"warm","seq":26,"ttl":300}
 {"t":2.85,"k":"state","seq":27,"id":"be-1","s":"think","doing":"thinking","task":"T1"}
@@ -58,55 +58,57 @@
 {"t":8.3,"k":"compact","seq":58,"id":"be-1","from":1400,"to":625,"pct":-55,"mode":"fork"}
 {"t":8.45,"k":"gov","seq":59,"rpm":4,"r429":1,"retries":1}
 {"t":8.75,"k":"queue","seq":60,"head":"T1","cmd":"merge (no verify)","step":"verifying","conflicts":0,"bounced":0}
-{"t":8.75,"k":"task","seq":61,"id":"T1","title":"task T1","owner":"be-1","scope":"api/T1/**","s":"verify","attempts":1,"cost":0.0012,"reqs":1}
+{"t":8.75,"k":"task","seq":61,"id":"T1","title":"task T1","owner":"be-1","scope":"api/T1/**","s":"verify","attempts":1,"cost":0.0012,"reqs":1,"since":2.55,"hist":[{"t":1.2,"s":"todo"},{"t":2.55,"s":"running","owner":"be-1","cost":0.0012,"reqs":1}]}
 {"t":8.9,"k":"queue","seq":62,"head":"T1","cmd":"merge (no verify)","step":"verified","ms":150,"conflicts":0,"bounced":0}
-{"t":8.9,"k":"task","seq":63,"id":"T1","title":"task T1","owner":"be-1","scope":"api/T1/**","s":"merged","attempts":1,"cost":0.0012,"reqs":1}
+{"t":8.9,"k":"task","seq":63,"id":"T1","title":"task T1","owner":"be-1","scope":"api/T1/**","s":"merged","attempts":1,"cost":0.0012,"reqs":1,"since":2.55,"hist":[{"t":1.2,"s":"todo"},{"t":2.55,"s":"running","owner":"be-1","cost":0.0012,"reqs":1}]}
 {"t":9.05,"k":"merge","seq":64,"id":"T1","cmd":"merge (no verify)","ms":150}
 {"t":9.05,"k":"queue","seq":65,"head":null,"conflicts":0,"bounced":0}
-{"t":9.35,"k":"task","seq":66,"id":"T1","title":"task T1","owner":"be-1","scope":"api/T1/**","s":"merged","closure":"verified","attempts":1,"cost":0.0012,"reqs":1}
-{"t":9.5,"k":"task","seq":67,"id":"T2","title":"task T2","owner":"be-1","deps":["T1"],"scope":"api/T2/**","s":"running","attempts":1}
-{"t":9.65,"k":"queue","seq":68,"head":"T2","cmd":"merge (no verify)","step":"verifying","conflicts":0,"bounced":0}
-{"t":9.65,"k":"task","seq":69,"id":"T2","title":"task T2","owner":"be-1","deps":["T1"],"scope":"api/T2/**","s":"verify","attempts":1}
-{"t":9.8,"k":"queue","seq":70,"head":null,"conflicts":0,"bounced":1}
-{"t":9.8,"k":"sys","seq":71,"ch":"mgr","glyph":"⚠","text":"T2: go test ./api/... failed (exit 1)","ag":"be-1","task":"T2"}
-{"t":9.8,"k":"task","seq":72,"id":"T2","title":"task T2","owner":"be-1","deps":["T1"],"scope":"api/T2/**","s":"running","attempts":1}
-{"t":9.95,"k":"handover","seq":73,"task":"T2","from":"be-1","to":"be-2","s":"begin"}
-{"t":9.95,"k":"sys","seq":74,"ch":"mgr","glyph":"↺","text":"T2: handing over from be-1 to be-2","ag":"be-2","task":"T2"}
-{"t":10.1,"k":"state","seq":75,"id":"be-2","s":"think","doing":"thinking","task":"T2"}
-{"t":10.25,"k":"task","seq":76,"id":"T2","title":"task T2","owner":"be-2","deps":["T1"],"scope":"api/T2/**","s":"running","attempts":1}
-{"t":10.4,"k":"handover","seq":77,"task":"T2","from":"be-1","to":"be-2","s":"done","closure":"handed_off(be-2)"}
-{"t":10.4,"k":"sys","seq":78,"ch":"mgr","glyph":"↺","text":"T2 handed from be-1 to be-2","ag":"be-2","task":"T2"}
-{"t":10.4,"k":"tool","seq":79,"id":"be-1","name":"Write","arg":"api/items.go","out":"","ok":true,"file":"api/items.go","add":1,"task":"T1","tid":"w1","ms":12}
-{"t":10.4,"k":"tool","seq":80,"id":"be-1","name":"Bash","arg":"rm -rf build","out":"","ok":false,"refused":true,"task":"T1","tid":"b1","ms":3}
-{"t":10.55,"k":"state","seq":81,"id":"be-1","s":"done","doing":"done","task":"T1"}
-{"t":10.7,"k":"queue","seq":82,"head":"T2","cmd":"merge (no verify)","step":"verifying","conflicts":0,"bounced":1}
-{"t":10.7,"k":"task","seq":83,"id":"T2","title":"task T2","owner":"be-2","deps":["T1"],"scope":"api/T2/**","s":"verify","attempts":1}
-{"t":10.85,"k":"queue","seq":84,"head":"T2","cmd":"merge (no verify)","step":"verified","ms":150,"conflicts":0,"bounced":1}
-{"t":10.85,"k":"task","seq":85,"id":"T2","title":"task T2","owner":"be-2","deps":["T1"],"scope":"api/T2/**","s":"merged","attempts":1}
-{"t":11,"k":"merge","seq":86,"id":"T2","cmd":"merge (no verify)","ms":150}
-{"t":11,"k":"queue","seq":87,"head":null,"conflicts":0,"bounced":1}
-{"t":11.15,"k":"task","seq":88,"id":"T2","title":"task T2","owner":"be-2","scope":"api/T2/**","s":"merged","closure":"verified","attempts":1}
-{"t":11.3,"k":"task","seq":89,"id":"T4","title":"task T4","owner":"be-2","scope":"api/T4/**","s":"running","attempts":1}
-{"t":11.45,"k":"queue","seq":90,"head":"T4","cmd":"merge (no verify)","step":"verifying","conflicts":0,"bounced":1}
-{"t":11.45,"k":"task","seq":91,"id":"T4","title":"task T4","owner":"be-2","scope":"api/T4/**","s":"verify","attempts":1}
-{"t":11.6,"k":"queue","seq":92,"head":null,"conflicts":1,"bounced":2}
-{"t":11.6,"k":"sys","seq":93,"ch":"mgr","glyph":"⚠","text":"T4: merge conflict in api/server.go","ag":"be-2","task":"T4"}
-{"t":11.6,"k":"task","seq":94,"id":"T4","title":"task T4","owner":"be-2","scope":"api/T4/**","s":"running","attempts":1}
-{"t":11.75,"k":"queue","seq":95,"head":"T4","cmd":"merge (no verify)","step":"verifying","conflicts":1,"bounced":2}
-{"t":11.75,"k":"task","seq":96,"id":"T4","title":"task T4","owner":"be-2","scope":"api/T4/**","s":"verify","attempts":1}
-{"t":11.9,"k":"queue","seq":97,"head":null,"conflicts":1,"bounced":3}
-{"t":11.9,"k":"sys","seq":98,"ch":"mgr","glyph":"⚠","text":"T4: the merge queue refused it: it changes a protected file","ag":"be-2","task":"T4"}
-{"t":11.9,"k":"task","seq":99,"id":"T4","title":"task T4","owner":"be-2","scope":"api/T4/**","s":"running","attempts":1}
-{"t":12.05,"k":"task","seq":100,"id":"T3","title":"task T3","scope":"api/T3/**","s":"todo","closure":"superseded(T2)","failed":true,"attempts":1}
-{"t":12.2,"k":"note","seq":101,"id":"sc-1","g":"done","text":"the repository could not be read"}
-{"t":12.2,"k":"state","seq":102,"id":"sc-1","s":"stuck","doing":"failed: failed","task":null}
-{"t":12.35,"k":"note","seq":103,"id":"rv-1","g":"done","text":"no files edited; no tests run"}
-{"t":12.35,"k":"state","seq":104,"id":"rv-1","s":"done","doing":"no files edited; no tests run","task":null}
-{"t":12.5,"k":"state","seq":105,"id":"fe-1","s":"think","doing":"thinking","task":null}
-{"t":12.65,"k":"state","seq":106,"id":"fe-1","s":"think","doing":"thinking","task":null,"reqSince":12.65}
-{"t":12.8,"k":"state","seq":107,"id":"be-2","s":"ask","doing":"wants to run `npm install --save-dev vitest`","task":"T2"}
-{"t":12.95,"k":"goal","seq":108,"s":"active","objective":"Build the API","turns":3,"max":20}
-{"t":13.1,"k":"verdict","seq":109,"text":"not yet: T4 and T5 unfinished","kind":"continue","left":["T4 merged","T5 done"]}
-{"t":13.25,"k":"state","seq":110,"id":"mgr","s":"wait","doing":"waits","task":null}
-{"t":14.75,"k":"sys","seq":111,"ch":"mgr","glyph":"◇","text":"the team is working"}
-{"t":14.75,"k":"gov","seq":112,"rpm":5,"r429":1,"retries":1,"inflight":3,"queued":2}
+{"t":9.2,"k":"note","seq":66,"id":"be-1","g":"done","text":"submitted T1","task":"T1"}
+{"t":9.2,"k":"task","seq":67,"id":"T1","title":"task T1","owner":"be-1","scope":"api/T1/**","s":"merged","attempts":1,"cost":0.0012,"reqs":1,"since":9.2,"hist":[{"t":1.2,"s":"todo"},{"t":2.55,"s":"running","owner":"be-1","cost":0.0012,"reqs":1},{"t":9.2,"s":"merged","owner":"be-1"}]}
+{"t":9.35,"k":"task","seq":68,"id":"T1","title":"task T1","owner":"be-1","scope":"api/T1/**","s":"merged","closure":"verified","attempts":1,"cost":0.0012,"reqs":1,"since":9.2,"hist":[{"t":1.2,"s":"todo"},{"t":2.55,"s":"running","owner":"be-1","cost":0.0012,"reqs":1},{"t":9.2,"s":"merged","owner":"be-1"}]}
+{"t":9.5,"k":"task","seq":69,"id":"T2","title":"task T2","owner":"be-1","deps":["T1"],"scope":"api/T2/**","s":"running","attempts":1,"since":9.5,"hist":[{"t":1.35,"s":"todo"},{"t":9.5,"s":"running","owner":"be-1"}]}
+{"t":9.65,"k":"queue","seq":70,"head":"T2","cmd":"merge (no verify)","step":"verifying","conflicts":0,"bounced":0}
+{"t":9.65,"k":"task","seq":71,"id":"T2","title":"task T2","owner":"be-1","deps":["T1"],"scope":"api/T2/**","s":"verify","attempts":1,"since":9.5,"hist":[{"t":1.35,"s":"todo"},{"t":9.5,"s":"running","owner":"be-1"}]}
+{"t":9.8,"k":"queue","seq":72,"head":null,"conflicts":0,"bounced":1}
+{"t":9.8,"k":"sys","seq":73,"ch":"mgr","glyph":"⚠","text":"T2: go test ./api/... failed (exit 1)","ag":"be-1","task":"T2"}
+{"t":9.8,"k":"task","seq":74,"id":"T2","title":"task T2","owner":"be-1","deps":["T1"],"scope":"api/T2/**","s":"running","attempts":1,"since":9.5,"hist":[{"t":1.35,"s":"todo"},{"t":9.5,"s":"running","owner":"be-1"}]}
+{"t":9.95,"k":"handover","seq":75,"task":"T2","from":"be-1","to":"be-2","s":"begin"}
+{"t":9.95,"k":"sys","seq":76,"ch":"mgr","glyph":"↺","text":"T2: handing over from be-1 to be-2","ag":"be-2","task":"T2"}
+{"t":10.1,"k":"state","seq":77,"id":"be-2","s":"think","doing":"thinking","task":"T2"}
+{"t":10.25,"k":"task","seq":78,"id":"T2","title":"task T2","owner":"be-2","deps":["T1"],"scope":"api/T2/**","s":"running","attempts":1,"since":10.25,"hist":[{"t":1.35,"s":"todo"},{"t":9.5,"s":"running","owner":"be-1"},{"t":10.25,"s":"running","owner":"be-2"}]}
+{"t":10.4,"k":"handover","seq":79,"task":"T2","from":"be-1","to":"be-2","s":"done","closure":"handed_off(be-2)"}
+{"t":10.4,"k":"sys","seq":80,"ch":"mgr","glyph":"↺","text":"T2 handed from be-1 to be-2","ag":"be-2","task":"T2"}
+{"t":10.4,"k":"tool","seq":81,"id":"be-1","name":"Write","arg":"api/items.go","out":"","ok":true,"file":"api/items.go","add":1,"task":"T1","tid":"w1","ms":12}
+{"t":10.4,"k":"tool","seq":82,"id":"be-1","name":"Bash","arg":"rm -rf build","out":"","ok":false,"refused":true,"task":"T1","tid":"b1","ms":3}
+{"t":10.55,"k":"state","seq":83,"id":"be-1","s":"done","doing":"done","task":"T1"}
+{"t":10.7,"k":"queue","seq":84,"head":"T2","cmd":"merge (no verify)","step":"verifying","conflicts":0,"bounced":1}
+{"t":10.7,"k":"task","seq":85,"id":"T2","title":"task T2","owner":"be-2","deps":["T1"],"scope":"api/T2/**","s":"verify","attempts":1,"since":10.25,"hist":[{"t":1.35,"s":"todo"},{"t":9.5,"s":"running","owner":"be-1"},{"t":10.25,"s":"running","owner":"be-2"}]}
+{"t":10.85,"k":"queue","seq":86,"head":"T2","cmd":"merge (no verify)","step":"verified","ms":150,"conflicts":0,"bounced":1}
+{"t":10.85,"k":"task","seq":87,"id":"T2","title":"task T2","owner":"be-2","deps":["T1"],"scope":"api/T2/**","s":"merged","attempts":1,"since":10.25,"hist":[{"t":1.35,"s":"todo"},{"t":9.5,"s":"running","owner":"be-1"},{"t":10.25,"s":"running","owner":"be-2"}]}
+{"t":11,"k":"merge","seq":88,"id":"T2","cmd":"merge (no verify)","ms":150}
+{"t":11,"k":"queue","seq":89,"head":null,"conflicts":0,"bounced":1}
+{"t":11.15,"k":"task","seq":90,"id":"T2","title":"task T2","owner":"be-2","scope":"api/T2/**","s":"merged","closure":"verified","attempts":1,"since":11.15,"hist":[{"t":1.35,"s":"todo"},{"t":9.5,"s":"running","owner":"be-1"},{"t":10.25,"s":"running","owner":"be-2"},{"t":11.15,"s":"merged","owner":"be-2"}]}
+{"t":11.3,"k":"task","seq":91,"id":"T4","title":"task T4","owner":"be-2","scope":"api/T4/**","s":"running","attempts":1,"since":11.3,"hist":[{"t":1.65,"s":"todo"},{"t":11.3,"s":"running","owner":"be-2"}]}
+{"t":11.45,"k":"queue","seq":92,"head":"T4","cmd":"merge (no verify)","step":"verifying","conflicts":0,"bounced":1}
+{"t":11.45,"k":"task","seq":93,"id":"T4","title":"task T4","owner":"be-2","scope":"api/T4/**","s":"verify","attempts":1,"since":11.3,"hist":[{"t":1.65,"s":"todo"},{"t":11.3,"s":"running","owner":"be-2"}]}
+{"t":11.6,"k":"queue","seq":94,"head":null,"conflicts":1,"bounced":2}
+{"t":11.6,"k":"sys","seq":95,"ch":"mgr","glyph":"⚠","text":"T4: merge conflict in api/server.go","ag":"be-2","task":"T4"}
+{"t":11.6,"k":"task","seq":96,"id":"T4","title":"task T4","owner":"be-2","scope":"api/T4/**","s":"running","attempts":1,"since":11.3,"hist":[{"t":1.65,"s":"todo"},{"t":11.3,"s":"running","owner":"be-2"}]}
+{"t":11.75,"k":"queue","seq":97,"head":"T4","cmd":"merge (no verify)","step":"verifying","conflicts":1,"bounced":2}
+{"t":11.75,"k":"task","seq":98,"id":"T4","title":"task T4","owner":"be-2","scope":"api/T4/**","s":"verify","attempts":1,"since":11.3,"hist":[{"t":1.65,"s":"todo"},{"t":11.3,"s":"running","owner":"be-2"}]}
+{"t":11.9,"k":"queue","seq":99,"head":null,"conflicts":1,"bounced":3}
+{"t":11.9,"k":"sys","seq":100,"ch":"mgr","glyph":"⚠","text":"T4: the merge queue refused it: it changes a protected file","ag":"be-2","task":"T4"}
+{"t":11.9,"k":"task","seq":101,"id":"T4","title":"task T4","owner":"be-2","scope":"api/T4/**","s":"running","attempts":1,"since":11.3,"hist":[{"t":1.65,"s":"todo"},{"t":11.3,"s":"running","owner":"be-2"}]}
+{"t":12.05,"k":"task","seq":102,"id":"T3","title":"task T3","scope":"api/T3/**","s":"todo","closure":"superseded(T2)","failed":true,"attempts":1,"since":12.05,"hist":[{"t":1.5,"s":"todo"},{"t":12.05,"s":"failed"}]}
+{"t":12.2,"k":"note","seq":103,"id":"sc-1","g":"done","text":"the repository could not be read"}
+{"t":12.2,"k":"state","seq":104,"id":"sc-1","s":"stuck","doing":"failed: failed","task":null}
+{"t":12.35,"k":"note","seq":105,"id":"rv-1","g":"done","text":"no files edited; no tests run"}
+{"t":12.35,"k":"state","seq":106,"id":"rv-1","s":"done","doing":"no files edited; no tests run","task":null}
+{"t":12.5,"k":"state","seq":107,"id":"fe-1","s":"think","doing":"thinking","task":null}
+{"t":12.65,"k":"state","seq":108,"id":"fe-1","s":"think","doing":"thinking","task":null,"reqSince":12.65}
+{"t":12.8,"k":"state","seq":109,"id":"be-2","s":"ask","doing":"wants to run `npm install --save-dev vitest`","task":"T2"}
+{"t":12.95,"k":"goal","seq":110,"s":"active","objective":"Build the API","turns":3,"max":20}
+{"t":13.1,"k":"verdict","seq":111,"text":"not yet: T4 and T5 unfinished","kind":"continue","left":["T4 merged","T5 done"]}
+{"t":13.25,"k":"state","seq":112,"id":"mgr","s":"wait","doing":"waits","task":null}
+{"t":14.75,"k":"sys","seq":113,"ch":"mgr","glyph":"◇","text":"the team is working"}
+{"t":14.75,"k":"gov","seq":114,"rpm":5,"r429":1,"retries":1,"inflight":3,"queued":2}

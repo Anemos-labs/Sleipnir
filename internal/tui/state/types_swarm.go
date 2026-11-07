@@ -55,12 +55,45 @@ type Task struct {
 	Commit               string    `json:"commit,omitempty"` // the integration commit, 12 characters
 	Seq                  uint64    `json:"seq,omitempty"`    // the seq of the board.op that last changed it
 	Updated              time.Time `json:"updated,omitzero"`
+	// Since is when the task entered its column, or changed hands: what its time in the column counts from.
+	Since time.Time `json:"since,omitzero"`
+	// History is the task's life as stretches, oldest first: one begins each time Since moves (at most MaxStretches, the newest).
+	// A task that went from verifying back to running, or from running back to todo, was sent back.
+	History []Stretch `json:"history,omitempty"`
 	// CostUSD, ListUSD and Plan are what the responses of the agents that held the task came to while they held it, every attempt
 	// and owner together, as an agent's are (Spend); Requests counts its main requests. They say where a team's money and turns went.
 	CostUSD  float64 `json:"cost_usd,omitempty"`
 	ListUSD  float64 `json:"list_usd,omitempty"`
 	Plan     bool    `json:"plan,omitempty"`
 	Requests int     `json:"requests,omitempty"`
+}
+
+// Stretch is one stretch of a task's life: the column it was in from At, and who held it then. Why is the board's word on the task as
+// the stretch began: the reason it went back to todo, or why it failed. CostUSD, ListUSD and Requests are what the agents that held
+// it spent on it during the stretch (the task's Spend, split by stretch), so each attempt's cost can be told apart.
+type Stretch struct {
+	At       time.Time `json:"at"`
+	State    TaskState `json:"state"`
+	Owner    string    `json:"owner,omitempty"`
+	Why      string    `json:"why,omitempty"`
+	CostUSD  float64   `json:"cost_usd,omitempty"`
+	ListUSD  float64   `json:"list_usd,omitempty"`
+	Requests int       `json:"requests,omitempty"`
+}
+
+// SentBack counts the stretches that moved a task back to an earlier column without failing: from verifying to running or todo, or
+// from running to todo. It is how many times its work was returned.
+func (t Task) SentBack() int {
+	rank := map[TaskState]int{TaskTodo: 0, TaskRunning: 1, TaskVerifying: 2, TaskMerged: 3}
+	n := 0
+	for i := 1; i < len(t.History); i++ {
+		ra, okA := rank[t.History[i-1].State]
+		rb, okB := rank[t.History[i].State]
+		if okA && okB && rb < ra {
+			n++
+		}
+	}
+	return n
 }
 
 // Spend is the task's figure: what the agents that held it spent on it.

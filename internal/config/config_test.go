@@ -104,21 +104,22 @@ func TestEveryJSONTagIsSnakeCase(t *testing.T) {
 
 func TestSectionsMatchTheSpecifiedFields(t *testing.T) {
 	want := map[string][]string{
-		"Cache":       {"instruction_max_tokens", "shared_ttl", "min_layer_for_breakpoint", "compact_at_percent", "compact_threshold_tokens", "thread_soft_limit_tokens", "compaction_mode", "hot_max_tokens", "affinity_shards"},
+		"Cache":       {"instruction_max_tokens", "shared_ttl", "min_layer_for_breakpoint", "compact_at_percent", "compact_threshold_tokens", "thread_soft_limit_tokens", "compaction_mode", "attached_images", "describe_images", "hot_max_tokens", "affinity_shards"},
 		"Swarm":       {"max_workers", "requests_per_minute", "max_concurrent_requests", "isolation", "mailman", "auto_docs", "pool_max", "push_progress", "budget_usd"},
 		"Tools":       {"max_output_chars", "default_timeout_sec", "max_timeout_sec", "web_allow_private", "web_allow_hosts", "builtin_skills"},
 		"Models":      {"default", "roles", "favorites"},
 		"Permissions": {"mode", "allow", "ask", "deny", "roles", "manager_approves", "manager_answers_after", "manager_answers_up_to"},
 		"Provider":    {"dialect", "base_url", "api_key_env", "auth", "headers", "options", "allow_hosts", "allow_insecure_http", "suggested_model"},
-		"Config":      {"providers", "models", "permissions", "cache", "swarm", "tools", "resources", "plugins", "hooks", "mcp"},
+		"Config":      {"providers", "models", "permissions", "cache", "swarm", "tools", "resources", "storage", "plugins", "hooks", "mcp"},
 		"Resources":   {"cpus", "heavy_slots", "memory_reserve_mb", "priority", "unlimited"},
+		"Storage":     {"clean", "worktree_idle"},
 		"Plugins":     {"profile", "enabled", "settings"},
 	}
 	types := map[string]reflect.Type{
 		"Cache": reflect.TypeOf(Cache{}), "Swarm": reflect.TypeOf(Swarm{}), "Tools": reflect.TypeOf(Tools{}),
 		"Models":      reflect.TypeOf(Models{}),
 		"Permissions": reflect.TypeOf(Permissions{}), "Provider": reflect.TypeOf(Provider{}), "Config": reflect.TypeOf(Config{}),
-		"Plugins": reflect.TypeOf(Plugins{}), "Resources": reflect.TypeOf(Resources{}),
+		"Plugins": reflect.TypeOf(Plugins{}), "Resources": reflect.TypeOf(Resources{}), "Storage": reflect.TypeOf(Storage{}),
 	}
 	for name, fields := range want {
 		var got []string

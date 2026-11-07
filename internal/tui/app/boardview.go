@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/tui/cell"
 	"github.com/anemos-labs/sleipnir/internal/tui/state"
@@ -126,6 +127,8 @@ func taskTable(s Scene, w, limit int) []cell.Line {
 		titleW := w - r.w
 		tail := ""
 		switch {
+		case t.State == state.TaskFailed: // why it failed, in the words of the web card
+			tail = closureWords(t.Closure, t.Attempts)
 		case len(t.Deps) > 0 && t.State == state.TaskTodo:
 			tail = "after " + strings.Join(t.Deps, ",")
 		case t.Attempts > 1:
@@ -135,6 +138,12 @@ func taskTable(s Scene, w, limit int) []cell.Line {
 		}
 		if sp := t.Spend(); sp.Shown() > 0 { // what the agents that held it spent on it
 			tail = strings.TrimPrefix(tail+" · "+widget.Spend(sp.Shown(), sp.Plan), " · ")
+		}
+		if n := t.SentBack(); n > 0 { // how many times its work was returned, as the web card's strip says it
+			tail = strings.TrimPrefix(tail+" · "+fmt.Sprintf("↩%d", n), " · ")
+		}
+		if a := taskAge(t, s.Snap.Now); a != "" { // its time in its column, as the web board's card says it
+			tail = strings.TrimPrefix(tail+" · "+a, " · ")
 		}
 		title := clean(t.Title)
 		if t.Parent != "" {
@@ -162,6 +171,57 @@ func taskTable(s Scene, w, limit int) []cell.Line {
 		out = append(out, cell.Styled(st.dim, fmt.Sprintf("… and %d more", more)))
 	}
 	return out
+}
+
+// closureWords says why a task failed from its closure (kind or kind(target), internal/swarm/closure.go) and its attempts, in the
+// words the web board's failed card uses (ui.closureWords).
+func closureWords(closure string, attempts int) string {
+	kind, target := closure, ""
+	if i := strings.IndexByte(closure, '('); i >= 0 {
+		kind, target = closure[:i], strings.TrimSuffix(closure[i+1:], ")")
+	}
+	switch kind {
+	case "verifier":
+		return "verification kept failing"
+	case "exhausted":
+		if attempts > 1 {
+			return fmt.Sprintf("out of attempts (%d)", attempts)
+		}
+		return "out of attempts"
+	case "denied":
+		return "the manager refused the work"
+	case "canceled":
+		return "canceled"
+	case "superseded":
+		if target != "" {
+			return "replaced by " + clean(target)
+		}
+		return "replaced by another task"
+	case "blocked_on":
+		if target != "" {
+			return "blocked on " + clean(target)
+		}
+		return "blocked on another task"
+	case "":
+		return "failed"
+	}
+	return "failed (" + clean(closure) + ")"
+}
+
+// taskAge is an unfinished task's time in its column at now, short enough for a row (45s, 12m, 3h 05m), or "" for a merged or
+// failed task, or when the time is not known. The web board's cards say the same figure.
+func taskAge(t state.Task, now time.Time) string {
+	if t.Since.IsZero() || now.IsZero() || t.State == state.TaskMerged || t.State == state.TaskFailed {
+		return ""
+	}
+	d := max(0, now.Sub(t.Since))
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d/time.Second))
+	case d < 90*time.Minute:
+		return fmt.Sprintf("%dm", int(d/time.Minute))
+	}
+	return fmt.Sprintf("%dh %02dm", int(d/time.Hour), int(d/time.Minute)%60)
 }
 
 // padTo pads or fits a string to the requested terminal-cell width.

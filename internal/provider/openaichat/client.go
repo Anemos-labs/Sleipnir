@@ -180,6 +180,7 @@ func (c *Client) Do(ctx context.Context, req *provider.Request, on func(provider
 	}
 	opts := c.cfg.Options
 	opts.CaptureTokens = req.Capture && c.profile.CaptureTokens
+	opts.NoImages = opts.NoImages || c.profile.NoImages
 	body, err := Build(p, opts, stream)
 	if err != nil {
 		return nil, &provider.Error{Kind: provider.ErrBadRequest, Message: err.Error(), Err: err}

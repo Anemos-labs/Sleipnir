@@ -79,8 +79,9 @@
       <form class="composer" id="composer" autocomplete="off">
         <div class="qd" id="queuedLines"></div>
         <div class="delivery-controls" id="deliveryCtl" role="group" aria-label="GitHub automation for your next message" aria-describedby="deliveryWhy"><label id="autoFixLab" title="Sleipnir opens a pull request for the work of your next message, then fixes failing CI checks and review comments until they pass (needs the gh command signed in to GitHub)"><input type="checkbox" id="autoFixCI"> Auto-fix CI &amp; reviews</label><label id="autoMergeLab" title="Sleipnir merges that pull request on GitHub once its checks and the repository's rules pass (needs the gh command signed in to GitHub)"><input type="checkbox" id="autoMergePR"> Auto-merge</label><span class="dlv-why" id="deliveryWhy">GitHub, for your next message only: open a pull request, fix CI and reviews, merge when green.</span></div>
+        <div class="imgs" id="imgStrip" hidden aria-label="Attached images"></div>
         <div class="crow"><span class="pr" aria-hidden="true">❯</span><textarea id="input" rows="1" placeholder="Message Sleipnir, / for commands, @ for files" aria-label="Message Sleipnir"></textarea></div>
-        <div class="cbar"><button class="mode" type="button" id="modeBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="modeMenu" aria-label="Permission mode: default. Opens a menu."><span id="modeTxt">default</span><svg class="caret" viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M2 6.5L5 3.5l3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span class="hint" id="cHint">ctrl+t stats · / commands</span><span class="sp"></span><button class="send" type="submit" aria-label="Send" title="Send (Enter)">⏎</button></div>
+        <div class="cbar"><button class="mode" type="button" id="modeBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="modeMenu" aria-label="Permission mode: default. Opens a menu."><span id="modeTxt">default</span><svg class="caret" viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M2 6.5L5 3.5l3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><span class="hint" id="cHint">ctrl+t stats · / commands</span><span class="sp"></span><input type="file" id="imgPick" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden><button class="attach" type="button" id="attachBtn" aria-label="Attach images" title="Attach images (or paste or drop them in the message box)"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="6" cy="6.5" r="1.2" fill="currentColor"/><path d="M3 12l3.5-3.5 2.5 2.5 2-2 2 2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></button><button class="send" type="submit" aria-label="Send" title="Send (Enter)">⏎</button></div>
         <div class="slash" id="slash" hidden role="listbox" aria-label="Commands"></div>
       </form>
     </div>
@@ -116,6 +117,7 @@
 <script src="js/84-ui-chat.js"></script>
 <script src="js/85-ui-approvals.js"></script>
 <script src="js/86-ui-overlays.js"></script>
+<script src="js/86b-ui-ctxmenu.js"></script>
 <script src="js/87b-ui-folder.js"></script>
 <script src="js/87-ui-sheets.js"></script>
 <script src="js/87c-ui-teams.js"></script>

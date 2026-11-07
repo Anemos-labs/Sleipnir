@@ -186,11 +186,6 @@ func (a *AnthropicServer) imageTokens() int {
 // is also why the mock does not chain signatures (a documented simplification:
 // removing a block from the middle is not detected).
 
-type recorder struct {
-	base string // tools + system
-	rec  string // record before the current message
-}
-
 // canonBlock canonicalizes a mock cache record after removing cache-control markers so marker
 // movement does not change the key.
 func canonBlock(b aBlock) string {

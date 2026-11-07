@@ -7,6 +7,9 @@
 *.out
 coverage.txt
 
+# reports scripts/validate.sh writes by default (OUT=validation)
+/validation/
+
 # local harness state (sessions, blobs, caches)
 .sleipnir/sessions/
 .sleipnir/blobs/

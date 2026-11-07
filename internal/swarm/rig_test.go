@@ -248,6 +248,16 @@ func rvBlock(ctx context.Context, ch <-chan struct{}) {
 	}
 }
 
+// readOnly makes the named roles read-only, as a project's agent definitions can (every built-in role writes), for a test of the
+// read-only policy. It is called before the first spawn.
+func (r *rvRig) readOnly(names ...string) {
+	for _, n := range names {
+		role := r.sw.roles[n]
+		role.ReadOnly = true
+		r.sw.roles[n] = role
+	}
+}
+
 func (r *rvRig) idle(id string) bool {
 	m := r.sw.get(id)
 	if m == nil {

@@ -54,8 +54,8 @@ project" below).
   rules, shell-syntax analysis that judges every simple command including those in substitutions, hard denies that no
   mode lifts (`~/.ssh` keys, `~/.aws`, `~/.gnupg`, `/proc/*/environ`, `.git` writes, system directories), guarded paths
   (`.env`), role profiles that can only tighten, and no prompter means deny. Every file, web and shell tool asks the engine
-  before it acts; background-job tools ask before touching another agent's job, and a read-only role (reviewer, scout) is
-  denied them by name. A question in `chat` takes only a line typed after it was shown (`cmd/sleipnir/chat_input.go`): text
+  before it acts; background-job tools ask before touching another agent's job, and a read-only role (one a project
+  defines with `readonly: true`) is denied them by name. A question in `chat` takes only a line typed after it was shown (`cmd/sleipnir/chat_input.go`): text
   pasted or typed while a turn runs waits for the next prompt, so a `y` that arrived earlier cannot approve an action it was
   not typed for, and a question that Ctrl-C cancels takes nothing.
 * *Tool output is data.* It arrives as `role:tool`, never as an instruction. Pins and notes are user-role context, mail is typed,
@@ -400,7 +400,7 @@ Python virtual environment of the workspace (`Bash(python:venv)`, `internal/perm
 `virtualenv DIR`, `uv venv [DIR]`), installing packages into it with its own pip (`DIR/bin/pip install`, `DIR/bin/python -m pip install`,
 `uv pip install --python DIR/bin/python`), and running the tests with it (`DIR/bin/python -m pytest`, `DIR/bin/pytest`). In `default` mode
 these are routine questions, which the manager of a team may answer. It is the one place where an allowed or routine command reaches
-beyond this machine: the package index pip or uv is configured with. The read-only roles (reviewer, scout, architect) hold only the run
+beyond this machine: the package index pip or uv is configured with. Read-only roles (those a project defines with `readonly: true`) hold only the run
 part (`Bash(python:venv-tests)`): they run the tests and checks with an environment the writers made, and never create one or install into it.
 
 What an install does is run code from the internet with the user's rights: a source distribution's build code runs during the install,
@@ -460,6 +460,7 @@ Call `harden.Process()` first thing in `main` (`cmd/sleipnir` does). It never fa
 | Keys out of the harness's own environment | `cmd/sleipnir` calls `harden.Process(harden.MoveKeys())`: provider API keys (every variable ending in `API_KEY`, and any credential the configuration names, such as a provider's `api_key_env`) move into memory and are unset, so no child that inherits the environment (git, hooks, verifiers, MCP servers) receives them. Every reader goes through `harden.Secret` (a source-level test, `TestReadersOfCredentialsUseSecret`, fails on a new `os.Getenv` of a credential; `TestKeysLeaveTheEnvironmentButStillReachTheirReaders` runs the real code paths in a child that did what `main` does). MCP `${NAME}` references still resolve against the same set of variables as before, held keys included, and approving a project entry still lists the variables it asks for. On macOS and Windows this keeps keys out of children, not out of `ps eww` for the harness itself: the key was in the environment when the process started | same | same |
 | Scratch files of commands | `TMPDIR` is `<state>/sessions/<id>/tmp` (0700) for every command of a session (not for a rollout, which brings its own environment). The permission engine treats that directory as part of the workspace of every agent (an isolated writer included) and knows `$TMPDIR`, so `echo x > "$TMPDIR/out-$$.json"` and `go build -o $TMPDIR/x` need no question in `accept-edits` mode; the runtime context tells the model that scratch files go there and that `/tmp` asks, and a refusal of any other place names the directory. A program that ignores `TMPDIR` and writes `/tmp` is still asked about | same | same |
 | Process tree cleanup | Own session and process group, SIGTERM then SIGKILL of the group; strays are reaped at shutdown, including background processes a finished command left running with its output sent elsewhere (`nohup server >log 2>&1 &`); a team worker's are reaped when its run ends (background jobs stay until `bash_kill` or shutdown) | same | Windows task and integration verifiers use Job Objects to terminate descendants on cancellation, timeout, and exit. Other command runners use `taskkill /T`, best effort |
+| Self-protection | A guard against the common ways an agent ends processes by name, not a sandbox: the bash tool does not run a command that signals processes picked by a pattern the harness's own command line or name also matches (`pkill -f`, `ps \| grep x \| xargs kill`, `kill $(pgrep -f x)`, also under `sudo` or run by `xargs`), or by the harness's pid, in every mode; ending the harness ends every agent of the session, and the model is told to end what it started by pid. A pid computed when the command runs, a script, or a program other than kill, pkill and killall is not seen | same | the same forms in a POSIX shell; `taskkill` and `Stop-Process` are not checked |
 | Shell used | `bash`, else `sh`; the working directory persists between calls | same | `pwsh`, `powershell` or `cmd`; no working-directory persistence, no cwd guard |
 | Terminal safety of tool output | `tools.SanitizeForTerminal` strips escape sequences, C0/C1 controls, bidi and other invisible characters and CRs; the shell tool already cleans its own output as it reads it. The UI must call the helper for file, web and listing text before printing | same | same |
 
@@ -476,7 +477,7 @@ session, the agents' and the verification's, inside one container of its own; `-
 `ruby:3-bookworm`, `node:lts-bookworm`, else `buildpack-deps:bookworm`. For Go, whose fetch runs none of the project's code and
 nothing its configuration names (`go mod download`), the container starts on the network, fetches the modules into its in-memory `HOME`, and is
 disconnected from every network before the session's first command; a container that cannot be disconnected is removed and the
-session does not start. Builds and tests then run offline. Other languages' package managers run install scripts, build
+session does not start. Builds and tests then run offline. When a command fails because a name did not resolve or a host could not be reached (in the words of go, curl, git, pip or npm), the bash tool adds a note to its result: the network looks unreachable, retrying will not help, and how to work with what is installed (`GOPROXY=off`, `npm --offline`, `pip --no-index`), so a model in a sandbox or behind a firewall does not spend its first minutes retrying downloads. Other languages' package managers run install scripts, build
 packages or run programs the project's configuration names (cargo's credential providers), so nothing is fetched for them: use `--sandbox-network` when the session must install dependencies. The harness stays outside: the model's keys, the session's recording, the file and web tools,
 hooks and MCP servers run on the host, and each command is sent in with `docker exec`. This is the pattern hosted review
 services use for untrusted repositories: the agent loop outside, commands streamed into the sandbox.

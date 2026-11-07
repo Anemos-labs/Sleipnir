@@ -44,7 +44,7 @@ func (t *taskTool) deliver(ctx context.Context, c *tools.Call, in taskIn) *tools
 		return tools.Errorf("delivery cannot commit: %v", preview.CommitBlocked)
 	}
 	if !preview.Waiting {
-		return text("verified work is already committed; use bash for push and PR commands")
+		return text("there is no verified work waiting to deliver")
 	}
 	root := s.deps.Isolation.Manager.Repository().Root()
 	paths := make([]string, 0, len(preview.Files))

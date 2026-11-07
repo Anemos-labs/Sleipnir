@@ -76,6 +76,7 @@ type member struct {
 	ev       *Evidence
 	manager  bool
 	readOnly bool
+	reports  bool // the role's deliverable is a report (Role.Reports)
 	// service marks an agent of the harness itself (the mailman): it is not a worker,
 	// holds no task, and never counts as unfinished work.
 	service bool
@@ -240,7 +241,7 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 		}
 	}
 	// A member is made idle, and has been since it was made (idle_capacity counts a pool member that has not run yet).
-	m := &member{id: id, role: r.Name, ev: ev, state: "idle", manager: isMgr, readOnly: r.ReadOnly, service: isSvc, sink: sink, notify: make(chan struct{}, 1),
+	m := &member{id: id, role: r.Name, ev: ev, state: "idle", manager: isMgr, readOnly: r.ReadOnly, reports: r.Reports(), service: isSvc, sink: sink, notify: make(chan struct{}, 1),
 		tree: tree, dir: workdir, slot: -1, idleAt: s.deps.Now()}
 	if ev != nil {
 		ev.bind(func(path string) string { return s.editTask(id, path) }, func(task string) bool {
@@ -287,7 +288,7 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 	}
 	cfg := agent.Config{
 		SnapshotEachStep: s.cfg.PersistentPools || s.isolated() && s.deps.Isolation.Resumable,
-		ID:               id, Role: r.Name, Model: model, Provider: prov, Compactor: d.Compactor, CompactorModel: d.CompactorModel, CompactorHealth: d.CompactorHealth, Tools: d.Registry, ToolSpecs: d.ToolSpecs,
+		ID:               id, Role: r.Name, Model: model, Provider: prov, Compactor: d.Compactor, CompactorModel: d.CompactorModel, CompactorHealth: d.CompactorHealth, Images: d.Images, Tools: d.Registry, ToolSpecs: d.ToolSpecs,
 		CaptureTokens: d.CaptureTokens, TrainingLogs: d.TrainingLogs,
 		Const: d.Const, Shared: s.currentShared(), RoleL: s.roleLay[r.Name], Notes: notes,
 		Params: params, Effort: d.Effort, OutagePatience: d.OutagePatience, WaitUnreachable: d.WaitUnreachable,
@@ -420,8 +421,8 @@ func (s *Swarm) activeWriters() int {
 	s.mu.Unlock()
 	n := 0
 	for _, m := range ms {
-		if m.manager || m.readOnly {
-			continue
+		if m.manager || m.readOnly || s.onPlan(m) {
+			continue // a planning task writes nothing (planPermission)
 		}
 		m.mu.Lock()
 		if m.life == lifeRunning {
@@ -524,6 +525,9 @@ type memberSink struct {
 	s  *Swarm
 	m  *member
 	ev *Evidence
+
+	// tools is how many tool calls of the member are running (a response can start several).
+	tools atomic.Int32
 }
 
 // safely recovers sink panics and records them as sink.panic events instead of unwinding the
@@ -581,6 +585,7 @@ func (k *memberSink) ToolStart(a string, call core.Block) {
 		// notice and sees the input the call runs with.
 		k.safely(func() { k.s.noteCoordination(k.m.id, call.ToolName, jsonString(call.Input, "id")) })
 	}
+	k.tools.Add(1)
 	k.safely(func() { k.m.setState(k.s, "running", activity(call)) })
 	k.safely(func() { k.Sink.ToolStart(a, call) })
 }
@@ -596,8 +601,15 @@ func (k *memberSink) ToolEnd(a string, call core.Block, res *tools.Result, took 
 			k.m.worked.Store(k.m.turns.Load() + 1)
 		}
 	})
-	if call.ToolName == "wait" {
+	// Once its last call has returned the agent is with the model again, and its line says so: the line of the call it made
+	// last stayed until the next call, and a worker whose model took twenty minutes to answer read on every board as "running a
+	// command" for twenty minutes, which its manager took for a hung command.
+	switch left := k.tools.Add(-1); {
+	case call.ToolName == "wait":
 		k.safely(func() { k.m.setState(k.s, "running", "reviewing results") })
+	case left <= 0:
+		k.tools.Store(0)
+		k.safely(func() { k.m.setState(k.s, "running", "thinking") })
 	}
 	k.safely(func() { k.Sink.ToolEnd(a, call, res, took) })
 }
@@ -655,7 +667,7 @@ func (s *Swarm) adopt(m *member, rs *runState) {
 	for _, t := range snap.Tasks {
 		if t.Owner == m.id && t.Status == StatusDoing {
 			rs.tasks[t.ID] = t.Rev
-			s.review.noteBegan(t.ID, t.Rev, rs.started)
+			s.review.noteBegan(t.ID, t.Rev, rs.started, m.id)
 			if m.task == "" || m.task != t.ID {
 				m.task = t.ID
 			}
@@ -709,7 +721,7 @@ func (s *Swarm) trackClaim(agentID, taskID string) {
 	m.mu.Lock()
 	if m.run != nil {
 		m.run.tasks[taskID] = t.Rev
-		s.review.noteBegan(taskID, t.Rev, s.deps.Now())
+		s.review.noteBegan(taskID, t.Rev, s.deps.Now(), agentID)
 	}
 	m.task = taskID
 	m.gateTries = 0
@@ -725,6 +737,29 @@ func (s *Swarm) trackClaim(agentID, taskID string) {
 		card += isolationCard(integrationRefOf(m.tree))
 	}
 	m.a.QueueAssignment(card)
+}
+
+// trackResumed adds a task the worker resumed to its run's assignments. Resuming the task the worker already holds keeps
+// that assignment as it is (its wake and gate counts, and no new assignment card); resuming another task is a new
+// assignment, tracked as a claim.
+func (s *Swarm) trackResumed(agentID, taskID string) {
+	m := s.get(agentID)
+	if m == nil {
+		return
+	}
+	t, ok := s.Board.Snapshot().Task(taskID)
+	if !ok {
+		return
+	}
+	m.mu.Lock()
+	same := m.task == taskID
+	if same && m.run != nil {
+		m.run.tasks[taskID] = t.Rev
+	}
+	m.mu.Unlock()
+	if !same {
+		s.trackClaim(agentID, taskID)
+	}
 }
 
 // launch starts the run goroutine of a reserved member.
@@ -1156,7 +1191,7 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 		if res != nil {
 			summary = strings.TrimSpace(res.Text)
 		}
-		if summary == "" && m.readOnly && ctx.Err() == nil && s.askForReport(m, t) {
+		if summary == "" && m.reports && ctx.Err() == nil && s.askForReport(m, t) {
 			continue
 		}
 		vr, gdir := s.gateFor(ctx, t, m, m.dir)
@@ -1281,11 +1316,13 @@ func (s *Swarm) settleStopped(m *member, tasks map[string]uint64, kind stopKind,
 	for _, id := range sortedKeys(tasks) {
 		if task, ok := s.Board.Snapshot().Task(id); ok && task.Pool != nil {
 			if !quiet {
-				line := "Pool leader stopped on " + id + ": " + why + ". Resume this pool with its existing members."
+				// The pool tool has no resume: the line names the spawn that does it (a manager told only "resume" looked for one).
+				resume := "spawn task=" + id + " agent=" + m.id
+				line := "Pool leader stopped on " + id + ": " + why + ". Resume this pool with its existing members (" + resume + ")."
 				if exhausted && len(task.Pool.Members) > 1 {
 					// The harness does not restart the leader on it again: a leader whose model keeps failing holds the pool until the
 					// manager excuses it, and the next member leads.
-					line = fmt.Sprintf("Pool leader stopped on %s: %s. The harness does not restart %s on it again: resume this pool with its existing members, or, if the failure is %s's own (its model or provider), excuse it (pool action=excuse id=%s member=%s text=<why>) and the next member leads.", id, why, m.id, m.id, id, m.id)
+					line = fmt.Sprintf("Pool leader stopped on %s: %s. The harness does not restart %s on it again: resume this pool with its existing members (%s), or, if the failure is %s's own (its model or provider), excuse it (pool action=excuse id=%s member=%s text=<why>) and the next member leads.", id, why, m.id, resume, m.id, id, m.id)
 				}
 				s.notify(s.ManagerID(), "request", line)
 			}

@@ -89,8 +89,53 @@ func TestNoteToolStopsAnAgentThatFloodsTheTeamsContext(t *testing.T) {
 			break
 		}
 	}
-	if !strings.Contains(last, "proposed notes waiting") || !strings.Contains(last, "fold your facts into one note") {
+	if !strings.Contains(last, "8 notes on the board (#1,") || !strings.Contains(last, "withdraw=<id>") || !strings.Contains(last, "fold your facts into one note") {
 		t.Fatalf("an agent that adds notes without end was told %q", last)
+	}
+	// Withdrawing one makes room: nothing else ever would.
+	if r := secRevCall(t, note, "chatty", "backend", map[string]any{"withdraw": 3}); r.IsError || !strings.Contains(r.Text, "withdrew note #3") {
+		t.Fatalf("withdraw: %q (error %v)", r.Text, r.IsError)
+	}
+	if r := secRevCall(t, note, "chatty", "backend", map[string]any{"text": "the corrected fact"}); r.IsError {
+		t.Fatalf("a note after a withdrawal: %q", r.Text)
+	}
+}
+
+// A note is withdrawn only by its author, and a wrong id names the agent's own notes.
+func TestNoteWithdrawIsTheAuthorsAndSaysWhichNotesAreYours(t *testing.T) {
+	s := secRevSwarm()
+	note := secRevTool(t, s, "note")
+	secRevCall(t, note, "be-1", "backend", map[string]any{"text": "tests run with npm test"})
+	secRevCall(t, note, "be-2", "backend", map[string]any{"text": "the CLI is bin/cronx"})
+	r := secRevCall(t, note, "be-2", "backend", map[string]any{"withdraw": 1})
+	if !r.IsError || !strings.Contains(r.Text, "be-1's") {
+		t.Errorf("withdrawing another's note: %q (error %v)", r.Text, r.IsError)
+	}
+	r = secRevCall(t, note, "be-2", "backend", map[string]any{"withdraw": 9})
+	if !r.IsError || !strings.Contains(r.Text, "yours are #2") {
+		t.Errorf("withdrawing a note that is not there: %q (error %v)", r.Text, r.IsError)
+	}
+	if n := len(s.Board.Snapshot().Notes); n != 2 {
+		t.Errorf("%d notes after refused withdrawals, want 2", n)
+	}
+	if r := secRevCall(t, note, "be-2", "backend", map[string]any{"withdraw": 2}); r.IsError {
+		t.Fatalf("withdrawing one's own note: %q", r.Text)
+	}
+	if ns := s.Board.Snapshot().Notes; len(ns) != 1 || ns[0].ID != 1 {
+		t.Errorf("notes after the withdrawal: %+v", ns)
+	}
+}
+
+// A field the note tool does not have is refused and adds nothing: in a real run {"action": "remove", "text": ...} was taken as a
+// new note with the text meant to be removed, and the agent was told "noted".
+func TestNoteToolRefusesAFieldItDoesNotHave(t *testing.T) {
+	s := secRevSwarm()
+	r := secRevCall(t, secRevTool(t, s, "note"), "be-1", "backend", map[string]any{"action": "remove", "text": "a stale fact"})
+	if !r.IsError || !strings.Contains(r.Text, `no field "action"`) || !strings.Contains(r.Text, "withdraw=<id>") {
+		t.Errorf("a note with an action: %q (error %v)", r.Text, r.IsError)
+	}
+	if n := len(s.Board.Snapshot().Notes); n != 0 {
+		t.Errorf("%d notes after a refused call", n)
 	}
 }
 
@@ -117,5 +162,45 @@ func TestMailToolSendsToAnAgentAndSaysNoToOneThatIsNotThere(t *testing.T) {
 		if res := r.callTool(ctx, "mail", "mgr", "manager", in); !res.IsError {
 			t.Errorf("%s: sent: %q", name, res.Text)
 		}
+	}
+}
+
+// Widening a parent does not widen its open children, and the manager is told which children keep their own scopes: in a team run
+// the manager widened T4 for a file, T9's worker was refused writing it, and T9 needed a second widening.
+func TestWideningAParentNamesTheChildrenThatKeepTheirScopes(t *testing.T) {
+	r := newPoolRig(t)
+	if err := r.sw.Board.poolUpdate("mgr", r.parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	kid, err := r.sw.Board.CreateTask(r.lead, TaskSpec{Parent: r.parent.ID, Title: "pages", Role: "backend", Files: []string{"app/pages/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := r.must(r.task("mgr", map[string]any{"action": "update", "id": r.parent.ID, "files": []string{"app/**", "types/**"}}), "widen the parent")
+	if !strings.Contains(got, "keep their own scopes") || !strings.Contains(got, kid.ID+" (todo: app/pages/**)") || !strings.Contains(got, "widen that child too") {
+		t.Fatalf("widening a parent with an open child: %q", got)
+	}
+	got = r.must(r.task("mgr", map[string]any{"action": "update", "id": kid.ID, "files": []string{"app/pages/**", "types/**"}}), "widen the child")
+	if got != "updated "+kid.ID {
+		t.Fatalf("a task with no children: %q", got)
+	}
+}
+
+// A review task created with no deps while implementation work is open is told what it will not see; one that waits for that
+// work, and one created once nothing is open, are not.
+func TestAReviewThatWaitsForNothingNamesTheOpenWork(t *testing.T) {
+	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+	create := func(spec map[string]any) string {
+		spec["action"] = "create"
+		return r.callTool(context.Background(), "task", "mgr", "manager", spec).Text
+	}
+	create(map[string]any{"title": "store", "role": "backend", "description": "the store"})
+	create(map[string]any{"title": "web ui", "role": "frontend", "description": "the ui"})
+	got := create(map[string]any{"title": "review", "role": "reviewer", "description": "review the result"})
+	if !strings.Contains(got, "It waits for nothing while T1 and T2 are still open") || !strings.Contains(got, "task revise id=T3 deps=[...]") {
+		t.Fatalf("a depless review was told %q", got)
+	}
+	if got := create(map[string]any{"title": "review 2", "role": "reviewer", "description": "review", "deps": []string{"T1", "T2"}}); strings.Contains(got, "waits for nothing") {
+		t.Fatalf("a review with deps was told %q", got)
 	}
 }

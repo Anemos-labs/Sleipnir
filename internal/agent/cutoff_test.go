@@ -256,8 +256,8 @@ func TestAResponseThatRepeatsOneCallIsStoppedAndNoneOfItRuns(t *testing.T) {
 		}
 	}
 	last := second[len(second)-1]
-	if last.Role != "user" || !strings.Contains(last.Content, "same tool call again and again") {
-		t.Errorf("the last message is %+v: the model is told its response was stopped and why", last)
+	if last.Role != "user" || !strings.Contains(last.Content, "same echo call (same arguments) again and again") || !strings.Contains(last.Content, "several different calls in one response are fine") {
+		t.Errorf("the last message is %+v: the model is told its response was stopped, which call repeated and why", last)
 	}
 }
 

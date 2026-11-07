@@ -27,6 +27,9 @@ type Message struct {
 	// changed).
 	Kind string `json:"kind,omitempty"`
 	Text string `json:"text"`
+	// still, for a harness notice that can stop being true before it is read, says whether it still holds: a notice it says
+	// no longer does is dropped unread (agent.SendIf). Nil for every other message.
+	still func() bool
 	// Via and Origins are set on a digest the mailman delivered (mailman.go), never on
 	// anything an agent sent: Via is the mailman that wrote the text (From), Origins the
 	// harness's own list of who sent the messages the digest stands for ("be-1 x2",
@@ -34,6 +37,11 @@ type Message struct {
 	// what, and the mailman cannot choose the names.
 	Via     string   `json:"via,omitempty"`
 	Origins []string `json:"origins,omitempty"`
+	// Full is the whole message when it is longer than its kind's inline limit
+	// (RouterConfig.MaxChars, MaxContentChars). Text then holds its opening, which is what
+	// lands in the recipient's thread, and the recipient (or the sender) reads the rest with
+	// mail read=<id>. Line breaks are kept. Empty when Text is the whole message.
+	Full string `json:"full,omitempty"`
 }
 
 // Format renders the message as the text delivered into the recipient's thread:
@@ -51,7 +59,16 @@ func (m Message) Format() string {
 	if m.Via != "" {
 		return fmt.Sprintf("[mail %s %svia %s from %s] %s", m.ID, kind, m.Via, strings.Join(m.Origins, ", "), m.Text)
 	}
-	return fmt.Sprintf("[mail %s %sfrom %s] %s", m.ID, kind, m.From, m.Text)
+	return fmt.Sprintf("[mail %s %sfrom %s] %s%s", m.ID, kind, m.From, m.Text, m.continues())
+}
+
+// continues is the harness's note after the opening of a message that was too long to
+// deliver whole: how much there is and how to read it. Empty for a whole message.
+func (m Message) continues() string {
+	if m.Full == "" {
+		return ""
+	}
+	return fmt.Sprintf(" [mail %s continues: %d characters in all; read the whole message with mail read=%s]", m.ID, utf8.RuneCountInString(m.Full), m.ID)
 }
 
 // untrustedNote closes every message an agent wrote: what follows the header is
@@ -94,14 +111,28 @@ type RouterConfig struct {
 	// pool member's planning input, review findings, the shape of a changed interface. Zero
 	// means MaxChars.
 	MaxContentChars int
-	DedupeWindow    time.Duration // identical text to the same recipient
+	// MaxBodyChars bounds the whole of a message. A message longer than its kind's inline
+	// limit (MaxChars, MaxContentChars) but within MaxBodyChars is not refused: its opening
+	// is delivered with a note of how much follows, and the recipient reads all of it with
+	// mail read. Nothing is lost, and the recipient's thread pays only for the opening.
+	// Zero or less than the inline limit means no spill: a longer message is refused.
+	MaxBodyChars int
+	// MaxKeptBytes bounds the long messages the router keeps for mail read; the oldest are
+	// forgotten first. Zero means 8 MiB.
+	MaxKeptBytes int
+	DedupeWindow time.Duration // identical text to the same recipient
 }
 
-// DefaultRouterConfig returns conservative limits: 600 characters for a request or a
-// blocker, 1,200 for mail that carries content.
+// DefaultRouterConfig returns conservative inline limits: 600 characters of a request or
+// a blocker, 1,200 of mail that carries content, reach the recipient's thread; a message
+// of up to 24,000 characters is accepted, and the rest is read with mail read.
 func DefaultRouterConfig() RouterConfig {
-	return RouterConfig{MaxPerMinute: 8, MaxPerPairPerMin: 3, MaxChars: 600, MaxContentChars: 1200, DedupeWindow: 5 * time.Minute}
+	return RouterConfig{MaxPerMinute: 8, MaxPerPairPerMin: 3, MaxChars: 600, MaxContentChars: 1200, MaxBodyChars: 24000,
+		DedupeWindow: 5 * time.Minute}
 }
+
+// defaultKeptBytes is RouterConfig.MaxKeptBytes when it is zero.
+const defaultKeptBytes = 8 << 20
 
 // contentKind reports whether a mail kind carries content rather than asking for
 // something: info, answer and contract.
@@ -122,7 +153,7 @@ func (c RouterConfig) maxCharsFor(kind string) int {
 // characters shorter and are refused again. So it says by how much the message is over,
 // gives a target with some margin, and names the places that hold long content:
 // a file in the sender's task scope (for a role that writes), read by its path, and the
-// agreement submitted with task done (at most 6000 bytes), read with task get and
+// agreement submitted with task done (at most 16000 bytes), read with task get and
 // inherited by dependent tasks. Notes hold 300 characters and are not offered.
 func tooLong(kind string, n, limit int) error {
 	return fmt.Errorf("message too long: %d characters, %d over the %d-character limit for %s mail. "+
@@ -147,6 +178,11 @@ type Router struct {
 	pair      map[string][]time.Time
 	recent    map[string]time.Time
 	lastSweep time.Time
+	// kept holds the messages that were too long to deliver whole, for mail read, in kept
+	// order (oldest first) within keptBytes of MaxKeptBytes.
+	kept      map[string]Message
+	keptOrder []string
+	keptBytes int
 }
 
 // NewRouter builds a router. roster lists valid recipient ids; deliver hands an
@@ -157,7 +193,7 @@ func NewRouter(cfg RouterConfig, ev events.Emitter, roster func() []string, mana
 		ev = events.Discard{}
 	}
 	r := &Router{cfg: cfg, now: time.Now, ev: ev, roster: roster, manager: manager,
-		sender: map[string][]time.Time{}, pair: map[string][]time.Time{}, recent: map[string]time.Time{}}
+		sender: map[string][]time.Time{}, pair: map[string][]time.Time{}, recent: map[string]time.Time{}, kept: map[string]Message{}}
 	r.deliver = func(m Message) error {
 		if deliver != nil {
 			deliver(m)
@@ -184,6 +220,56 @@ func (r *Router) SetDivert(f func(Message) bool) {
 	r.mu.Lock()
 	r.divert = f
 	r.mu.Unlock()
+}
+
+// keepLocked keeps m, a message too long to deliver whole, for Read, forgetting the oldest
+// kept messages while they are over the byte budget. r.mu is held.
+func (r *Router) keepLocked(m Message) {
+	budget := r.cfg.MaxKeptBytes
+	if budget <= 0 {
+		budget = defaultKeptBytes
+	}
+	r.kept[m.ID] = m
+	r.keptOrder = append(r.keptOrder, m.ID)
+	r.keptBytes += len(m.Full)
+	for r.keptBytes > budget && len(r.keptOrder) > 1 {
+		old := r.keptOrder[0]
+		r.keptOrder = r.keptOrder[1:]
+		r.keptBytes -= len(r.kept[old].Full)
+		delete(r.kept, old)
+	}
+}
+
+// keepWhole keeps m for Read when it reaches its recipient only as an excerpt (coalesced
+// into an inbox digest): Full is the whole message.
+func (r *Router) keepWhole(m Message) {
+	if m.ID == "" {
+		return
+	}
+	if m.Full == "" {
+		m.Full = m.Text
+	}
+	r.mu.Lock()
+	if _, ok := r.kept[m.ID]; !ok {
+		r.keepLocked(m)
+	}
+	r.mu.Unlock()
+}
+
+// Read returns the whole of message id, which reached its recipient only in part, to its
+// sender or its recipient. Errors are written for the reading model.
+func (r *Router) Read(agent, id string) (Message, error) {
+	id = strings.TrimSpace(id)
+	r.mu.Lock()
+	m, ok := r.kept[id]
+	r.mu.Unlock()
+	if !ok {
+		return Message{}, fmt.Errorf("mail %s is not kept: mail read is for a message whose delivery said it continues or that a digest named; other mail was delivered whole, and the oldest kept messages are forgotten", cleanText(id, 20))
+	}
+	if agent != m.From && agent != m.To {
+		return Message{}, fmt.Errorf("%s was not sent to you or by you", m.ID)
+	}
+	return m, nil
 }
 
 // nextID returns a fresh message id (the mailman's digests are messages too).
@@ -295,12 +381,25 @@ func (r *Router) Send(from, to, kind, text string) (Message, error) {
 	if !known {
 		return Message{}, fmt.Errorf("no agent %q (agents: %s)", cleanText(to, 40), strings.Join(ids, ", "))
 	}
-	if n, limit := utf8.RuneCountInString(raw), r.cfg.maxCharsFor(kind); n > limit {
-		return Message{}, tooLong(kind, n, limit)
+	n, limit := utf8.RuneCountInString(raw), r.cfg.maxCharsFor(kind)
+	var full string
+	if n > limit {
+		if r.cfg.MaxBodyChars <= limit {
+			return Message{}, tooLong(kind, n, limit)
+		}
+		if n > r.cfg.MaxBodyChars {
+			return Message{}, tooLong(kind, n, r.cfg.MaxBodyChars)
+		}
+		// Too long for the recipient's thread, not for the team: the opening goes inline,
+		// the whole is kept for mail read.
+		full = cleanBlockLines(raw, 0, 0)
 	}
 	text = cleanText(raw, 0)
 	if text == "" {
 		return Message{}, fmt.Errorf("empty message")
+	}
+	if full != "" {
+		text = truncRunes(text, limit)
 	}
 	now := r.now()
 	r.mu.Lock()
@@ -309,6 +408,9 @@ func (r *Router) Send(from, to, kind, text string) (Message, error) {
 	pk := from + "\x00" + to
 	r.pair[pk] = prune(r.pair[pk], now.Add(-time.Minute))
 	dk := dedupeKey(pk, text)
+	if full != "" {
+		dk = dedupeKey(pk, full)
+	}
 	if t, ok := r.recent[dk]; ok && now.Sub(t) < r.cfg.DedupeWindow {
 		r.mu.Unlock()
 		return Message{}, fmt.Errorf("you already sent %s exactly this message; wait for a reply instead of repeating it", to)
@@ -326,7 +428,10 @@ func (r *Router) Send(from, to, kind, text string) (Message, error) {
 	prev, hadPrev := r.recent[dk]
 	r.recent[dk] = now
 	r.seq++
-	m := Message{ID: fmt.Sprintf("m%d", r.seq), From: from, To: to, Kind: kind, Text: text}
+	m := Message{ID: fmt.Sprintf("m%d", r.seq), From: from, To: to, Kind: kind, Text: text, Full: full}
+	if full != "" {
+		r.keepLocked(m)
+	}
 	deliver, divert := r.deliver, r.divert
 	r.mu.Unlock()
 

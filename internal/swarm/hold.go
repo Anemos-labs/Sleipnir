@@ -39,8 +39,8 @@ const holdReasonMax = 400
 const holdListCap = 6
 
 // holdSettleMax is the longest the guard waits, in all, for workers that are only
-// finishing their last turn (see unfinishedWork.windingDown) before it decides. A
-// worker that outlasts it is treated like any other running worker.
+// finishing their last turn (see unfinishedWork.windingDown) before it decides. Workers
+// that outlast it while holding nothing on the board no longer hold the answer back.
 var holdSettleMax = 20 * time.Second
 
 // holdSettlePoll is how often that wait looks at the workers.
@@ -53,7 +53,8 @@ type unfinishedWork struct {
 	review  []string // tasks submitted and awaiting accept or reject
 	doing   []string // tasks in progress whose worker is not running
 	blocked []string // tasks a worker reported blocked
-	todo    []string // tasks nobody has started
+	todo    []string // tasks nobody has started that could start now
+	gated   []string // tasks nobody has started that wait for an unfinished dependency: "T4 (after T3)"
 
 	// idle are the ids of the running workers that hold no task in progress.
 	idle []string
@@ -61,7 +62,7 @@ type unfinishedWork struct {
 
 // empty reports whether every unfinished-work category is empty.
 func (u unfinishedWork) empty() bool {
-	return len(u.running)+len(u.review)+len(u.doing)+len(u.blocked)+len(u.todo) == 0
+	return len(u.running)+len(u.review)+len(u.doing)+len(u.blocked)+len(u.todo)+len(u.gated) == 0
 }
 
 // windingDown reports whether all that is unfinished is workers that are running but
@@ -71,7 +72,7 @@ func (u unfinishedWork) empty() bool {
 // worker instead (holdHooks.settle).
 func (u unfinishedWork) windingDown() bool {
 	return len(u.running) > 0 && len(u.running) == len(u.idle) &&
-		len(u.review)+len(u.doing)+len(u.blocked)+len(u.todo) == 0
+		len(u.review)+len(u.doing)+len(u.blocked)+len(u.todo)+len(u.gated) == 0
 }
 
 // summary renders the categories in a fixed order, at most cap ids each.
@@ -93,6 +94,7 @@ func (u unfinishedWork) summary(cap int) string {
 	add("doing", u.doing)
 	add("blocked", u.blocked)
 	add("not started", u.todo)
+	add("waiting for dependencies", u.gated)
 	return strings.Join(parts, "; ")
 }
 
@@ -149,7 +151,13 @@ func (s *Swarm) unfinishedWork() unfinishedWork {
 				u.todo = append(u.todo, id)
 			}
 		case StatusTodo:
-			u.todo = append(u.todo, id)
+			// A task that waits for an unfinished one is named with it: the manager cannot start it, and listing it as "not
+			// started" sent a manager to start work the board would have refused.
+			if ok, dep := depsDone(snap, t); !ok {
+				u.gated = append(u.gated, id+" (after "+safeToken(dep.ID, 24)+")")
+			} else {
+				u.todo = append(u.todo, id)
+			}
 		}
 	}
 	ids := make([]string, 0, len(running))
@@ -253,6 +261,8 @@ type holdHooks struct {
 	noted   map[string]bool
 	// handed are the top-level directories a manager's edit has carried the free-slot line about (handoffLine).
 	handed map[string]bool
+	// looked is how many looking calls the manager has made in a row (lookLine).
+	looked int
 }
 
 var (
@@ -285,6 +295,13 @@ func (h *holdHooks) BeforeTool(ctx context.Context, c agent.ToolHookCall) agent.
 	}
 	if o.Veto {
 		return o
+	}
+	effective := c.Input // what the call runs with: the wrapped hooks may have rewritten it
+	if len(o.UpdatedInput) > 0 {
+		effective = o.UpdatedInput
+	}
+	if line := h.lookLine(c.Tool, effective); line != "" {
+		o.Context = strings.TrimSpace(o.Context + "\n" + line)
 	}
 	if editsFiles(c.Tool) {
 		if line := h.editLine(); line != "" {
@@ -490,6 +507,12 @@ func (h *holdHooks) BeforeStop(ctx context.Context, agentID, role, final string,
 			return agent.StopOutcome{}
 		}
 		u = h.s.unfinishedWork()
+		if u.windingDown() {
+			// Still running after the settle window, and holding nothing on the board: a worker with no task that keeps its turn
+			// open (in a real run, one that sat in wait loops "for the team" after its work was accepted). The manager can do
+			// nothing about it, and a veto it cannot clear held a finished team's answer for over an hour. Let the answer through.
+			u = unfinishedWork{}
+		}
 	}
 	if u.empty() {
 		h.s.flushManagerEdits()

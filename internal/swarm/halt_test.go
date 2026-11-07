@@ -138,6 +138,27 @@ func TestStopAllEndsTheManagersTurn(t *testing.T) {
 	<-done
 }
 
+// A manager turn that starts after a stop landed, between the person's goal lifting the stop and the turn being recorded, is ended
+// at once rather than left running on the stopped team.
+func TestAManagerTurnThatStartsOnAStoppedTeamIsEnded(t *testing.T) {
+	r := newRVRig(t, stallCfg(), gatedWorkers(nil))
+	r.sw.StopAll("") // the stop lands before the turn below is recorded
+	ctx, end := context.WithCancel(context.Background())
+	defer end()
+	forget := r.sw.setManagerTurn(end)
+	defer forget()
+	if ctx.Err() == nil {
+		t.Fatal("the turn that started on a stopped team was not ended")
+	}
+	r.sw.LiftStop()
+	ctx2, end2 := context.WithCancel(context.Background())
+	defer end2()
+	defer r.sw.setManagerTurn(end2)()
+	if ctx2.Err() != nil {
+		t.Fatal("a turn that started after the stop was lifted was ended")
+	}
+}
+
 // A run that starts at the moment the team is stopped is either refused or stopped: never left running on a stopped team.
 func TestReserveRacingStopAllNeverLeavesARun(t *testing.T) {
 	r := newRVRig(t, stallCfg(), gatedWorkers(nil))

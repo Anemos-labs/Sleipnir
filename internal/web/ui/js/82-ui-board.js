@@ -42,9 +42,13 @@
     host.innerHTML = COLS.map(([k, n]) => '<div class="bcol" data-col="' + k + '"><h4>' + n + '<b class="cnt">0</b></h4><div class="cl"></div></div>').join('');
     const B = { host, big, nodes: {}, cols: {}, scope, open: new Map(), isOpen: () => false };
     COLS.forEach(([k]) => { B.cols[k] = $('[data-col="' + k + '"] .cl', host); });
+    /* the ages on the cards move with the clock, not only when an event redraws the board */
+    let lastAge = -1;
+    if (scope.frame) scope.frame((dt, vt) => { const sec = Math.floor(vt || 0); if (sec !== lastAge && B.model) { lastAge = sec; ages(B, B.model); } });
     scope.listen(host, 'click', e => {
       const toggle = e.target.closest('[data-pool-toggle]');
       if (toggle) { const id = toggle.dataset.poolToggle; B.open.set(id, !B.isOpen(id)); if (B.model) update(B, B.model, B.S); return; }
+      const step = e.target.closest('[data-tdo]'); if (step) { ui.doStep(step); return; }
       const c = e.target.closest('.tcard'); if (c && c.dataset.owner) ui.focusAgent(c.dataset.owner, e);
     });
     return B;
@@ -128,5 +132,62 @@
     if (vis && !ui.still() && !(S && S.replay && !S.replay.playing)) moved.forEach(id => { const n = B.nodes[id], a = before[id]; if (!n || !n.isConnected) return; const b = n.getBoundingClientRect(), dx = a.left - b.left, dy = a.top - b.top; if (Math.abs(dx) + Math.abs(dy) > 2) B.scope.animate(n, [{ transform: 'translate(' + dx + 'px,' + dy + 'px)', background: 'var(--warm-b)' }, { transform: 'none', background: 'var(--panel)' }], { duration: 620, easing: 'cubic-bezier(.2,.7,.2,1)' }); });
     return counts;
   }
-  ui.board = { make, update, layout, COLS, COMPACT_AT, idCmp, newestMerged, resolved };
+  /** A time in a column, short enough for a card: 45s, 12m, 3h 05m. */
+  const ageShort = s => s < 60 ? Math.max(0, Math.floor(s)) + 's' : s < 5400 ? Math.floor(s / 60) + 'm' : Math.floor(s / 3600) + 'h ' + String(Math.floor(s / 60) % 60).padStart(2, '0') + 'm';
+  /** What a column's age says on a card's tooltip. */
+  const AGE_WORD = { todo: 'waiting', running: 'running', verify: 'in verification' };
+  /** Each unfinished card's time in its column (since it last changed column, failed or changed hands), at the view clock: a task that
+   *  has been running for an hour among tasks of minutes is where the team is stuck. Merged and failed cards have none. */
+  function ages(B, m) {
+    const S = B.S || (SL.sessions && SL.sessions.active), vt = S && typeof S.vt === 'number' ? S.vt : null;
+    Object.keys(B.nodes).forEach(id => {
+      const n = B.nodes[id], t = m.tasks[id]; if (!n || !t) return;
+      if (B.big) {
+        const hh = n.classList.contains('trow') ? '' : histHtml(t, vt); let hs = n.querySelector('.thist');
+        if (!hh) { if (hs) hs.remove(); }
+        else if (!hs || hs._h !== hh) { const x = document.createElement('span'); x.innerHTML = hh; const nx = x.firstChild; nx._h = hh; if (hs) hs.replaceWith(nx); else { const tti = n.querySelector('.tti'); if (tti) tti.after(nx); else n.appendChild(nx); } }
+      }
+      const tow = n.querySelector('.tcr .tow'), word = !t.failed && AGE_WORD[t.st], since = typeof t.since === 'number' ? t.since : t.t;
+      let a = n.querySelector('.amark');
+      if (!word || vt == null || typeof since !== 'number' || !tow || n.classList.contains('trow')) { if (a) a.remove(); return; }
+      const s = Math.max(0, vt - since), text = ageShort(s);
+      if (!a) { a = document.createElement('time'); a.className = 'dim amark'; tow.appendChild(a); }
+      if (a.textContent !== text) { a.textContent = text; a.title = word + ' for ' + U.dur(s) + (t.owner && t.st !== 'todo' ? ', held by ' + t.owner : ''); }
+    });
+  }
+  /** The colour of a stretch of a task's life on its history strip. */
+  const HIST_COL = { todo: 'var(--warm)', running: 'var(--ok)', verify: 'var(--info)', merged: 'var(--ok)' };
+  /** A task's history strip (the Board view only, once the task has moved at least once): one segment per stretch of its life (a
+   *  column and an owner; Task.hist, from the server), as wide as it lasted and coloured by column (a running stretch in its owner's
+   *  colour, a failed one red), then how many times the task was sent back. A task sent back three times draws its struggle where it sits. Returns the
+   *  strip's HTML, or '' for none. */
+  /** The rest of a stretch's title: what was spent on it, how it ended (a verify stretch passed or was sent back, a stretch that sent
+   *  the task back says why), and why it failed. */
+  function stretchMore(h, i, plan) {
+    const x = h[i], nx = h[i + 1], rank = { todo: 0, running: 1, verify: 2, merged: 3 }; let out = '';
+    if (x.cost > 0) out += ' · ' + (plan ? '≈' : '') + U.fmtUsd(x.cost) + (x.reqs ? ' in ' + x.reqs + ' request' + (x.reqs === 1 ? '' : 's') : '');
+    else if (x.reqs) out += ' · ' + x.reqs + ' request' + (x.reqs === 1 ? '' : 's');
+    if (x.s === 'failed') return out + (x.why ? ' · failed: ' + x.why : ' · failed');
+    if (!nx) return out;
+    if (nx.s === 'failed') return out + ' · then failed' + (nx.why ? ': ' + nx.why : '');
+    if (x.s in rank && nx.s in rank && rank[nx.s] < rank[x.s]) return out + ' · ' + (x.s === 'verify' ? 'failed verification, sent back' : 'sent back') + (nx.why ? ': ' + nx.why : '');
+    if (x.s === 'verify' && nx.s === 'merged') return out + ' · passed verification';
+    return out;
+  }
+  function histHtml(t, vt) {
+    const h = t.hist; if (!Array.isArray(h) || h.length < 2 || typeof vt !== 'number') return '';
+    const order = { todo: 0, running: 1, verify: 2, merged: 3 }; let back = 0;
+    const segs = h.map((x, i) => {
+      const end = i + 1 < h.length ? h[i + 1].t : (x.s === 'merged' || x.s === 'failed' ? x.t : vt), d = Math.max(0, end - x.t);
+      if (i > 0 && x.s in order && h[i - 1].s in order && order[x.s] < order[h[i - 1].s]) back++;
+      const col = x.s === 'failed' ? 'var(--err)' : x.s === 'running' && x.owner ? agCol(x.owner) : HIST_COL[x.s] || 'var(--dim)';
+      const what = x.s + (x.owner ? ' · ' + x.owner : '') + (end > x.t || i + 1 < h.length ? ' · ' + U.dur(d) : '') + stretchMore(h, i, t.onPlan);
+      /* a closed task's last stretch is a mark, not a span; stretches of an earlier run all start at 0 and share the bar evenly */
+      const closed = i + 1 === h.length && (x.s === 'merged' || x.s === 'failed');
+      return '<i style="flex-grow:' + (closed ? 0 : Math.max(1, Math.round(d))) + ';background:' + col + '" title="' + esc(what) + '"></i>';
+    });
+    const tail = back ? '<span class="warm" title="' + esc('sent back ' + back + ' time' + (back === 1 ? '' : 's')) + '">↩ ' + back + '</span>' : '';
+    return '<span class="thist" role="img" aria-label="' + esc(h.length + ' stretches' + (back ? ', sent back ' + back + ' time' + (back === 1 ? '' : 's') : '')) + '"><span class="thbar">' + segs.join('') + '</span>' + tail + '</span>';
+  }
+  ui.board = { make, update, layout, ages, ageShort, histHtml, COLS, COMPACT_AT, idCmp, newestMerged, resolved };
 })(SL);

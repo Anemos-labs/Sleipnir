@@ -149,6 +149,8 @@ type Engine struct {
 	persisted         map[Rule]bool // rules already handed to Config.Persist
 	granted           []string      // the allow rules added while the session ran (what the person said yes to), in order
 	confined          map[string]rootPair
+	// writeCheck, when set (SetWriteCheck), may refuse each write a request is known to make, by agent and path.
+	writeCheck func(agent, path string, tree bool) string
 
 	readOnlyOnce  sync.Once
 	readOnly      *Engine      // PlanOnly(ReadOnlyAllow...), built on the first ReadOnly check
@@ -176,6 +178,26 @@ func (e *Engine) Confine(agent, dir string) {
 	}
 	e.confined[agent] = rp
 	e.mu.Unlock()
+}
+
+// SetWriteCheck installs a check of every write a request is statically known to make: a file tool's path, a shell command's
+// redirection target, or an operand a known command writes (cp's destination, rm's operand, sed -i's file). check gets the agent,
+// the absolute path and whether the write reaches everything below it (rm -r), and returns why the agent may not write there, or
+// "". A refusal is final in every mode, as confinement is. Writes that cannot be pinned down (an operand of an unlisted program, a
+// path built from a variable, what a build tool or a script writes), formatter walks and the session's scratch directory are not
+// checked: the check sees what the engine sees, no more. A swarm sharing one tree uses it to hold a worker's shell to the scope of
+// its task, which the file tools are held to already. nil removes it.
+func (e *Engine) SetWriteCheck(check func(agent, path string, tree bool) string) {
+	e.mu.Lock()
+	e.writeCheck = check
+	e.mu.Unlock()
+}
+
+// writeChecker reads the installed write check under a read lock.
+func (e *Engine) writeChecker() func(agent, path string, tree bool) string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.writeCheck
 }
 
 // Unconfine lifts Confine (the agent's tree is gone).
@@ -256,6 +278,38 @@ func compileList(action Action, list []string, rs *resolver, origin func(string)
 	return out, nil
 }
 
+// markStateWide marks the rules of list that cover exactly what the state directory's own rule covers (the person's
+// Edit(~/.sleipnir/**) for the default state directory) as that rule is marked: they do not reach into the agents' trees kept
+// below it. A rule about something narrower or wider (Edit(~/**)) is left as it is.
+func markStateWide(list []*crule, state *crule) {
+	for _, c := range list {
+		if c.class == classWrite && !c.blanket && sameGlobs(c.globs, state.globs) {
+			c.outsideTrees = true
+		}
+	}
+}
+
+// sameGlobs reports whether two compiled rules match through the same set of patterns.
+func sameGlobs(a, b []*pathGlob) bool {
+	key := func(gs []*pathGlob) map[string]bool {
+		m := map[string]bool{}
+		for _, g := range gs {
+			m[strings.Join(g.segs, "/")] = true
+		}
+		return m
+	}
+	ka, kb := key(a), key(b)
+	if len(ka) != len(kb) {
+		return false
+	}
+	for k := range ka {
+		if !kb[k] {
+			return false
+		}
+	}
+	return true
+}
+
 // fixedOrigin names the same origin for every rule of a list.
 func fixedOrigin(o string) func(string) string { return func(string) string { return o } }
 
@@ -306,13 +360,21 @@ func NewEngine(cfg Config) (*Engine, error) {
 	if e.ask, err = compileList(Ask, cfg.Ask, rs, configured(Ask)); err != nil {
 		return nil, err
 	}
-	for _, dir := range append([]string{cfg.StateDir}, cfg.RecordDirs...) {
+	for i, dir := range append([]string{cfg.StateDir}, cfg.RecordDirs...) {
 		if dir == "" {
 			continue
 		}
 		state, err := compileList(Ask, []string{"Edit(" + escapeGlob(cleanAbs(dir)) + "/**)"}, rs, fixedOrigin(OriginBuiltIn))
 		if err != nil {
 			return nil, err
+		}
+		if i == 0 {
+			// The state directory holds the agents' trees (TreeParents) as well: its protection is about what steers a later
+			// session, and an agent's own copy of the project is its workspace, held to the project's rules instead.
+			for _, c := range state {
+				c.outsideTrees = true
+			}
+			markStateWide(e.ask, state[0])
 		}
 		e.ask = append(e.ask, state...)
 	}

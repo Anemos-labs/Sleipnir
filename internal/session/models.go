@@ -113,6 +113,9 @@ func (s *Session) describe(ctx context.Context, p provider.Provider, m cost.Mode
 				m.ContextTokens, m.WindowGuessed, win = e.Model.ContextTokens, false, sourceCatalogue
 			}
 		}
+		if s.markTextOnly(ctx, p, m) {
+			m.NoImages = true // the agent retires its images into descriptions (imageKeep) instead of attaching them
+		}
 		if unknown && configured == 0 && win != sourceCatalogue && localBase(base) {
 			if n := s.servedWindow(ctx, base, m.ID); n > 0 {
 				m.ContextTokens, m.WindowGuessed, win = n, false, sourceServer
@@ -124,6 +127,29 @@ func (s *Session) describe(ctx context.Context, p provider.Provider, m cost.Mode
 	}
 	s.note(m, src, win)
 	return m
+}
+
+// takesImages reports whether entries leave model id able to take images: false only when the entry of that exact id says it
+// takes text only. A normalised match (findEntry) may be another vendor's model or another dated release, and calling a model
+// that sees images text-only would hide every screenshot from it, so it leaves the question open.
+func takesImages(entries []gateway.Entry, id string) bool {
+	for _, e := range entries {
+		if e.Model.ID == id {
+			return e.TakesImages()
+		}
+	}
+	return true
+}
+
+// markTextOnly marks p's profile text only (provider.MarkTextOnly), and reports so, when its catalogue says model m takes text only: every wire
+// format then sends a note in place of each image, decided per request, so the conversation keeps its images. Nothing is asked
+// offline, and a model reached through a plan is never marked (a plan's model list says nothing of images).
+func (s *Session) markTextOnly(ctx context.Context, p provider.Provider, m cost.Model) bool {
+	if s.opts.Offline || m.Plan || takesImages(s.catalogue(ctx, p.Profile().BaseURL, m.ID), m.ID) {
+		return false
+	}
+	provider.MarkTextOnly(p) // a wrapper (Options.WrapProvider) is seen through when it has an Unwrap() Provider method
+	return true              // the catalogue's verdict: the agent retires images for this model (cost.Model.NoImages) whatever the wire does
 }
 
 // reportsWindow reports whether entries give model id a context window of their own.

@@ -273,7 +273,7 @@ func TestTheManagerIsToldOfUnusedSlots(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := strings.Join(r.sw.staffingLines(r.sw.Board.Snapshot()), "\n")
-	for _, want := range []string{"2 free slot(s) (backend, tester), 2 ready task(s) with no owner: start workers", id + " idle while " + next.ID + " (devops) can start"} {
+	for _, want := range []string{"2 free slot(s) (backend, tester), 1 ready task(s) of those roles with no owner: start workers", id + " idle while " + next.ID + " (devops) can start"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("live view lines %q lack %q", got, want)
 		}
@@ -670,7 +670,7 @@ func TestWorkDurationEndsAtSubmission(t *testing.T) {
 	g := &r.sw.review
 	now := r.sw.deps.Now()
 	task := Task{ID: "T1", Rev: 2, Role: "backend"}
-	g.noteBegan(task.ID, task.Rev, now.Add(-20*time.Minute))
+	g.noteBegan(task.ID, task.Rev, now.Add(-20*time.Minute), "")
 	g.mu.Lock()
 	open := g.tookLocked(task, now)
 	g.mu.Unlock()

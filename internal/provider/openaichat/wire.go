@@ -42,6 +42,12 @@ type Options struct {
 	// token ids and per-token logprobs (RL training data). Set per request by the
 	// client, only when the profile says the endpoint supports it.
 	CaptureTokens bool
+	// Media resolves an image block's blob reference to its bytes, which are sent
+	// as a data URL (core.ImageURL). Without it an image that is a blob reference
+	// is sent as a note that it cannot be shown (core.ImageNotSent).
+	Media core.MediaFunc
+	// NoImages sends a note in place of every image (provider.Profile.NoImages).
+	NoImages bool
 }
 
 // defaults fills missing chat-wire role and token-limit field names without replacing explicit
@@ -164,7 +170,7 @@ func Build(p *core.Prompt, o Options, stream bool) ([]byte, error) {
 		req.Messages = append(req.Messages, renderSystem(p.System, o.SystemRole, bpAt))
 	}
 	for mi, m := range p.Messages {
-		msgs, err := renderMessage(mi, m, bpAt)
+		msgs, err := renderMessage(mi, m, bpAt, core.Imaging{Media: o.Media, TextOnly: o.NoImages})
 		if err != nil {
 			return nil, err
 		}
@@ -232,12 +238,12 @@ func renderSystem(blocks []core.Block, role string, bpAt map[core.BlockRef]core.
 
 // renderMessage dispatches assistant and user/system messages to their wire renderers, rejecting
 // unsupported roles.
-func renderMessage(mi int, m core.Message, bpAt map[core.BlockRef]core.Breakpoint) ([]message, error) {
+func renderMessage(mi int, m core.Message, bpAt map[core.BlockRef]core.Breakpoint, media core.Imaging) ([]message, error) {
 	switch m.Role {
 	case core.RoleAssistant:
 		return renderAssistant(mi, m, bpAt)
 	case core.RoleUser, core.RoleSystem:
-		return renderUser(mi, m, bpAt)
+		return renderUser(mi, m, bpAt, media)
 	}
 	return nil, fmt.Errorf("openaichat: unsupported role %q", m.Role)
 }
@@ -297,13 +303,22 @@ func renderAssistant(mi int, m core.Message, bpAt map[core.BlockRef]core.Breakpo
 // them to directly follow the assistant tool_calls), then any remaining
 // blocks as one user message. The order is fixed, so the same turn always
 // renders to the same bytes.
-func renderUser(mi int, m core.Message, bpAt map[core.BlockRef]core.Breakpoint) ([]message, error) {
+//
+// A role=tool message carries text only, so the images a tool returned (a
+// screenshot read from disk, an MCP tool's picture) open that user message,
+// each after a line naming the call it came from: dropped, the model would
+// read "Image shot.png (image/png, 40 KB)" and answer about a picture it
+// never saw.
+func renderUser(mi int, m core.Message, bpAt map[core.BlockRef]core.Breakpoint, media core.Imaging) ([]message, error) {
 	var out []message
-	var parts []part
+	var shown, parts []part
 	for bi, b := range m.Blocks {
 		ref := core.BlockRef{Msg: mi, Blk: bi}
 		switch b.Kind {
 		case core.BlockToolResult:
+			for _, img := range core.ToolResultImages(b) {
+				shown = append(shown, part{Type: "text", Text: "Image returned by tool call " + b.ToolID + ":"}, imagePart(img, media))
+			}
 			// Chat has no tool_result block: the result is a role=tool message. A
 			// cache marker on it (in every tool loop the rolling marker lands on the
 			// last tool result) is only expressible on a content part, so a marked
@@ -322,9 +337,10 @@ func renderUser(mi int, m core.Message, bpAt map[core.BlockRef]core.Breakpoint) 
 			}
 			parts = append(parts, pt)
 		case core.BlockImage:
-			parts = append(parts, part{Type: "image_url", ImageURL: &imageURL{URL: b.MediaRef}})
+			parts = append(parts, imagePart(b, media))
 		}
 	}
+	parts = append(shown, parts...)
 	if len(parts) > 0 {
 		// A single text part is sent as a plain string: smaller, and the
 		// canonical form every engine accepts.
@@ -335,6 +351,15 @@ func renderUser(mi int, m core.Message, bpAt map[core.BlockRef]core.Breakpoint) 
 		}
 	}
 	return out, nil
+}
+
+// imagePart is an image block as a content part: its URL (core.ImageURL), or a note that it cannot be sent and why.
+func imagePart(b core.Block, media core.Imaging) part {
+	u, err := media.URL(b)
+	if err != nil {
+		return part{Type: "text", Text: core.ImageNotSent(err)}
+	}
+	return part{Type: "image_url", ImageURL: &imageURL{URL: u}}
 }
 
 // ttlString requests the one-hour wire TTL for breakpoints of at least thirty minutes, otherwise

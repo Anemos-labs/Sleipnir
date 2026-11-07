@@ -606,7 +606,7 @@ func TestReconIgnoresTestdataAndListsOnlyRealBinaries(t *testing.T) {
 	}
 }
 
-// TestReadOnlyRoleIsEnforcedByTheEngine: a reviewer cannot write files or run
+// TestReadOnlyRoleIsEnforcedByTheEngine: a read-only role (a project's auditor) cannot write files or run
 // mutating commands (including ones hidden behind a permitted prefix), but can
 // still run the project's checks.
 func TestReadOnlyRoleIsEnforcedByTheEngine(t *testing.T) { readOnlyRoleIsEnforced(t, nil) }
@@ -614,11 +614,12 @@ func TestReadOnlyRoleIsEnforcedByTheEngine(t *testing.T) { readOnlyRoleIsEnforce
 // A profile the configuration gives the read-only role (here one that would let it
 // write) does not take the role's own read-only profile away: both hold.
 func TestAConfiguredProfileKeepsAReadOnlyRoleReadOnly(t *testing.T) {
-	readOnlyRoleIsEnforced(t, map[string]config.RolePermissions{"reviewer": {Mode: "accept-edits", Allow: []string{"Bash(touch *)", "Bash(go vet *)"}}})
+	readOnlyRoleIsEnforced(t, map[string]config.RolePermissions{"auditor": {Mode: "accept-edits", Allow: []string{"Bash(touch *)", "Bash(go vet *)"}}})
 }
 
 func readOnlyRoleIsEnforced(t *testing.T, roles map[string]config.RolePermissions) {
 	repo := newRepo(t)
+	readOnlyRole(t, repo, "auditor")
 	whoRe := regexp.MustCompile(`you: (\S+) \((\w+)\)`)
 	taskRe := regexp.MustCompile(`task (T\d+)`)
 	var mu sync.Mutex
@@ -642,8 +643,8 @@ func readOnlyRoleIsEnforced(t *testing.T, roles map[string]config.RolePermission
 			switch n {
 			case 0:
 				return mock.Reply{Text: "plan", ToolCalls: []mock.ToolCall{
-					call("m1", "task", map[string]any{"action": "create", "title": "Review the repo", "role": "reviewer"}),
-					call("m2", "spawn", map[string]any{"role": "reviewer", "task": "T1"}),
+					call("m1", "task", map[string]any{"action": "create", "title": "Review the repo", "role": "auditor"}),
+					call("m2", "spawn", map[string]any{"role": "auditor", "task": "T1"}),
 					call("m3", "wait", map[string]any{"until": []string{"T1"}, "timeout_sec": 20}),
 				}}
 			case 1:
@@ -666,7 +667,7 @@ func readOnlyRoleIsEnforced(t *testing.T, roles map[string]config.RolePermission
 	})
 	o := opts(t, repo, client, model)
 	o.Swarm = true
-	o.Mode = perm.ModeAcceptEdits // the session may edit; the reviewer role may not
+	o.Mode = perm.ModeAcceptEdits // the session may edit; the read-only role may not
 	if roles != nil {
 		cfg := config.Defaults()
 		cfg.Permissions.Roles = roles
@@ -685,10 +686,10 @@ func readOnlyRoleIsEnforced(t *testing.T, roles map[string]config.RolePermission
 			t.Errorf("read-only role created %s", f)
 		}
 	}
-	// Results the reviewer saw, from the recorded transcript.
+	// Results the auditor saw, from the recorded transcript.
 	var denied, vetRan int
 	for _, e := range readEvents(t, s.Dir) {
-		if e.Type != events.TypeToolResult || e.Agent != "rv-1" {
+		if e.Type != events.TypeToolResult || e.Agent != "au-1" {
 			continue
 		}
 		var r struct {

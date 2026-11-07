@@ -155,6 +155,13 @@ command line quotes every value for a POSIX shell. `↺ Resume` continues a reco
 opened read-only, to replay it, or followed while another process writes it; its first 400,000 events are read, and the banner
 says when the log has more. With no session hosted, the page opens the New session dialog.
 
+A session can be pinned from the session menu (`⋯`) or the palette: a pushpin marks its tab, and each time `sleipnir web` starts it
+opens the pinned sessions again, each in a tab of its own, beside its first one. A pinned session comes back as `↺ Resume` would
+resume it: with the server's flags, the team of its last start and the verify command it ran with when it was pinned. One that
+would need a new confirmation (another verify command, the project files of a folder other than the server's that the trust
+ledger does not cover) is left for the person: the server's terminal says why, and the Resume dialog marks it pinned. Closing a
+pinned tab unpins it; a pinned session is never pruned.
+
 The left rail switches views: the Cockpit (the team as a horse whose eight legs are the eight roles of the team, the stalls, the
 gantt, the task board, the merge queue, mail and the governor), the Workspace (Files, Changes, Checkpoints), Cache, Mail,
 Board, Replay, Sessions, Schedule, Tools and Settings. The Radio rail on the right is the conversation with the manager, which is the
@@ -215,7 +222,15 @@ how many it holds (`▾ 2 subtasks`); a subtask in another column is a card of t
 parent's card says where the others are (`+ 6 in todo · 1 merged`). A failed task stays in todo with its `✗` and is counted apart
 (`3 + 1 ✗`). A card shows what the agents that held the task spent on it (`$0.04`, every attempt and owner together, side requests
 such as compaction included; `≈` marks usage a subscription plan covered) and names its number of requests on hover; the terminal's
-Board view ends each task's row with the same figure. A task that cost far more than its neighbours is where the team struggled. Past eight merged tasks, the merged column is one line per task (id, owner, title, time of the merge), the newest merge
+Board view ends each task's row with the same figure. A task that cost far more than its neighbours is where the team struggled. An unfinished card ends its owner line with its time in its column (`12m`; since it last changed column, failed or changed
+hands, at the view clock, so a replay shows the age it had then), and a card says its state at a glance: a running task whose owner is
+thinking, calling a tool or editing right now has a pulsing dot in its owner's colour and a glow around it, a task the stall detector
+raised something about has a dashed amber edge and a `⚠` (dashed, since an owner whose colour is amber glows amber), and a failed task a red edge. On the Board view, under its title, a failed card says why in
+words (`✗ verification kept failing`, `✗ replaced by T7`, `✗ out of attempts (4): its workers kept stopping`) and a stalled one what
+the detector said (`⚠ no edit in 10 minutes`). Under the reason a failed card says what to do about it, with the buttons that take the step: for failed verification, its verify output (the merge queue's, so with worktrees; otherwise the details of the worker that ran the tests) and a message to the manager about it; for a task out of attempts, the details of the worker that held it last; for a task replaced by another or blocked on one, a button that brings that task's card into view; a task the person canceled needs nothing. The terminal's Board view ends a failed task's row with the same reason in words. On the Board view a task that has moved also has a history strip under its title: one segment per stretch of its
+life (a column and who held it), as wide as it lasted, a running stretch in its owner's colour and a failed one red, each naming its
+column, owner and time on hover, with what was spent during it (`$0.12 in 8 requests`, so each attempt's cost stands apart) and how it ended (`passed verification`, `failed verification, sent back: tests failed in cart_test.go`, `then failed: …`), then `↩ 2` when its work was sent back to an earlier column twice. The server keeps the newest twelve
+stretches of each task, so a reload or a replay draws the same strip; the terminal's Board view ends the task's row with the same `↩2`. Under the board a legend says what each mark means: the live glow, the dashed stalled edge, the failed edge, the history strip, the age, `try N` and the spend. Past eight merged tasks, the merged column is one line per task (id, owner, title, time of the merge), the newest merge
 first, and an empty column is drawn narrower. The Cockpit's merge queue names the twelve newest merges and counts the earlier ones.
 The Board view's dependency graph draws every task when they fit its panel; otherwise the merged tasks that no unfinished task waits
 on are one node (`✓ 118 merged`), a column taller than the panel is wrapped into several, and a graph that still does not fit is
@@ -364,6 +379,26 @@ decision of each.
 A question is answered with its buttons only, never with a key. The buttons work only after the keyboard has been quiet for 0.8
 seconds since the question appeared on screen or since the last key; text typed meanwhile goes to the message box and never
 answers. A question that arrives while the rail is collapsed opens it. The server also refuses an answer given within 350 ms. The `Needs you` inbox answers questions of every session under the same rule.
+
+### The right-click menu
+
+A right-click (a long press on a touch screen, or the Menu key or Shift+F10 on the focused element) opens the page's own menu in
+place of the browser's. It has a section for each thing under the pointer, the closest first:
+
+| Under the pointer | Entries |
+|---|---|
+| a session tab | switch to it, rename, pin or unpin it (it opens again when Sleipnir starts), open it in a new browser tab, copy its id, stop the run, start the team again, close |
+| an agent (a stall, a timeline row, a row of the team feed, a file it owns) | answer its open question, its details, ask the manager about it, copy its name, stop the worker (the manager: interrupt its turn) |
+| a task | its verify output, the task board, ask the manager about it, copy its id |
+| a file or a folder of the Workspace, or a tool row that names a file | open its changes, the whole file or its preview, mention it in a message (`@path`), copy the path |
+| a message of the Radio | copy its text, quote it in a reply; your own line: edit it and send it again |
+| a view of the rail | open it, open it in a new browser tab |
+| a card | its options, hide it; on the card's empty space, also Add card and arranging the page |
+
+Elsewhere the menu holds the palette, the manager, a new session, resume and help. Each entry does what a button of the page
+does; the menu adds no action of its own, so the terminal has nothing to match. The browser's menu stays in text fields, on links,
+pictures, videos and frames, over selected text, and on a right-click with Shift held. The arrows, `Home` and `End` move in the
+menu, `Enter` runs an entry, and `Esc` or `Tab` closes it.
 
 ### Keys
 

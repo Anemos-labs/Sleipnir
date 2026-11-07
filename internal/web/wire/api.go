@@ -132,6 +132,9 @@ type TabSummary struct {
 	Headless  bool   `json:"headless,omitempty"`
 	CreatedAt int64  `json:"createdAt"`
 	Order     int    `json:"order"`
+	// Pinned says the tab's session is pinned: the server tries to open it again, in a tab of its own, each time it starts (one that
+	// needs a confirmation is left to the person).
+	Pinned bool `json:"pinned,omitempty"`
 }
 
 // RosterEntry is one agent of a tab. ID is the agent's id (mgr for the manager and for a single agent; a role's short code, "-" and a
@@ -385,6 +388,22 @@ type MessageRequest struct {
 	Text      string `json:"text"`
 	Display   string `json:"display,omitempty"`
 	ClientID  string `json:"clientId,omitempty"`
+}
+
+// ImageUpload is the body of POST /api/sessions/{id}/images: a picture to attach to a message, in base64, with the name it
+// is shown and mentioned by.
+type ImageUpload struct {
+	Name string `json:"name,omitempty"`
+	Data string `json:"data"`
+}
+
+// ImageStored is the answer to an ImageUpload: the blob the picture is stored under, its type and size, and the token a
+// message carries to attach it ([[image:REF|name]]). The page shows the picture from GET /api/sessions/{id}/images/{ref}.
+type ImageStored struct {
+	Ref   string `json:"ref"`
+	Type  string `json:"type"`
+	Bytes int    `json:"bytes"`
+	Token string `json:"token"`
 }
 
 // SendResult says whether a message was delivered now or queued behind the running turn. Steered is a message sent while the goal's
@@ -737,6 +756,8 @@ type RecordedSession struct {
 	Plan bool    `json:"plan,omitempty"`
 	// Mailman says the last run had the mailman mode on (--mailman): a replay of it shows the mailman as on.
 	Mailman bool `json:"mailman,omitempty"`
+	// Pinned says the session is pinned: the server tries to reopen it when it starts (one that needs a confirmation is left to the person).
+	Pinned bool `json:"pinned,omitempty"`
 }
 
 // PruneRequest asks what `sessions prune` would delete, or deletes it (Apply: the route needs an X-Confirm id).

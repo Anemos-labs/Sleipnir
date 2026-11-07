@@ -55,7 +55,8 @@ sub:
 	refuse := func(what, ref string) string {
 		return ev.r.Agent + " may not move branch " + strings.TrimPrefix(ref, "refs/heads/") + " (" + clipText(what, 80) + "): only the " +
 			"merge queue moves the person's checkout's branch and the run's branches, and a branch moved without its files makes " +
-			"merged work look undone. Accepted work reaches the checkout by the merge; do not retry this another way"
+			"merged work look undone. Accepted work reaches the checkout by the merge. To read a branch, name it instead of checking it out " +
+			"(git show <branch>:<path>, git log <branch>, git diff <branch>); do not move it another way"
 	}
 	sub, rest := args[i], args[i+1:]
 	ops := operands(rest)

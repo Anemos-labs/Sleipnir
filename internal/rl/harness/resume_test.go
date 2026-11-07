@@ -265,7 +265,7 @@ func TestAnInterruptedTeamRolloutResumes(t *testing.T) {
 			switch {
 			case n == 0:
 				return mock.Reply{Text: "plan", ToolCalls: []mock.ToolCall{
-					call("m1", "task", map[string]any{"action": "create", "title": "Fix Add", "role": "backend", "description": "Add returns a-b: make it return a+b", "files": []string{"demo.go"}}),
+					call("m1", "task", map[string]any{"action": "create", "title": "Fix Add", "role": "backend", "description": "Add returns a-b: make it return a+b", "files": []string{"demo.go", "progress.txt"}}),
 					call("m2", "spawn", map[string]any{"role": "backend", "task": "T1"}),
 					call("m3", "wait", map[string]any{"until": []string{"T1"}, "timeout_sec": 120}),
 				}}

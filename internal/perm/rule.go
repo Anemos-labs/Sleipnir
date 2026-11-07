@@ -153,8 +153,11 @@ type crule struct {
 	urlPat string // classWeb: other patterns are wildcards over the URL
 	wild   string // classOther: wildcard over Request.Summary
 
-	origin  string // where the rule came from (Classification.Origin)
-	runtime bool   // added while the session ran (AddRule): RemoveRule may remove it
+	origin string // where the rule came from (Classification.Origin)
+	// outsideTrees: an Ask rule that does not apply to a path inside an agent's tree (Config.TreeParents): the protection of the
+	// state directory, which holds the trees (markStateWide).
+	outsideTrees bool
+	runtime      bool // added while the session ran (AddRule): RemoveRule may remove it
 	// runOnly: the rule of a read-only posture (a plan-mode role's profile, PlanOnly): in plan mode it lets a command run, and the
 	// files the command names to write are still refused. A person's own session rule in plan mode is their word and has no such limit.
 	runOnly bool

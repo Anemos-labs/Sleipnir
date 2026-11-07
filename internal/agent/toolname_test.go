@@ -144,6 +144,30 @@ func TestAPersonIsShownTheToolThatRanNotTheLeakedName(t *testing.T) {
 	}
 }
 
+// A model often sends a list of one as the item itself, or the list as its JSON text. The tool gets the list its schema declares.
+func TestAListSentAsOneStringReachesTheToolAsAList(t *testing.T) {
+	scoped := fakeTool{name: "scope", schema: `{"type":"object","properties":{"files":{"type":"array","items":{"type":"string"}}}}`,
+		run: func(in json.RawMessage) *tools.Result { return &tools.Result{Text: "scope:" + string(in)} }}
+	r := newRig(t, rigOpts{noCompact: true, tools: []fakeTool{scoped}}, func(c *mock.Call) mock.Reply {
+		if len(c.Messages) < 4 {
+			return mock.Reply{ToolCalls: []mock.ToolCall{
+				{ID: "f1", Name: "scope", Args: `{"files":"a.go"}`},
+				{ID: "f2", Name: "scope", Args: `{"files":"[\"a.go\",\"b.go\"]"}`},
+			}}
+		}
+		return mock.Reply{Text: "done"}
+	})
+	if _, err := r.agent.Run(context.Background(), "go"); err != nil {
+		t.Fatal(err)
+	}
+	results := r.agent.Thread().Snapshot().Turns[2].Blocks
+	for i, want := range []string{`scope:{"files":["a.go"]}`, `scope:{"files":["a.go","b.go"]}`} {
+		if results[i].IsError || results[i].PlainText() != want {
+			t.Errorf("call %d = %+v, want %q", i+1, results[i], want)
+		}
+	}
+}
+
 // A model trained on another harness calls its tools by that harness's names: Claude Code's "Read", Gemini CLI's "read_file". The
 // call runs as the tool when its arguments are the tool's, the thread keeps the name as the model wrote it, and the event says
 // which tool ran; an alias whose arguments are not the tool's is answered as an unknown tool, with a suggestion.

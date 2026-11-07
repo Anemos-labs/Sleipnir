@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/agent"
+	"github.com/anemos-labs/sleipnir/internal/gitx"
 	"github.com/anemos-labs/sleipnir/internal/kv"
 	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
@@ -76,8 +77,11 @@ type ReviewOp struct {
 	Land    bool
 	Files   []string
 	// Began is when the task's current assignment was first started and At when the op was logged, zero when not known: the
-	// duration of the work a review is measured against (reviewOverrun) and the wait of a submission come back with them.
+	// duration of the work a review is measured against (reviewOverrun) and the wait of a submission come back with them. An op
+	// with Began and Owner alone is work still in flight: its assignment's start, from which the team's task bound (task_overrun)
+	// counts when Owner runs on it again.
 	Began, At time.Time
+	Owner     string
 }
 
 // RestoreReviewGate replays, in log order, the changes that fed the review gate
@@ -91,6 +95,10 @@ func (s *Swarm) RestoreReviewGate(prev *Snapshot, ops []ReviewOp) {
 		return
 	}
 	for _, op := range ops {
+		if op.Status == "" && !op.Land && op.Owner != "" && !op.Began.IsZero() {
+			s.review.restoreInFlight(op.Task, op.Owner, op.Began)
+			continue
+		}
 		if op.Land {
 			s.review.mu.Lock()
 			s.review.landLocked(op.Task, op.Files, 0)
@@ -102,7 +110,7 @@ func (s *Swarm) RestoreReviewGate(prev *Snapshot, ops []ReviewOp) {
 			continue
 		}
 		if !op.Began.IsZero() {
-			s.review.noteBegan(t.ID, t.Rev, op.Began)
+			s.review.noteBegan(t.ID, t.Rev, op.Began, "")
 		}
 		switch op.Status {
 		case StatusReview:
@@ -165,7 +173,7 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 			continue
 		}
 		_, merged := s.mergedFor(t)
-		if merged || t.Pool != nil || t.Owner != "" && s.roles[ids[t.Owner]].ReadOnly {
+		if merged || t.Pool != nil || t.Owner != "" && s.roles[ids[t.Owner]].Reports() {
 			keep[t.ID] = true
 		}
 	}
@@ -179,7 +187,7 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 		unfinished := hasTask && task.Status != StatusDone && task.Status != StatusFailed && !keep[task.ID]
 		if s.isolated() && !role.ReadOnly {
 			path := filepath.Join(s.deps.Isolation.Manager.Dir, w.ID)
-			if _, err := os.Lstat(path); os.IsNotExist(err) && unfinished && w.Snapshot != nil {
+			if _, err := os.Lstat(path); os.IsNotExist(err) && unfinished && w.Snapshot != nil && !s.releasedEmpty(ctx, w.ID) {
 				return fmt.Errorf("worker %s's unfinished worktree is missing at %s; restore it before resuming", w.ID, path)
 			}
 			tree, err = s.deps.Isolation.Manager.Create(ctx, w.ID, workspace.CreateOptions{Reuse: true, Base: s.deps.Isolation.Queue.Tip()})
@@ -246,4 +254,17 @@ func (s *Swarm) RestoreTeam(ctx context.Context, prev *Snapshot, workers []Recov
 		m.setState(s, "idle", line)
 	}
 	return nil
+}
+
+// releasedEmpty reports whether the missing tree of worker id was released holding nothing of its own: the storage cleanup removes
+// the tree of a stopped session only when it is clean and its branch holds no commit that exists nowhere else, and deletes the
+// branch with it (workspace.PruneOptions.KeepUnmerged). With no branch left there is no work to restore, and a new tree made from
+// the integration tip loses nothing. A tree that went any other way leaves its branch behind.
+func (s *Swarm) releasedEmpty(ctx context.Context, id string) bool {
+	iso := s.deps.Isolation
+	if iso == nil || iso.Manager == nil || iso.Manager.Repo == nil || iso.Manager.Prefix == "" {
+		return false
+	}
+	_, err := iso.Manager.Repo.BranchSHA(ctx, iso.Manager.Prefix+"/"+id)
+	return gitx.KindOf(err) == gitx.KindNotFound
 }

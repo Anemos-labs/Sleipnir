@@ -253,7 +253,8 @@ func (h *webHostImpl) register(srv *web.Server) {
 	})
 }
 
-// start starts the first tab (or the fixture's tabs). The command calls it once the server's address is bound: a run that cannot
+// start starts the first tab (or the fixture's tabs), then reopens the pinned sessions (web_pins.go) and starts the automatic storage
+// cleanup (storage.go). The command calls it once the server's address is bound: a run that cannot
 // listen starts no session and leaves nothing behind.
 func (h *webHostImpl) start() {
 	if h.fixture != nil {
@@ -261,6 +262,8 @@ func (h *webHostImpl) start() {
 		return
 	}
 	h.startFirst()
+	h.track(h.reopenPinned)
+	h.track(h.housekeep)
 }
 
 // startFirst starts the first tab in --cwd with the server's defaults, as `sleipnir chat` would start (--resume and --continue
@@ -1282,9 +1285,6 @@ func ok(w http.ResponseWriter, v any) { _ = web.WriteJSON(w, http.StatusOK, v) }
 
 // okBody is the answer of an action that returns nothing.
 var okBody = map[string]bool{"ok": true}
-
-// sessionErr turns a start or resume error into a short sentence for the page.
-func sessionErr(err error) string { return clip(fmt.Sprint(err), 400) }
 
 // sha256Sum is the SHA-256 of b.
 func sha256Sum(b []byte) []byte {

@@ -76,7 +76,7 @@ func TestTheSameTeamWithoutIsolationStillWorks(t *testing.T) {
 			if got := git(t, repo, "rev-parse", "HEAD"); got != head {
 				t.Error("HEAD moved")
 			}
-			if _, err := os.Stat(filepath.Join(o.Home, ".cache")); err == nil {
+			if _, err := os.Stat(session.WorktreesDir(o.Home)); err == nil {
 				t.Error("a shared-tree run made worktrees")
 			}
 			for typ, n := range eventTypes(t, s.Dir) {
@@ -177,7 +177,7 @@ func TestIsolationRefusesWhatItCannotDo(t *testing.T) {
 	}{
 		{"not a repository", noGit, func(*session.Options) {}, "git repository"},
 		{"no commit yet", noCommits, func(*session.Options) {}, "commit the project first"},
-		{"commit with uncommitted changes", dirty, func(o *session.Options) { o.Commit = true }, "clean checkout"},
+		{"commit with uncommitted changes", dirty, func(o *session.Options) { o.Commit = true }, "uncommitted changes, in README.md ("},
 		{"commit without isolation", repo, func(o *session.Options) { o.Commit, o.Isolation = true, "none" }, "commit needs worktree isolation"},
 		{"an unknown mode", repo, func(o *session.Options) { o.Isolation = "bogus" }, `isolation "bogus"`},
 		{"a single agent that asks for it", repo, func(o *session.Options) { o.Swarm = false }, "swarm sessions"},
@@ -239,7 +239,7 @@ func crash(t *testing.T, repo, path string) {
 		if err := json.Unmarshal([]byte(readFile(t, mk)), &doc); err != nil {
 			t.Fatal(err)
 		}
-		if doc["path"] != path {
+		if mp, _ := doc["path"].(string); mp != path && !sameDir(mp, path) {
 			continue
 		}
 		doc["pid"] = deadPID(t)
@@ -253,6 +253,13 @@ func crash(t *testing.T, repo, path string) {
 	t.Fatalf("no marker for %s", path)
 }
 
+// sameDir reports whether a and b name the same directory once links are resolved (macOS's temporary directory is under a link).
+func sameDir(a, b string) bool {
+	ra, err1 := filepath.EvalSymlinks(a)
+	rb, err2 := filepath.EvalSymlinks(b)
+	return err1 == nil && err2 == nil && ra == rb
+}
+
 // A session that died leaves its trees behind. The next isolated session of the
 // repository cleans them up at its start: uncommitted work is committed onto the tree's
 // own branch first (nothing is lost, and the person is told where it is), and a tree
@@ -260,7 +267,7 @@ func crash(t *testing.T, repo, path string) {
 func TestTreesOfACrashedSessionAreCleanedUpAtTheNextStart(t *testing.T) {
 	repo := isoRepo(t)
 	home := t.TempDir()
-	top := filepath.Join(home, ".cache", "sleipnir", "worktrees")
+	top := session.WorktreesDir(home)
 	ctx := context.Background()
 	r, err := gitx.Open(repo)
 	if err != nil {

@@ -65,7 +65,7 @@ const (
 	// over and over finds what its first pass found; the reviewer is told to write the report with what it has.
 	StallReviewOverrun StallKind = "review_overrun"
 	// StallTaskOverrun: a running worker that is not a reviewer has held its current assignment for longer than
-	// Config.TaskTimeout. Whatever it is doing, a task that takes that long is too big or going nowhere: the worker is told to
+	// Config.TaskTimeout, not counting the time the task waited blocked (reviewGate.blocked). Whatever it is doing, a task that takes that long is too big or going nowhere: the worker is told to
 	// finish with what it has, hand the task over, or block it saying why.
 	StallTaskOverrun StallKind = "task_overrun"
 )
@@ -95,6 +95,11 @@ var reviewOverrunFloor = 10 * time.Minute
 // idleCapacityAfter is how long a worker of a configured team has been idle before it
 // counts toward StallIdleCapacity.
 var idleCapacityAfter = 15 * time.Minute
+
+// idleCapacityQuiet is how long after an idle_capacity mail the manager is not mailed of it again. A finding clears when the idle
+// workers go to work and is raised anew when they are idle again: in a run whose last stretch was serial (each task waiting on the
+// one before it) the manager was told three times to assign work now that did not exist. The finding is still raised and logged.
+var idleCapacityQuiet = 30 * time.Minute
 
 // StallKinds lists every stall kind in a fixed order.
 var StallKinds = []StallKind{StallClaimedNoProgress, StallManagerWaitingOnIdle, StallOrphanedTask, StallBlockedCycle, StallReviewStarved, StallIdleCapacity, StallReviewOverrun, StallTaskOverrun}
@@ -126,6 +131,10 @@ type stallState struct {
 	mu      sync.Mutex
 	active  map[string]Stall
 	raised  map[StallKind]int
+	// raise numbers each raise of a finding (gen, by key), so that a nudge from an earlier raise of a finding that cleared and
+	// was raised again does not hold beside the new one's (stallHolds).
+	raise   uint64
+	gen     map[string]uint64
 	orphans map[string]bool        // orphaned-task candidates of the previous sweep
 	review  map[string]reviewClock // "T3#rev": when the review clock (re)started
 	waiting bool                   // the manager's latest coordination call is wait
@@ -135,6 +144,8 @@ type stallState struct {
 	since     map[string]time.Time
 	escalated map[string]bool
 	stopped   map[string]bool
+	// mailed is when the manager was last told of idle capacity (idleCapacityQuiet).
+	mailed time.Time
 	// between, set only by tests before the swarm runs, is called at the two points a review read and a sweep can interleave:
 	// "get" after task get read the task and before it is noted, "sweep" after the sweep's board snapshot and before its lock.
 	between func(at string)
@@ -389,8 +400,10 @@ func (s *Swarm) stallFindings() []Stall {
 		}
 		task := currentTask(snap, id)
 		t, ok := snap.Task(task)
-		if !ok || t.Status != StatusDoing || t.Kind == TaskKindPlan {
-			continue // a reviewer's planning task (a team without an architect) is an agreement to write, not a review
+		if !ok || t.Status != StatusDoing || t.Kind == TaskKindPlan || t.Pool != nil {
+			// a reviewer's planning task (a team without an architect) is an agreement to write, not a review; a pooled review's
+			// leader runs its members' parts, and each part is a review task of its own, held to this bound
+			continue
 		}
 		since, ok := s.review.beganAt(t.ID, t.Rev) // the assignment's own start: a task claimed mid-run is not older than the claim
 		if !ok {
@@ -609,6 +622,11 @@ func (s *Swarm) sweepStalls() {
 		if _, ok := st.active[k]; !ok {
 			raised = append(raised, f)
 			st.raised[f.Kind]++
+			if st.gen == nil {
+				st.gen = map[string]uint64{}
+			}
+			st.raise++
+			st.gen[k] = st.raise
 		}
 		st.active[k] = f
 	}
@@ -616,7 +634,12 @@ func (s *Swarm) sweepStalls() {
 		if !now[k] {
 			cleared = append(cleared, f)
 			delete(st.active, k)
+			delete(st.gen, k)
 		}
+	}
+	gens := make(map[string]uint64, len(raised))
+	for _, f := range raised {
+		gens[f.key()] = st.gen[f.key()]
 	}
 	st.mu.Unlock()
 	sortStalls(cleared)
@@ -625,11 +648,56 @@ func (s *Swarm) sweepStalls() {
 	}
 	for _, f := range raised {
 		s.emit(events.TypeSwarmStall, stallEvent("raise", f))
-		if f.Notify != "" {
-			s.notify(f.Notify, "request", stallNudge(f, s.stallTurns(), s.cfg.PersistentPools))
+		if f.Notify == "" || f.Kind == StallIdleCapacity && !s.stalls.mayMailIdle(s.deps.Now()) {
+			continue
 		}
+		s.notifyStill(f.Notify, "request", stallNudge(f, s.stallTurns(), s.cfg.PersistentPools), false, s.stallHolds(f, gens[f.key()]))
 	}
 	s.escalateStalls()
+}
+
+// stallHolds is what a stall's nudge asks before it is read: whether the finding of raise gen still holds. A finding a later
+// sweep cleared does not (nor one cleared and raised again, whose new raise has a nudge of its own), and neither does one
+// whose task has since been decided, which the board shows before the next sweep: a manager was told "T23 has waited in review
+// for 5 minutes. Read it, then accept or reject it" right after its accept of T23 returned. Other changes (an orphan's task
+// reassigned, a blocked cycle broken) are seen by the next sweep.
+func (s *Swarm) stallHolds(f Stall, gen uint64) func() bool {
+	return func() bool {
+		if f.Task != "" {
+			t, ok := s.Board.Snapshot().Task(f.Task)
+			if !ok || t.Status == StatusDone || t.Status == StatusFailed || f.Kind == StallReviewStarved && t.Status != StatusReview {
+				return false
+			}
+		}
+		s.stalls.mu.Lock()
+		defer s.stalls.mu.Unlock()
+		_, ok := s.stalls.active[f.key()]
+		return ok && s.stalls.gen[f.key()] == gen
+	}
+}
+
+// mayMailIdle reports whether an idle_capacity finding raised at now may be mailed, and if so records the mail: at most one per
+// idleCapacityQuiet.
+func (st *stallState) mayMailIdle(now time.Time) bool {
+	if st.idleQuiet(now) {
+		return false
+	}
+	st.noteIdleMailed(now)
+	return true
+}
+
+// idleQuiet reports whether the manager was told of idle capacity less than idleCapacityQuiet before now.
+func (st *stallState) idleQuiet(now time.Time) bool {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return !st.mailed.IsZero() && now.Sub(st.mailed) < idleCapacityQuiet
+}
+
+// noteIdleMailed records that the manager was told of idle capacity at now.
+func (st *stallState) noteIdleMailed(now time.Time) {
+	st.mu.Lock()
+	st.mailed = now
+	st.mu.Unlock()
 }
 
 // stallEvent is the payload of a swarm.stall event.
@@ -659,7 +727,8 @@ func stallNudge(f Stall, k int64, pools bool) string {
 		return fmt.Sprintf("Stall check: %s. Read it (task get %s), then accept or reject it.", f.Detail, f.Task)
 	case StallIdleCapacity:
 		return "Stall check: " + f.Detail + ". If the objective needs more than the open tasks (a requirement nobody has started, a gap you found), " +
-			"create that work and assign it now: an idle worker starts at once. If the open tasks are all that is left, keep waiting."
+			"create that work and assign it: an idle worker starts at once. If the open tasks are all that is left (the rest waits on them), keep waiting: " +
+			"this is not said again for " + strconv.Itoa(int(idleCapacityQuiet/time.Minute)) + " minutes."
 	case StallReviewOverrun:
 		return "Stall check: " + f.Detail + ". A second walk over the same code finds what the first did. Write the report now with what you have: " +
 			"the findings so far in priority order, what you checked and found fine, and what you did not reach, named as unverified; then task done."
@@ -674,7 +743,7 @@ func stallNudge(f Stall, k int64, pools bool) string {
 	return "Stall check: " + f.Detail
 }
 
-// verdictPhase reports whether every running worker is a read-only role or on a docs task: the team waits for a verdict on finished
+// verdictPhase reports whether every running worker is a role that reports (Role.Reports) or on a docs or planning task: the team waits for a verdict on finished
 // work (a review, an agreement, the docs catch-up), not for work, and idle writers are expected. Told of idle capacity then, a
 // manager invented work to fill it (an adversarial test task after the review had started) and the run waited on that too.
 func (s *Swarm) verdictPhase(snap *Snapshot, views map[string]memberView) bool {
@@ -682,7 +751,7 @@ func (s *Swarm) verdictPhase(snap *Snapshot, views map[string]memberView) bool {
 		if !v.running || v.manager || v.service {
 			continue
 		}
-		if s.roles[v.role].ReadOnly {
+		if s.roles[v.role].Reports() {
 			continue
 		}
 		task := currentTask(snap, id)
@@ -690,7 +759,7 @@ func (s *Swarm) verdictPhase(snap *Snapshot, views map[string]memberView) bool {
 			// a writer finishing its turn after its task was accepted (or failed): not work the team waits on
 			continue
 		}
-		if t, ok := snap.Task(task); ok && s.isDocsTask(t) {
+		if t, ok := snap.Task(task); ok && (s.isDocsTask(t) || t.Kind == TaskKindPlan) {
 			continue
 		}
 		return false

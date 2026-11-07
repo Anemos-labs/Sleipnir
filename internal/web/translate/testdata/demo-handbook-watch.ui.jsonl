@@ -7,81 +7,81 @@
 {"t":0.243,"k":"layers","seq":7,"id":"mgr","toks":[4112,89,278,0,0,0]}
 {"t":0.243,"k":"warm","seq":8,"ttl":300}
 {"t":0.247,"k":"say","seq":9,"who":"mgr","text":"Splitting the survey into 4 scouting tasks.","stream":false}
-{"t":0.247,"k":"task","seq":10,"id":"T1","title":"Survey topic 1 (docs/topic-1.md)","scope":"-","s":"todo"}
-{"t":0.247,"k":"task","seq":11,"id":"T2","title":"Survey topic 2 (docs/topic-2.md)","scope":"-","s":"todo"}
-{"t":0.247,"k":"task","seq":12,"id":"T3","title":"Survey topic 3 (docs/topic-3.md)","scope":"-","s":"todo"}
-{"t":0.247,"k":"task","seq":13,"id":"T4","title":"Survey topic 4 (docs/topic-4.md)","scope":"-","s":"todo"}
-{"t":0.247,"k":"task","seq":14,"id":"T1","title":"Survey topic 1 (docs/topic-1.md)","owner":"sc-1","scope":"-","s":"running"}
+{"t":0.247,"k":"task","seq":10,"id":"T1","title":"Survey topic 1 (docs/topic-1.md)","scope":"-","s":"todo","since":0.247,"hist":[{"t":0.247,"s":"todo"}]}
+{"t":0.247,"k":"task","seq":11,"id":"T2","title":"Survey topic 2 (docs/topic-2.md)","scope":"-","s":"todo","since":0.247,"hist":[{"t":0.247,"s":"todo"}]}
+{"t":0.247,"k":"task","seq":12,"id":"T3","title":"Survey topic 3 (docs/topic-3.md)","scope":"-","s":"todo","since":0.247,"hist":[{"t":0.247,"s":"todo"}]}
+{"t":0.247,"k":"task","seq":13,"id":"T4","title":"Survey topic 4 (docs/topic-4.md)","scope":"-","s":"todo","since":0.247,"hist":[{"t":0.247,"s":"todo"}]}
+{"t":0.247,"k":"task","seq":14,"id":"T1","title":"Survey topic 1 (docs/topic-1.md)","owner":"sc-1","scope":"-","s":"running","since":0.247,"hist":[{"t":0.247,"s":"todo"},{"t":0.247,"s":"running","owner":"sc-1"}]}
 {"t":0.247,"k":"state","seq":15,"id":"sc-1","s":"think","doing":"thinking","task":"T1"}
-{"t":0.247,"k":"task","seq":16,"id":"T2","title":"Survey topic 2 (docs/topic-2.md)","owner":"sc-2","scope":"-","s":"running"}
+{"t":0.247,"k":"task","seq":16,"id":"T2","title":"Survey topic 2 (docs/topic-2.md)","owner":"sc-2","scope":"-","s":"running","since":0.247,"hist":[{"t":0.247,"s":"todo"},{"t":0.247,"s":"running","owner":"sc-2"}]}
 {"t":0.247,"k":"state","seq":17,"id":"sc-2","s":"think","doing":"thinking","task":"T2"}
-{"t":0.248,"k":"task","seq":18,"id":"T3","title":"Survey topic 3 (docs/topic-3.md)","owner":"sc-3","scope":"-","s":"running"}
+{"t":0.248,"k":"task","seq":18,"id":"T3","title":"Survey topic 3 (docs/topic-3.md)","owner":"sc-3","scope":"-","s":"running","since":0.248,"hist":[{"t":0.247,"s":"todo"},{"t":0.248,"s":"running","owner":"sc-3"}]}
 {"t":0.249,"k":"state","seq":19,"id":"sc-3","s":"think","doing":"thinking","task":"T3"}
-{"t":0.249,"k":"task","seq":20,"id":"T4","title":"Survey topic 4 (docs/topic-4.md)","owner":"sc-4","scope":"-","s":"running"}
+{"t":0.249,"k":"task","seq":20,"id":"T4","title":"Survey topic 4 (docs/topic-4.md)","owner":"sc-4","scope":"-","s":"running","since":0.249,"hist":[{"t":0.247,"s":"todo"},{"t":0.249,"s":"running","owner":"sc-4"}]}
 {"t":0.249,"k":"state","seq":21,"id":"sc-4","s":"think","doing":"thinking","task":"T4"}
 {"t":0.255,"k":"req","seq":22,"id":"sc-1","ratio":0.9437386569872959,"p":4408,"o":10}
 {"t":0.255,"k":"use","seq":23,"id":"sc-1","rd":4160,"un":248,"out":10,"wr":0,"cost":0.005352,"saved":0.00156}
-{"t":0.255,"k":"task","seq":24,"id":"T1","title":"Survey topic 1 (docs/topic-1.md)","owner":"sc-1","scope":"-","s":"running","cost":0.005352,"reqs":1}
+{"t":0.255,"k":"task","seq":24,"id":"T1","title":"Survey topic 1 (docs/topic-1.md)","owner":"sc-1","scope":"-","s":"running","cost":0.005352,"reqs":1,"since":0.247,"hist":[{"t":0.247,"s":"todo"},{"t":0.247,"s":"running","owner":"sc-1","cost":0.005352,"reqs":1}]}
 {"t":0.255,"k":"layers","seq":25,"id":"sc-1","toks":[4112,87,86,59,0,64]}
 {"t":0.255,"k":"warm","seq":26,"ttl":300}
 {"t":0.255,"k":"tool","seq":27,"id":"sc-1","name":"Read","arg":"docs/topic-1.md","out":"11 lines","ok":true,"task":"T1","tid":"rsc-1"}
 {"t":0.259,"k":"req","seq":28,"id":"sc-3","ratio":0.9655172413793104,"p":4408,"o":10}
 {"t":0.259,"k":"use","seq":29,"id":"sc-3","rd":4256,"un":152,"out":10,"wr":0,"cost":0.005064,"saved":0.001596}
-{"t":0.259,"k":"task","seq":30,"id":"T3","title":"Survey topic 3 (docs/topic-3.md)","owner":"sc-3","scope":"-","s":"running","cost":0.005064,"reqs":1}
+{"t":0.259,"k":"task","seq":30,"id":"T3","title":"Survey topic 3 (docs/topic-3.md)","owner":"sc-3","scope":"-","s":"running","cost":0.005064,"reqs":1,"since":0.248,"hist":[{"t":0.247,"s":"todo"},{"t":0.248,"s":"running","owner":"sc-3","cost":0.005064,"reqs":1}]}
 {"t":0.259,"k":"layers","seq":31,"id":"sc-3","toks":[4112,87,86,59,0,64]}
 {"t":0.259,"k":"warm","seq":32,"ttl":300}
 {"t":0.259,"k":"tool","seq":33,"id":"sc-3","name":"Read","arg":"docs/topic-3.md","out":"11 lines","ok":true,"task":"T3","tid":"rsc-3"}
 {"t":0.269,"k":"req","seq":34,"id":"sc-3","ratio":0.9294320137693631,"p":4648,"o":28}
 {"t":0.269,"k":"use","seq":35,"id":"sc-3","rd":8576,"un":480,"out":38,"wr":0,"cost":0.011255999999999999,"saved":0.003216}
-{"t":0.269,"k":"task","seq":36,"id":"T3","title":"Survey topic 3 (docs/topic-3.md)","owner":"sc-3","scope":"-","s":"running","cost":0.011255999999999999,"reqs":2}
+{"t":0.269,"k":"task","seq":36,"id":"T3","title":"Survey topic 3 (docs/topic-3.md)","owner":"sc-3","scope":"-","s":"running","cost":0.011255999999999999,"reqs":2,"since":0.248,"hist":[{"t":0.247,"s":"todo"},{"t":0.248,"s":"running","owner":"sc-3","cost":0.011255999999999999,"reqs":2}]}
 {"t":0.269,"k":"layers","seq":37,"id":"sc-3","toks":[4112,87,86,59,0,304]}
 {"t":0.269,"k":"warm","seq":38,"ttl":300}
 {"t":0.269,"k":"note","seq":39,"id":"sc-3","g":"done","text":"submitted T3","task":"T3"}
-{"t":0.269,"k":"task","seq":40,"id":"T3","title":"Survey topic 3 (docs/topic-3.md)","owner":"sc-3","scope":"-","s":"verify","cost":0.011255999999999999,"reqs":2}
+{"t":0.269,"k":"task","seq":40,"id":"T3","title":"Survey topic 3 (docs/topic-3.md)","owner":"sc-3","scope":"-","s":"verify","cost":0.011255999999999999,"reqs":2,"since":0.269,"hist":[{"t":0.247,"s":"todo"},{"t":0.248,"s":"running","owner":"sc-3","cost":0.011255999999999999,"reqs":2},{"t":0.269,"s":"verify","owner":"sc-3"}]}
 {"t":0.27,"k":"req","seq":41,"id":"sc-4","ratio":0.9655172413793104,"p":4408,"o":10}
 {"t":0.27,"k":"use","seq":42,"id":"sc-4","rd":4256,"un":152,"out":10,"wr":0,"cost":0.005064,"saved":0.001596}
-{"t":0.27,"k":"task","seq":43,"id":"T4","title":"Survey topic 4 (docs/topic-4.md)","owner":"sc-4","scope":"-","s":"running","cost":0.005064,"reqs":1}
+{"t":0.27,"k":"task","seq":43,"id":"T4","title":"Survey topic 4 (docs/topic-4.md)","owner":"sc-4","scope":"-","s":"running","cost":0.005064,"reqs":1,"since":0.249,"hist":[{"t":0.247,"s":"todo"},{"t":0.249,"s":"running","owner":"sc-4","cost":0.005064,"reqs":1}]}
 {"t":0.27,"k":"layers","seq":44,"id":"sc-4","toks":[4112,87,86,59,0,64]}
 {"t":0.27,"k":"req","seq":45,"id":"sc-2","ratio":0.9655172413793104,"p":4408,"o":10}
 {"t":0.27,"k":"use","seq":46,"id":"sc-2","rd":4256,"un":152,"out":10,"wr":0,"cost":0.005064,"saved":0.001596}
-{"t":0.27,"k":"task","seq":47,"id":"T2","title":"Survey topic 2 (docs/topic-2.md)","owner":"sc-2","scope":"-","s":"running","cost":0.005064,"reqs":1}
+{"t":0.27,"k":"task","seq":47,"id":"T2","title":"Survey topic 2 (docs/topic-2.md)","owner":"sc-2","scope":"-","s":"running","cost":0.005064,"reqs":1,"since":0.247,"hist":[{"t":0.247,"s":"todo"},{"t":0.247,"s":"running","owner":"sc-2","cost":0.005064,"reqs":1}]}
 {"t":0.27,"k":"layers","seq":48,"id":"sc-2","toks":[4112,87,86,59,0,64]}
 {"t":0.27,"k":"tool","seq":49,"id":"sc-4","name":"Read","arg":"docs/topic-4.md","out":"11 lines","ok":true,"task":"T4","tid":"rsc-4"}
 {"t":0.27,"k":"tool","seq":50,"id":"sc-3","name":"TaskBoard","arg":"done T3","out":"T3 is now in review (no files edited; no tests run). Give your final one-paragraph summary and stop.","ok":true,"task":"T3","tid":"dsc-3"}
 {"t":0.273,"k":"tool","seq":51,"id":"sc-2","name":"Read","arg":"docs/topic-2.md","out":"11 lines","ok":true,"task":"T2","tid":"rsc-2","ms":1}
 {"t":0.276,"k":"req","seq":52,"id":"sc-1","ratio":0.9294320137693631,"p":4648,"o":28}
 {"t":0.276,"k":"use","seq":53,"id":"sc-1","rd":8480,"un":576,"out":38,"wr":0,"cost":0.011543999999999999,"saved":0.0031799999999999997}
-{"t":0.276,"k":"task","seq":54,"id":"T1","title":"Survey topic 1 (docs/topic-1.md)","owner":"sc-1","scope":"-","s":"running","cost":0.011543999999999999,"reqs":2}
+{"t":0.276,"k":"task","seq":54,"id":"T1","title":"Survey topic 1 (docs/topic-1.md)","owner":"sc-1","scope":"-","s":"running","cost":0.011543999999999999,"reqs":2,"since":0.247,"hist":[{"t":0.247,"s":"todo"},{"t":0.247,"s":"running","owner":"sc-1","cost":0.011543999999999999,"reqs":2}]}
 {"t":0.276,"k":"layers","seq":55,"id":"sc-1","toks":[4112,87,86,59,0,304]}
 {"t":0.276,"k":"note","seq":56,"id":"sc-1","g":"done","text":"submitted T1","task":"T1"}
-{"t":0.276,"k":"task","seq":57,"id":"T1","title":"Survey topic 1 (docs/topic-1.md)","owner":"sc-1","scope":"-","s":"verify","cost":0.011543999999999999,"reqs":2}
+{"t":0.276,"k":"task","seq":57,"id":"T1","title":"Survey topic 1 (docs/topic-1.md)","owner":"sc-1","scope":"-","s":"verify","cost":0.011543999999999999,"reqs":2,"since":0.276,"hist":[{"t":0.247,"s":"todo"},{"t":0.247,"s":"running","owner":"sc-1","cost":0.011543999999999999,"reqs":2},{"t":0.276,"s":"verify","owner":"sc-1"}]}
 {"t":0.276,"k":"tool","seq":58,"id":"sc-1","name":"TaskBoard","arg":"done T1","out":"T1 is now in review (no files edited; no tests run). Give your final one-paragraph summary and stop.","ok":true,"task":"T1","tid":"dsc-1"}
 {"t":0.293,"k":"req","seq":59,"id":"sc-1","ratio":0.9667161331354674,"p":4717,"o":3}
 {"t":0.293,"k":"use","seq":60,"id":"sc-1","rd":13040,"un":733,"out":41,"wr":0,"cost":0.016791999999999998,"saved":0.004889999999999999}
-{"t":0.293,"k":"task","seq":61,"id":"T1","title":"Survey topic 1 (docs/topic-1.md)","owner":"sc-1","scope":"-","s":"verify","cost":0.016791999999999998,"reqs":3}
+{"t":0.293,"k":"task","seq":61,"id":"T1","title":"Survey topic 1 (docs/topic-1.md)","owner":"sc-1","scope":"-","s":"verify","cost":0.016791999999999998,"reqs":3,"since":0.276,"hist":[{"t":0.247,"s":"todo"},{"t":0.247,"s":"running","owner":"sc-1","cost":0.011543999999999999,"reqs":2},{"t":0.276,"s":"verify","owner":"sc-1","cost":0.005248,"reqs":1}]}
 {"t":0.293,"k":"layers","seq":62,"id":"sc-1","toks":[4112,87,87,59,0,372]}
 {"t":0.293,"k":"warm","seq":63,"ttl":300}
 {"t":0.293,"k":"state","seq":64,"id":"mgr","s":"wait","doing":"waits","task":null}
 {"t":0.293,"k":"note","seq":65,"id":"sc-1","g":"done","text":"no files edited; no tests run","task":"T1"}
 {"t":0.293,"k":"req","seq":66,"id":"sc-2","ratio":0.9294320137693631,"p":4648,"o":28}
 {"t":0.293,"k":"use","seq":67,"id":"sc-2","rd":8576,"un":480,"out":38,"wr":0,"cost":0.011255999999999999,"saved":0.003216}
-{"t":0.293,"k":"task","seq":68,"id":"T2","title":"Survey topic 2 (docs/topic-2.md)","owner":"sc-2","scope":"-","s":"running","cost":0.011255999999999999,"reqs":2}
+{"t":0.293,"k":"task","seq":68,"id":"T2","title":"Survey topic 2 (docs/topic-2.md)","owner":"sc-2","scope":"-","s":"running","cost":0.011255999999999999,"reqs":2,"since":0.247,"hist":[{"t":0.247,"s":"todo"},{"t":0.247,"s":"running","owner":"sc-2","cost":0.011255999999999999,"reqs":2}]}
 {"t":0.293,"k":"layers","seq":69,"id":"sc-2","toks":[4112,87,86,59,0,304]}
 {"t":0.293,"k":"warm","seq":70,"ttl":300}
 {"t":0.293,"k":"note","seq":71,"id":"sc-2","g":"done","text":"submitted T2","task":"T2"}
-{"t":0.293,"k":"task","seq":72,"id":"T2","title":"Survey topic 2 (docs/topic-2.md)","owner":"sc-2","scope":"-","s":"verify","cost":0.011255999999999999,"reqs":2}
+{"t":0.293,"k":"task","seq":72,"id":"T2","title":"Survey topic 2 (docs/topic-2.md)","owner":"sc-2","scope":"-","s":"verify","cost":0.011255999999999999,"reqs":2,"since":0.293,"hist":[{"t":0.247,"s":"todo"},{"t":0.247,"s":"running","owner":"sc-2","cost":0.011255999999999999,"reqs":2},{"t":0.293,"s":"verify","owner":"sc-2"}]}
 {"t":0.293,"k":"tool","seq":73,"id":"sc-2","name":"TaskBoard","arg":"done T2","out":"T2 is now in review (no files edited; no tests run). Give your final one-paragraph summary and stop.","ok":true,"task":"T2","tid":"dsc-2"}
 {"t":0.294,"k":"req","seq":74,"id":"sc-3","ratio":0.9667161331354674,"p":4717,"o":3}
 {"t":0.294,"k":"use","seq":75,"id":"sc-3","rd":13136,"un":637,"out":41,"wr":0,"cost":0.016503999999999998,"saved":0.004926}
-{"t":0.294,"k":"task","seq":76,"id":"T3","title":"Survey topic 3 (docs/topic-3.md)","owner":"sc-3","scope":"-","s":"verify","cost":0.016503999999999998,"reqs":3}
+{"t":0.294,"k":"task","seq":76,"id":"T3","title":"Survey topic 3 (docs/topic-3.md)","owner":"sc-3","scope":"-","s":"verify","cost":0.016503999999999998,"reqs":3,"since":0.269,"hist":[{"t":0.247,"s":"todo"},{"t":0.248,"s":"running","owner":"sc-3","cost":0.011255999999999999,"reqs":2},{"t":0.269,"s":"verify","owner":"sc-3","cost":0.005248,"reqs":1}]}
 {"t":0.294,"k":"layers","seq":77,"id":"sc-3","toks":[4112,87,86,59,0,373]}
 {"t":0.294,"k":"note","seq":78,"id":"sc-3","g":"done","text":"no files edited; no tests run","task":"T3"}
 {"t":0.295,"k":"req","seq":79,"id":"sc-4","ratio":0.9294320137693631,"p":4648,"o":28}
 {"t":0.295,"k":"use","seq":80,"id":"sc-4","rd":8576,"un":480,"out":38,"wr":0,"cost":0.011255999999999999,"saved":0.003216}
-{"t":0.295,"k":"task","seq":81,"id":"T4","title":"Survey topic 4 (docs/topic-4.md)","owner":"sc-4","scope":"-","s":"running","cost":0.011255999999999999,"reqs":2}
+{"t":0.295,"k":"task","seq":81,"id":"T4","title":"Survey topic 4 (docs/topic-4.md)","owner":"sc-4","scope":"-","s":"running","cost":0.011255999999999999,"reqs":2,"since":0.249,"hist":[{"t":0.247,"s":"todo"},{"t":0.249,"s":"running","owner":"sc-4","cost":0.011255999999999999,"reqs":2}]}
 {"t":0.295,"k":"layers","seq":82,"id":"sc-4","toks":[4112,87,86,59,0,304]}
 {"t":0.295,"k":"note","seq":83,"id":"sc-4","g":"done","text":"submitted T4","task":"T4"}
-{"t":0.295,"k":"task","seq":84,"id":"T4","title":"Survey topic 4 (docs/topic-4.md)","owner":"sc-4","scope":"-","s":"verify","cost":0.011255999999999999,"reqs":2}
+{"t":0.295,"k":"task","seq":84,"id":"T4","title":"Survey topic 4 (docs/topic-4.md)","owner":"sc-4","scope":"-","s":"verify","cost":0.011255999999999999,"reqs":2,"since":0.295,"hist":[{"t":0.247,"s":"todo"},{"t":0.249,"s":"running","owner":"sc-4","cost":0.011255999999999999,"reqs":2},{"t":0.295,"s":"verify","owner":"sc-4"}]}
 {"t":0.295,"k":"tool","seq":85,"id":"sc-4","name":"TaskBoard","arg":"done T4","out":"T4 is now in review (no files edited; no tests run). Give your final one-paragraph summary and stop.","ok":true,"task":"T4","tid":"dsc-4"}
 {"t":0.295,"k":"tool","seq":86,"id":"mgr","name":"Spawn","arg":"sc-1","out":"sc-1 started; it will report through the board. Use wait to sleep until something changes.","ok":true,"tid":"s1"}
 {"t":0.295,"k":"tool","seq":87,"id":"mgr","name":"Spawn","arg":"sc-2","out":"sc-2 started; it will report through the board. Use wait to sleep until something changes.","ok":true,"tid":"s2","ms":1}
@@ -96,7 +96,7 @@
 {"t":0.298,"k":"state","seq":96,"id":"sc-2","s":"think","doing":"starting","task":"T2","reqSince":0.297}
 {"t":0.3,"k":"req","seq":97,"id":"sc-2","ratio":0.9675366008911521,"p":4713,"o":3}
 {"t":0.3,"k":"use","seq":98,"id":"sc-2","rd":13136,"un":633,"out":41,"wr":0,"cost":0.016488,"saved":0.004926}
-{"t":0.3,"k":"task","seq":99,"id":"T2","title":"Survey topic 2 (docs/topic-2.md)","owner":"sc-2","scope":"-","s":"verify","cost":0.016488,"reqs":3}
+{"t":0.3,"k":"task","seq":99,"id":"T2","title":"Survey topic 2 (docs/topic-2.md)","owner":"sc-2","scope":"-","s":"verify","cost":0.016488,"reqs":3,"since":0.293,"hist":[{"t":0.247,"s":"todo"},{"t":0.247,"s":"running","owner":"sc-2","cost":0.011255999999999999,"reqs":2},{"t":0.293,"s":"verify","owner":"sc-2","cost":0.005232,"reqs":1}]}
 {"t":0.3,"k":"layers","seq":100,"id":"sc-2","toks":[4112,87,87,59,0,368]}
 {"t":0.3,"k":"warm","seq":101,"ttl":300}
 {"t":0.3,"k":"state","seq":102,"id":"sc-3","s":"idle","doing":"waits for work","task":"T3"}
@@ -104,7 +104,7 @@
 {"t":0.301,"k":"note","seq":104,"id":"sc-2","g":"done","text":"no files edited; no tests run","task":"T2"}
 {"t":0.303,"k":"req","seq":105,"id":"sc-4","ratio":0.9683584625185815,"p":4709,"o":3}
 {"t":0.303,"k":"use","seq":106,"id":"sc-4","rd":13136,"un":629,"out":41,"wr":0,"cost":0.016472,"saved":0.004926}
-{"t":0.303,"k":"task","seq":107,"id":"T4","title":"Survey topic 4 (docs/topic-4.md)","owner":"sc-4","scope":"-","s":"verify","cost":0.016472,"reqs":3}
+{"t":0.303,"k":"task","seq":107,"id":"T4","title":"Survey topic 4 (docs/topic-4.md)","owner":"sc-4","scope":"-","s":"verify","cost":0.016472,"reqs":3,"since":0.295,"hist":[{"t":0.247,"s":"todo"},{"t":0.249,"s":"running","owner":"sc-4","cost":0.011255999999999999,"reqs":2},{"t":0.295,"s":"verify","owner":"sc-4","cost":0.005216,"reqs":1}]}
 {"t":0.303,"k":"layers","seq":108,"id":"sc-4","toks":[4112,87,87,59,0,364]}
 {"t":0.303,"k":"note","seq":109,"id":"sc-4","g":"done","text":"no files edited; no tests run","task":"T4"}
 {"t":0.307,"k":"req","seq":110,"id":"mgr","ratio":0.8778369844089204,"p":5067,"o":150}
@@ -112,45 +112,45 @@
 {"t":0.307,"k":"layers","seq":112,"id":"mgr","toks":[4112,87,271,0,0,597]}
 {"t":0.307,"k":"warm","seq":113,"ttl":300}
 {"t":0.307,"k":"say","seq":114,"who":"mgr","text":"Surveys accepted; assigning writers.","stream":false}
-{"t":0.307,"k":"task","seq":115,"id":"T1","title":"Survey topic 1 (docs/topic-1.md)","owner":"sc-1","scope":"-","s":"merged","cost":0.016791999999999998,"reqs":3}
-{"t":0.307,"k":"task","seq":116,"id":"T2","title":"Survey topic 2 (docs/topic-2.md)","owner":"sc-2","scope":"-","s":"merged","cost":0.016488,"reqs":3}
-{"t":0.307,"k":"task","seq":117,"id":"T3","title":"Survey topic 3 (docs/topic-3.md)","owner":"sc-3","scope":"-","s":"merged","cost":0.016503999999999998,"reqs":3}
-{"t":0.307,"k":"task","seq":118,"id":"T4","title":"Survey topic 4 (docs/topic-4.md)","owner":"sc-4","scope":"-","s":"merged","cost":0.016472,"reqs":3}
-{"t":0.307,"k":"task","seq":119,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"todo"}
-{"t":0.307,"k":"task","seq":120,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"todo"}
-{"t":0.307,"k":"task","seq":121,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","owner":"dc-1","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"running"}
+{"t":0.307,"k":"task","seq":115,"id":"T1","title":"Survey topic 1 (docs/topic-1.md)","owner":"sc-1","scope":"-","s":"merged","cost":0.016791999999999998,"reqs":3,"since":0.307,"hist":[{"t":0.247,"s":"todo"},{"t":0.247,"s":"running","owner":"sc-1","cost":0.011543999999999999,"reqs":2},{"t":0.276,"s":"verify","owner":"sc-1","cost":0.005248,"reqs":1},{"t":0.307,"s":"merged","owner":"sc-1"}]}
+{"t":0.307,"k":"task","seq":116,"id":"T2","title":"Survey topic 2 (docs/topic-2.md)","owner":"sc-2","scope":"-","s":"merged","cost":0.016488,"reqs":3,"since":0.307,"hist":[{"t":0.247,"s":"todo"},{"t":0.247,"s":"running","owner":"sc-2","cost":0.011255999999999999,"reqs":2},{"t":0.293,"s":"verify","owner":"sc-2","cost":0.005232,"reqs":1},{"t":0.307,"s":"merged","owner":"sc-2"}]}
+{"t":0.307,"k":"task","seq":117,"id":"T3","title":"Survey topic 3 (docs/topic-3.md)","owner":"sc-3","scope":"-","s":"merged","cost":0.016503999999999998,"reqs":3,"since":0.307,"hist":[{"t":0.247,"s":"todo"},{"t":0.248,"s":"running","owner":"sc-3","cost":0.011255999999999999,"reqs":2},{"t":0.269,"s":"verify","owner":"sc-3","cost":0.005248,"reqs":1},{"t":0.307,"s":"merged","owner":"sc-3"}]}
+{"t":0.307,"k":"task","seq":118,"id":"T4","title":"Survey topic 4 (docs/topic-4.md)","owner":"sc-4","scope":"-","s":"merged","cost":0.016472,"reqs":3,"since":0.307,"hist":[{"t":0.247,"s":"todo"},{"t":0.249,"s":"running","owner":"sc-4","cost":0.011255999999999999,"reqs":2},{"t":0.295,"s":"verify","owner":"sc-4","cost":0.005216,"reqs":1},{"t":0.307,"s":"merged","owner":"sc-4"}]}
+{"t":0.307,"k":"task","seq":119,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"todo","since":0.307,"hist":[{"t":0.307,"s":"todo"}]}
+{"t":0.307,"k":"task","seq":120,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"todo","since":0.307,"hist":[{"t":0.307,"s":"todo"}]}
+{"t":0.307,"k":"task","seq":121,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","owner":"dc-1","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"running","since":0.307,"hist":[{"t":0.307,"s":"todo"},{"t":0.307,"s":"running","owner":"dc-1"}]}
 {"t":0.307,"k":"state","seq":122,"id":"dc-1","s":"think","doing":"thinking","task":"T5"}
-{"t":0.309,"k":"task","seq":123,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","owner":"dc-2","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"running"}
+{"t":0.309,"k":"task","seq":123,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","owner":"dc-2","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"running","since":0.309,"hist":[{"t":0.307,"s":"todo"},{"t":0.309,"s":"running","owner":"dc-2"}]}
 {"t":0.309,"k":"state","seq":124,"id":"dc-2","s":"think","doing":"thinking","task":"T6"}
 {"t":0.311,"k":"req","seq":125,"id":"dc-1","ratio":0.9377817853922452,"p":4436,"o":21}
 {"t":0.311,"k":"use","seq":126,"id":"dc-1","rd":4160,"un":276,"out":21,"wr":0,"cost":0.005684,"saved":0.00156}
-{"t":0.311,"k":"task","seq":127,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","owner":"dc-1","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"running","cost":0.005684,"reqs":1}
+{"t":0.311,"k":"task","seq":127,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","owner":"dc-1","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"running","cost":0.005684,"reqs":1,"since":0.307,"hist":[{"t":0.307,"s":"todo"},{"t":0.307,"s":"running","owner":"dc-1","cost":0.005684,"reqs":1}]}
 {"t":0.311,"k":"layers","seq":128,"id":"dc-1","toks":[4112,87,73,102,0,62]}
 {"t":0.311,"k":"warm","seq":129,"ttl":300}
 {"t":0.311,"k":"tool","seq":130,"id":"dc-1","name":"Read","arg":"docs/topic-1.md","out":"11 lines","ok":true,"task":"T5","tid":"rdc-11"}
 {"t":0.311,"k":"tool","seq":131,"id":"dc-1","name":"Read","arg":"docs/topic-2.md","out":"11 lines","ok":true,"task":"T5","tid":"rdc-12"}
 {"t":0.319,"k":"req","seq":132,"id":"dc-2","ratio":0.953880764904387,"p":4445,"o":21}
 {"t":0.319,"k":"use","seq":133,"id":"dc-2","rd":4240,"un":205,"out":21,"wr":0,"cost":0.00548,"saved":0.00159}
-{"t":0.319,"k":"task","seq":134,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","owner":"dc-2","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"running","cost":0.00548,"reqs":1}
+{"t":0.319,"k":"task","seq":134,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","owner":"dc-2","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"running","cost":0.00548,"reqs":1,"since":0.309,"hist":[{"t":0.307,"s":"todo"},{"t":0.309,"s":"running","owner":"dc-2","cost":0.00548,"reqs":1}]}
 {"t":0.319,"k":"layers","seq":135,"id":"dc-2","toks":[4112,87,73,102,0,71]}
 {"t":0.319,"k":"warm","seq":136,"ttl":300}
 {"t":0.32,"k":"req","seq":137,"id":"dc-1","ratio":0.8849125660837739,"p":4918,"o":102}
 {"t":0.32,"k":"use","seq":138,"id":"dc-1","rd":8512,"un":842,"out":123,"wr":0,"cost":0.01434,"saved":0.003192}
-{"t":0.32,"k":"task","seq":139,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","owner":"dc-1","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"running","cost":0.01434,"reqs":2}
+{"t":0.32,"k":"task","seq":139,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","owner":"dc-1","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"running","cost":0.01434,"reqs":2,"since":0.307,"hist":[{"t":0.307,"s":"todo"},{"t":0.307,"s":"running","owner":"dc-1","cost":0.01434,"reqs":2}]}
 {"t":0.32,"k":"layers","seq":140,"id":"dc-1","toks":[4112,87,73,102,0,544]}
 {"t":0.32,"k":"warm","seq":141,"ttl":300}
 {"t":0.32,"k":"tool","seq":142,"id":"dc-2","name":"Read","arg":"docs/topic-4.md","out":"11 lines","ok":true,"task":"T6","tid":"rdc-24"}
 {"t":0.321,"k":"tool","seq":143,"id":"dc-2","name":"Read","arg":"docs/topic-3.md","out":"11 lines","ok":true,"task":"T6","tid":"rdc-23"}
 {"t":0.325,"k":"req","seq":144,"id":"dc-2","ratio":0.8849125660837739,"p":4918,"o":102}
 {"t":0.325,"k":"use","seq":145,"id":"dc-2","rd":8592,"un":771,"out":123,"wr":0,"cost":0.014136,"saved":0.003222}
-{"t":0.325,"k":"task","seq":146,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","owner":"dc-2","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"running","cost":0.014136,"reqs":2}
+{"t":0.325,"k":"task","seq":146,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","owner":"dc-2","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"running","cost":0.014136,"reqs":2,"since":0.309,"hist":[{"t":0.307,"s":"todo"},{"t":0.309,"s":"running","owner":"dc-2","cost":0.014136,"reqs":2}]}
 {"t":0.325,"k":"layers","seq":147,"id":"dc-2","toks":[4112,87,73,102,0,544]}
 {"t":0.325,"k":"warm","seq":148,"ttl":300}
 {"t":0.325,"k":"tool","seq":149,"id":"dc-1","name":"Write","arg":"summaries/topic-1.md","out":"Created summaries/topic-1.md (5 lines, 146 bytes)","ok":true,"file":"summaries/topic-1.md","add":5,"task":"T5","tid":"wdc-11","ms":14}
 {"t":0.335,"k":"tool","seq":150,"id":"dc-1","name":"Write","arg":"summaries/topic-2.md","out":"Created summaries/topic-2.md (5 lines, 146 bytes)","ok":true,"file":"summaries/topic-2.md","add":5,"task":"T5","tid":"wdc-12","ms":6}
 {"t":0.343,"k":"req","seq":151,"id":"dc-1","ratio":0.9497140603431276,"p":5071,"o":12}
 {"t":0.343,"k":"use","seq":152,"id":"dc-1","rd":13328,"un":1097,"out":135,"wr":0,"cost":0.020416,"saved":0.004998}
-{"t":0.343,"k":"task","seq":153,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","owner":"dc-1","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"running","cost":0.020416,"reqs":3}
+{"t":0.343,"k":"task","seq":153,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","owner":"dc-1","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"running","cost":0.020416,"reqs":3,"since":0.307,"hist":[{"t":0.307,"s":"todo"},{"t":0.307,"s":"running","owner":"dc-1","cost":0.020416,"reqs":3}]}
 {"t":0.343,"k":"layers","seq":154,"id":"dc-1","toks":[4112,87,72,102,0,698]}
 {"t":0.343,"k":"warm","seq":155,"ttl":300}
 {"t":0.351,"k":"state","seq":156,"id":"sc-1","s":"done","doing":"no files edited; no tests run","task":"T1"}
@@ -161,7 +161,7 @@
 {"t":0.351,"k":"tool","seq":161,"id":"dc-2","name":"Write","arg":"summaries/topic-4.md","out":"Created summaries/topic-4.md (5 lines, 146 bytes)","ok":true,"file":"summaries/topic-4.md","add":5,"task":"T6","tid":"wdc-24","ms":12}
 {"t":0.358,"k":"req","seq":162,"id":"dc-2","ratio":0.9497140603431276,"p":5071,"o":12}
 {"t":0.358,"k":"use","seq":163,"id":"dc-2","rd":13408,"un":1026,"out":135,"wr":0,"cost":0.020212,"saved":0.005028}
-{"t":0.358,"k":"task","seq":164,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","owner":"dc-2","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"running","cost":0.020212,"reqs":3}
+{"t":0.358,"k":"task","seq":164,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","owner":"dc-2","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"running","cost":0.020212,"reqs":3,"since":0.309,"hist":[{"t":0.307,"s":"todo"},{"t":0.309,"s":"running","owner":"dc-2","cost":0.020212,"reqs":3}]}
 {"t":0.358,"k":"layers","seq":165,"id":"dc-2","toks":[4112,87,73,102,0,697]}
 {"t":0.358,"k":"warm","seq":166,"ttl":300}
 {"t":0.358,"k":"state","seq":167,"id":"dc-1","s":"tool","doing":"Bash wc -l summaries/*.md","task":"T5"}
@@ -169,28 +169,28 @@
 {"t":0.381,"k":"tool","seq":169,"id":"dc-2","name":"Bash","arg":"wc -l summaries/*.md","out":"6 lines","ok":true,"task":"T6","tid":"ldc-2","ms":22}
 {"t":0.387,"k":"req","seq":170,"id":"dc-2","ratio":0.9701696237083252,"p":5129,"o":21}
 {"t":0.387,"k":"use","seq":171,"id":"dc-2","rd":18384,"un":1179,"out":156,"wr":0,"cost":0.02622,"saved":0.006894000000000001}
-{"t":0.387,"k":"task","seq":172,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","owner":"dc-2","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"running","cost":0.02622,"reqs":4}
+{"t":0.387,"k":"task","seq":172,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","owner":"dc-2","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"running","cost":0.02622,"reqs":4,"since":0.309,"hist":[{"t":0.307,"s":"todo"},{"t":0.309,"s":"running","owner":"dc-2","cost":0.02622,"reqs":4}]}
 {"t":0.387,"k":"layers","seq":173,"id":"dc-2","toks":[4112,87,73,102,0,755]}
 {"t":0.387,"k":"warm","seq":174,"ttl":300}
 {"t":0.388,"k":"note","seq":175,"id":"dc-2","g":"done","text":"submitted T6","task":"T6"}
-{"t":0.388,"k":"task","seq":176,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","owner":"dc-2","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"verify","cost":0.02622,"reqs":4}
+{"t":0.388,"k":"task","seq":176,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","owner":"dc-2","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"verify","cost":0.02622,"reqs":4,"since":0.388,"hist":[{"t":0.307,"s":"todo"},{"t":0.309,"s":"running","owner":"dc-2","cost":0.02622,"reqs":4},{"t":0.388,"s":"verify","owner":"dc-2"}]}
 {"t":0.388,"k":"tool","seq":177,"id":"dc-2","name":"TaskBoard","arg":"done T6","out":"T6 is now in review (edited 2 (topic-3.md, topic-4.md); no tests run). Give your final one-paragraph summary and stop.","ok":true,"task":"T6","tid":"ddc-2"}
 {"t":0.434,"k":"state","seq":178,"id":"dc-1","s":"think","doing":"starting","task":"T5"}
 {"t":0.434,"k":"state","seq":179,"id":"dc-2","s":"think","doing":"starting","task":"T6","reqSince":0.389}
 {"t":0.434,"k":"tool","seq":180,"id":"dc-1","name":"Bash","arg":"wc -l summaries/*.md","out":"6 lines","ok":true,"task":"T5","tid":"ldc-1","ms":90}
 {"t":0.435,"k":"req","seq":181,"id":"dc-2","ratio":0.9701636188642926,"p":5195,"o":3}
 {"t":0.435,"k":"use","seq":182,"id":"dc-2","rd":23424,"un":1334,"out":159,"wr":0,"cost":0.03194,"saved":0.008784}
-{"t":0.435,"k":"task","seq":183,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","owner":"dc-2","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"verify","cost":0.03194,"reqs":5}
+{"t":0.435,"k":"task","seq":183,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","owner":"dc-2","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"verify","cost":0.03194,"reqs":5,"since":0.388,"hist":[{"t":0.307,"s":"todo"},{"t":0.309,"s":"running","owner":"dc-2","cost":0.02622,"reqs":4},{"t":0.388,"s":"verify","owner":"dc-2","cost":0.00572,"reqs":1}]}
 {"t":0.435,"k":"layers","seq":184,"id":"dc-2","toks":[4112,87,73,102,0,821]}
 {"t":0.435,"k":"warm","seq":185,"ttl":300}
 {"t":0.436,"k":"note","seq":186,"id":"dc-2","g":"done","text":"edited 2 (topic-3.md, topic-4.md); no tests run","task":"T6"}
 {"t":0.438,"k":"req","seq":187,"id":"dc-1","ratio":0.9701696237083252,"p":5129,"o":21}
 {"t":0.438,"k":"use","seq":188,"id":"dc-1","rd":18304,"un":1250,"out":156,"wr":0,"cost":0.026424,"saved":0.006864}
-{"t":0.438,"k":"task","seq":189,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","owner":"dc-1","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"running","cost":0.026424,"reqs":4}
+{"t":0.438,"k":"task","seq":189,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","owner":"dc-1","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"running","cost":0.026424,"reqs":4,"since":0.307,"hist":[{"t":0.307,"s":"todo"},{"t":0.307,"s":"running","owner":"dc-1","cost":0.026424,"reqs":4}]}
 {"t":0.438,"k":"layers","seq":190,"id":"dc-1","toks":[4112,87,73,102,0,755]}
 {"t":0.438,"k":"warm","seq":191,"ttl":300}
 {"t":0.438,"k":"note","seq":192,"id":"dc-1","g":"done","text":"submitted T5","task":"T5"}
-{"t":0.438,"k":"task","seq":193,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","owner":"dc-1","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"verify","cost":0.026424,"reqs":4}
+{"t":0.438,"k":"task","seq":193,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","owner":"dc-1","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"verify","cost":0.026424,"reqs":4,"since":0.438,"hist":[{"t":0.307,"s":"todo"},{"t":0.307,"s":"running","owner":"dc-1","cost":0.026424,"reqs":4},{"t":0.438,"s":"verify","owner":"dc-1"}]}
 {"t":0.438,"k":"tool","seq":194,"id":"dc-1","name":"TaskBoard","arg":"done T5","out":"T5 is now in review (edited 2 (topic-1.md, topic-2.md); no tests run). Give your final one-paragraph summary and stop.","ok":true,"task":"T5","tid":"ddc-1"}
 {"t":0.459,"k":"state","seq":195,"id":"mgr","s":"think","doing":"thinking","task":null}
 {"t":0.459,"k":"tool","seq":196,"id":"mgr","name":"TaskBoard","arg":"accept T1","out":"T1 accepted","ok":true,"tid":"a1"}
@@ -204,7 +204,7 @@
 {"t":0.459,"k":"tool","seq":204,"id":"mgr","name":"Wait","arg":"T5 T6","out":"8 lines","ok":true,"tid":"wait-docs","ms":150}
 {"t":0.468,"k":"req","seq":205,"id":"dc-1","ratio":0.9709111924484685,"p":5191,"o":3}
 {"t":0.468,"k":"use","seq":206,"id":"dc-1","rd":23344,"un":1401,"out":159,"wr":0,"cost":0.032128,"saved":0.008754}
-{"t":0.468,"k":"task","seq":207,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","owner":"dc-1","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"verify","cost":0.032128,"reqs":5}
+{"t":0.468,"k":"task","seq":207,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","owner":"dc-1","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"verify","cost":0.032128,"reqs":5,"since":0.438,"hist":[{"t":0.307,"s":"todo"},{"t":0.307,"s":"running","owner":"dc-1","cost":0.026424,"reqs":4},{"t":0.438,"s":"verify","owner":"dc-1","cost":0.005704,"reqs":1}]}
 {"t":0.468,"k":"layers","seq":208,"id":"dc-1","toks":[4112,87,73,102,0,817]}
 {"t":0.468,"k":"warm","seq":209,"ttl":300}
 {"t":0.469,"k":"note","seq":210,"id":"dc-1","g":"done","text":"edited 2 (topic-1.md, topic-2.md); no tests run","task":"T5"}
@@ -213,14 +213,14 @@
 {"t":0.469,"k":"layers","seq":213,"id":"mgr","toks":[4112,87,272,0,0,1062]}
 {"t":0.469,"k":"warm","seq":214,"ttl":300}
 {"t":0.469,"k":"say","seq":215,"who":"mgr","text":"Summaries accepted; asking for a review.","stream":false}
-{"t":0.469,"k":"task","seq":216,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","owner":"dc-1","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"merged","cost":0.032128,"reqs":5}
-{"t":0.469,"k":"task","seq":217,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","owner":"dc-2","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"merged","cost":0.03194,"reqs":5}
-{"t":0.469,"k":"task","seq":218,"id":"T7","title":"Review every summary against the conventions","scope":"-","s":"todo"}
-{"t":0.469,"k":"task","seq":219,"id":"T7","title":"Review every summary against the conventions","owner":"rv-1","scope":"-","s":"running"}
+{"t":0.469,"k":"task","seq":216,"id":"T5","title":"Write the summaries for topics 1, 2 [topics: 1 2]","owner":"dc-1","scope":"summaries/topic-1.md, summaries/topic-2.md","s":"merged","cost":0.032128,"reqs":5,"since":0.469,"hist":[{"t":0.307,"s":"todo"},{"t":0.307,"s":"running","owner":"dc-1","cost":0.026424,"reqs":4},{"t":0.438,"s":"verify","owner":"dc-1","cost":0.005704,"reqs":1},{"t":0.469,"s":"merged","owner":"dc-1"}]}
+{"t":0.469,"k":"task","seq":217,"id":"T6","title":"Write the summaries for topics 3, 4 [topics: 3 4]","owner":"dc-2","scope":"summaries/topic-3.md, summaries/topic-4.md","s":"merged","cost":0.03194,"reqs":5,"since":0.469,"hist":[{"t":0.307,"s":"todo"},{"t":0.309,"s":"running","owner":"dc-2","cost":0.02622,"reqs":4},{"t":0.388,"s":"verify","owner":"dc-2","cost":0.00572,"reqs":1},{"t":0.469,"s":"merged","owner":"dc-2"}]}
+{"t":0.469,"k":"task","seq":218,"id":"T7","title":"Review every summary against the conventions","scope":"-","s":"todo","since":0.469,"hist":[{"t":0.469,"s":"todo"}]}
+{"t":0.469,"k":"task","seq":219,"id":"T7","title":"Review every summary against the conventions","owner":"rv-1","scope":"-","s":"running","since":0.469,"hist":[{"t":0.469,"s":"todo"},{"t":0.469,"s":"running","owner":"rv-1"}]}
 {"t":0.469,"k":"state","seq":220,"id":"rv-1","s":"think","doing":"thinking","task":"T7"}
 {"t":0.474,"k":"req","seq":221,"id":"rv-1","ratio":0.9312737855383927,"p":4467,"o":13}
 {"t":0.474,"k":"use","seq":222,"id":"rv-1","rd":4160,"un":307,"out":13,"wr":0,"cost":0.005648,"saved":0.00156}
-{"t":0.474,"k":"task","seq":223,"id":"T7","title":"Review every summary against the conventions","owner":"rv-1","scope":"-","s":"running","cost":0.005648,"reqs":1}
+{"t":0.474,"k":"task","seq":223,"id":"T7","title":"Review every summary against the conventions","owner":"rv-1","scope":"-","s":"running","cost":0.005648,"reqs":1,"since":0.469,"hist":[{"t":0.469,"s":"todo"},{"t":0.469,"s":"running","owner":"rv-1","cost":0.005648,"reqs":1}]}
 {"t":0.474,"k":"layers","seq":224,"id":"rv-1","toks":[4112,88,137,63,0,67]}
 {"t":0.474,"k":"warm","seq":225,"ttl":300}
 {"t":0.874,"k":"state","seq":226,"id":"rv-1","s":"think","doing":"starting","task":"T7"}
@@ -230,11 +230,11 @@
 {"t":0.874,"k":"tool","seq":230,"id":"rv-1","name":"Bash","arg":"cat summaries/*.md | wc -l","out":"2 lines","ok":true,"task":"T7","tid":"lrv-1","ms":399}
 {"t":0.877,"k":"req","seq":231,"id":"rv-1","ratio":0.9698046181172292,"p":4504,"o":21}
 {"t":0.877,"k":"use","seq":232,"id":"rv-1","rd":8528,"un":443,"out":34,"wr":0,"cost":0.01098,"saved":0.003198}
-{"t":0.877,"k":"task","seq":233,"id":"T7","title":"Review every summary against the conventions","owner":"rv-1","scope":"-","s":"running","cost":0.01098,"reqs":2}
+{"t":0.877,"k":"task","seq":233,"id":"T7","title":"Review every summary against the conventions","owner":"rv-1","scope":"-","s":"running","cost":0.01098,"reqs":2,"since":0.469,"hist":[{"t":0.469,"s":"todo"},{"t":0.469,"s":"running","owner":"rv-1","cost":0.01098,"reqs":2}]}
 {"t":0.877,"k":"layers","seq":234,"id":"rv-1","toks":[4112,88,137,63,0,104]}
 {"t":0.877,"k":"warm","seq":235,"ttl":300}
 {"t":0.877,"k":"note","seq":236,"id":"rv-1","g":"done","text":"submitted T7","task":"T7"}
-{"t":0.877,"k":"task","seq":237,"id":"T7","title":"Review every summary against the conventions","owner":"rv-1","scope":"-","s":"verify","cost":0.01098,"reqs":2}
+{"t":0.877,"k":"task","seq":237,"id":"T7","title":"Review every summary against the conventions","owner":"rv-1","scope":"-","s":"verify","cost":0.01098,"reqs":2,"since":0.877,"hist":[{"t":0.469,"s":"todo"},{"t":0.469,"s":"running","owner":"rv-1","cost":0.01098,"reqs":2},{"t":0.877,"s":"verify","owner":"rv-1"}]}
 {"t":0.877,"k":"tool","seq":238,"id":"mgr","name":"TaskBoard","arg":"accept T5","out":"T5 accepted","ok":true,"tid":"b1"}
 {"t":0.877,"k":"tool","seq":239,"id":"mgr","name":"TaskBoard","arg":"accept T6","out":"T6 accepted","ok":true,"tid":"b2"}
 {"t":0.877,"k":"tool","seq":240,"id":"mgr","name":"TaskBoard","arg":"create Review every summary against the conventions","out":"created T7 \"Review every summary against the conventions\"","ok":true,"tid":"rv"}
@@ -243,7 +243,7 @@
 {"t":0.877,"k":"tool","seq":243,"id":"rv-1","name":"TaskBoard","arg":"done T7","out":"T7 is now in review (no files edited; no tests run). Give your final one-paragraph summary and stop.","ok":true,"task":"T7","tid":"drv-1"}
 {"t":0.883,"k":"req","seq":244,"id":"rv-1","ratio":0.963855421686747,"p":4565,"o":3}
 {"t":0.883,"k":"use","seq":245,"id":"rv-1","rd":12928,"un":608,"out":37,"wr":0,"cost":0.0161,"saved":0.004848}
-{"t":0.883,"k":"task","seq":246,"id":"T7","title":"Review every summary against the conventions","owner":"rv-1","scope":"-","s":"verify","cost":0.0161,"reqs":3}
+{"t":0.883,"k":"task","seq":246,"id":"T7","title":"Review every summary against the conventions","owner":"rv-1","scope":"-","s":"verify","cost":0.0161,"reqs":3,"since":0.877,"hist":[{"t":0.469,"s":"todo"},{"t":0.469,"s":"running","owner":"rv-1","cost":0.01098,"reqs":2},{"t":0.877,"s":"verify","owner":"rv-1","cost":0.00512,"reqs":1}]}
 {"t":0.883,"k":"layers","seq":247,"id":"rv-1","toks":[4112,87,137,63,0,166]}
 {"t":0.883,"k":"warm","seq":248,"ttl":300}
 {"t":0.883,"k":"note","seq":249,"id":"rv-1","g":"done","text":"no files edited; no tests run","task":"T7"}
@@ -252,7 +252,7 @@
 {"t":0.888,"k":"layers","seq":252,"id":"mgr","toks":[4112,87,272,0,0,1285]}
 {"t":0.888,"k":"warm","seq":253,"ttl":300}
 {"t":0.888,"k":"say","seq":254,"who":"mgr","text":"Reviewed.","stream":false}
-{"t":0.888,"k":"task","seq":255,"id":"T7","title":"Review every summary against the conventions","owner":"rv-1","scope":"-","s":"merged","cost":0.0161,"reqs":3}
+{"t":0.888,"k":"task","seq":255,"id":"T7","title":"Review every summary against the conventions","owner":"rv-1","scope":"-","s":"merged","cost":0.0161,"reqs":3,"since":0.888,"hist":[{"t":0.469,"s":"todo"},{"t":0.469,"s":"running","owner":"rv-1","cost":0.01098,"reqs":2},{"t":0.877,"s":"verify","owner":"rv-1","cost":0.00512,"reqs":1},{"t":0.888,"s":"merged","owner":"rv-1"}]}
 {"t":0.888,"k":"tool","seq":256,"id":"mgr","name":"TaskBoard","arg":"accept T7","out":"T7 accepted","ok":true,"tid":"ar"}
 {"t":0.891,"k":"req","seq":257,"id":"mgr","ratio":0.9802152030544949,"p":5762,"o":18}
 {"t":0.891,"k":"use","seq":258,"id":"mgr","rd":20464,"un":6133,"out":395,"wr":0,"cost":0.05289599999999999,"saved":0.007674}

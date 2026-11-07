@@ -1,0 +1,71 @@
+{
+  "id": "manager-small-task-solo",
+  "source": "runs/2026-10-26-ravenwatch-small, friction 7",
+  "failure": "The manager spawned the small scaffold task T1 without solo=true, so all three backend members formed a pool to plan it and the other tasks queued behind its rounds.",
+  "team": [
+    "architect",
+    "backend",
+    "backend",
+    "backend",
+    "tester",
+    "reviewer"
+  ],
+  "goal": "Build ledgerly, a small command-line ledger in Go: add, list and report subcommands over a JSON file. Keep it small.",
+  "turns": [
+    {
+      "assistant": "I'll start with the scaffold, which everything else builds on.",
+      "calls": [
+        {
+          "tool": "task",
+          "args": {
+            "action": "create",
+            "title": "Scaffold the Go module and the ledgerly command",
+            "description": "go.mod (module ledgerly), cmd/ledgerly/main.go that prints usage and exits 2 on an unknown subcommand, a Makefile with build and test targets. Acceptance: go build ./... and go test ./... pass.",
+            "role": "backend",
+            "files": [
+              "go.mod",
+              "cmd/ledgerly/**",
+              "Makefile"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "text": "created T1"
+        }
+      ]
+    }
+  ],
+  "board": "<live board=\"v2\">\nyou: mgr (manager)\ntasks:\n  T1 todo \"Scaffold the Go module and the ledgerly command\"\nboard: 1 open, 0 done\nteam: architect 0/1 · backend 0/3 · tester 0/1 · reviewer 0/1\n6 free slot(s) (architect, backend, tester, reviewer), 1 ready task(s) with no owner: start workers (spawn), in parallel where the tasks are independent\n</live>",
+  "expect": {
+    "any": [
+      {
+        "tool": "spawn",
+        "args": {
+          "task": "^T1$"
+        },
+        "why": "start the scaffold everything else builds on"
+      },
+      {
+        "tool": "task",
+        "args": {
+          "action": "^create$"
+        },
+        "why": "or create the rest of the tasks first"
+      }
+    ],
+    "none": [
+      {
+        "tool": "spawn",
+        "args": {
+          "task": "^T1$",
+          "solo": "^(false)?$"
+        },
+        "why": "a scaffold is small work with one owner: without solo=true the role's pool plans it in rounds of votes"
+      }
+    ]
+  }
+}

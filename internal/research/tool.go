@@ -1196,15 +1196,6 @@ func (t *Tool) build(in input) (string, error) {
 	return b.String(), nil
 }
 
-// Runs lists slugs of a store's root, newest first.
-func Runs(root string) []string {
-	var out []string
-	for _, r := range List(root) {
-		out = append(out, r.Slug)
-	}
-	return out
-}
-
 // cloneRun is a deep copy of a run, for readers outside the store's lock.
 func cloneRun(r *Run) *Run {
 	b, _ := json.Marshal(r)

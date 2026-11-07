@@ -25,6 +25,7 @@ import (
 // checks that no goroutine of the module is left behind: a closed session has stopped
 // its agents, its servers and everything they started.
 func TestMain(m *testing.M) {
+	os.Unsetenv("SLEIPNIR_HOME") // the tests give each session its own home; an inherited data directory would override it
 	if mcptest.IsHelper() {
 		mcptest.HelperMain()
 		return

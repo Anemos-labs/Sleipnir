@@ -706,6 +706,17 @@ func (mr *mailroom) fromMailman(agentID, to, text string) (string, error) {
 	delete(b.byTo, to) // one digest per recipient
 	mr.mu.Unlock()
 
+	// A parcel too long to deliver whole was digested from its opening: the recipient is
+	// told, by the harness, which originals it can read whole.
+	var long []string
+	for _, p := range ps {
+		if p.msg.Full != "" {
+			long = append(long, p.msg.ID)
+		}
+	}
+	if len(long) > 0 {
+		digest += fmt.Sprintf(" [harness: the whole of %s, which this digest saw only in part: mail read=<id>]", strings.Join(long, ", "))
+	}
 	msg := Message{ID: s.Router.nextID(), From: agentID, To: to, Kind: urgentKind(ps), Text: digest, Via: agentID, Origins: originsOf(ps)}
 	if err := s.deliver(msg); err != nil {
 		mr.undeliverable(ps, err)

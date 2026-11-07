@@ -680,12 +680,40 @@ const goalEvent = "goal.state"
 // SaveGoal records a resumable goal. Call it before its first turn to establish
 // the objective boundary; JudgeGoal refuses a goal whose boundary was not saved.
 func (s *Session) SaveGoal(g *goal.State) {
+	s.noteMarks(g)
 	if g != nil && g.StartSeq == 0 {
 		g.StartSeq, _ = s.Log.Emit("", "goal.start", map[string]any{"objective": g.Objective})
 	}
 	if _, err := s.Log.Emit("", goalEvent, map[string]any{"goal": g}); err == nil {
 		s.noteObjective(g)
 	}
+}
+
+// noteMarks remembers the milestones of the goal (none when it is cleared or met) for the plan tool's check.
+func (s *Session) noteMarks(g *goal.State) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.goalOn = g != nil && !g.Done
+	s.goalMarks = nil
+	if s.goalOn {
+		s.goalMarks = g.Marks()
+	}
+}
+
+// planCheck is what the plan tool adds to a plan the main agent saves while a goal is set: how it stands against the goal's
+// milestones and estimates (goal.PlanAdvice). Other agents' plans, and plans without a goal, get nothing.
+func (s *Session) planCheck(agent string, items []plan.Item) string {
+	a := s.Main()
+	if a == nil || a.ID() != agent {
+		return ""
+	}
+	s.mu.Lock()
+	on, marks := s.goalOn, s.goalMarks
+	s.mu.Unlock()
+	if !on {
+		return ""
+	}
+	return goal.PlanAdvice(items, marks)
 }
 
 // LoadGoal is the goal this session had when its log last said so, made paused ("the chat was restarted"): nothing runs until the person
@@ -716,6 +744,7 @@ func (s *Session) LoadGoal() *goal.State {
 	})
 	if last != nil && last.Objective != "" && !last.Done {
 		s.noteObjective(last)
+		s.noteMarks(last)
 		if last.Paused == "" {
 			last.Paused, last.Unjudged = "the chat was restarted", true // a turn may have been cut short, and was not judged
 		}
@@ -739,4 +768,41 @@ func judgeBlocks(t core.Turn) []string {
 		}
 	}
 	return out
+}
+
+// restorePlans sets each agent's plan in store to the last one its log says it saved: the plan tool keeps plans in memory, and a
+// resumed session would otherwise show its agents, the goal's judge and the plan tool's checks no plan at all, while the page,
+// which reads the log, still shows the old one. A goal started after a plan clears the main agent's, as ClearGoalPlan did.
+func restorePlans(log string, store *plan.Store) {
+	_ = events.Scan(log, func(e events.Event) error {
+		switch e.Type {
+		case "goal.start":
+			for _, id := range []string{"main", "mgr"} {
+				store.Set(id, nil)
+			}
+		case events.TypeToolCall:
+			var c struct {
+				Name  string          `json:"name"`
+				As    string          `json:"as"`
+				Input json.RawMessage `json:"input"`
+			}
+			if json.Unmarshal(e.Data, &c) != nil || firstNonEmpty(c.As, c.Name) != "plan" || e.Agent == "" {
+				return nil
+			}
+			var in struct {
+				Items []plan.Item `json:"items"`
+			}
+			if json.Unmarshal(c.Input, &in) != nil {
+				return nil
+			}
+			normalize := plan.Normalize
+			if e.Agent == managerAgent {
+				normalize = plan.NormalizeDelegated // as the plan tool judged it: a manager's steps may be doing at once
+			}
+			if items, err := normalize(in.Items); err == nil {
+				store.Set(e.Agent, items)
+			}
+		}
+		return nil
+	})
 }

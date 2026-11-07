@@ -143,9 +143,7 @@ func TestAReadOnlyRoleInPlanModeIsNotLoosenedByAllowRules(t *testing.T) {
 	}
 	ctx := context.Background()
 	role := BuiltinRoles()["reviewer"]
-	if !role.ReadOnly {
-		t.Fatal("the reviewer role is no longer read-only: pick another read-only role")
-	}
+	role.ReadOnly = true // as a project's agent definition makes a role read-only
 	rr := roleRequester{inner: eng, role: role, denyWrites: "the reviewer role is read-only (test)"}
 	if d := rr.Check(ctx, perm.Request{Tool: "bash", Command: "rm -rf build", Cwd: root}); d.Allow {
 		t.Errorf("a session rule let a read-only role run rm: %+v", d)

@@ -30,6 +30,11 @@ type PruneOptions struct {
 	// removing the directory, and keeps the branch: nothing is lost, the clutter
 	// is gone.
 	Salvage bool
+	// KeepUnmerged keeps a tree whose branch holds commits that exist nowhere else, as a tree with uncommitted changes is kept
+	// without Salvage: only a tree that holds nothing of its own is removed (with its branch), so a later run that needs it can
+	// make it again from the integration tip and lose nothing. It is how the trees of a stopped session that may still be
+	// resumed are reclaimed.
+	KeepUnmerged bool
 	// DryRun reports what would happen without changing anything.
 	DryRun bool
 	// MinAge skips trees created more recently than this.
@@ -328,6 +333,10 @@ func (m *Manager) pruneOne(ctx context.Context, opts PruneOptions, e ownedEntry,
 			}
 			unique = n
 		}
+	}
+	if unique > 0 && opts.KeepUnmerged && !opts.Force {
+		keep(fmt.Sprintf("its branch holds %d commit(s) that exist nowhere else", unique)) // still checked out: the branch stays
+		return
 	}
 	if opts.DryRun {
 		if act.Reason == "" {

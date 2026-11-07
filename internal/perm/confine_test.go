@@ -281,8 +281,13 @@ func TestConfinedAgentReadsIgnoredFilesOfTheCheckout(t *testing.T) {
 				t.Errorf("a read of a tracked file of the checkout should be refused and name the tree's copy: %v %q", d.Allow, d.Reason)
 			}
 			d = as(read(filepath.Join(other, "src")))
-			if d.Allow || !strings.Contains(d.Reason, "another agent's worktree") {
+			if d.Allow || !strings.Contains(d.Reason, "another worktree ("+filepath.Base(other)+")") || strings.Contains(d.Reason, "ask the manager") {
 				t.Errorf("a read of another agent's tree: %v %q", d.Allow, d.Reason)
+			}
+			// The directory of the trees is not "another agent's worktree", and the manager is not told to ask itself.
+			d = as(read(filepath.Dir(other)))
+			if d.Allow || !strings.Contains(d.Reason, "holds every agent's worktree") || strings.Contains(d.Reason, "ask the manager") {
+				t.Errorf("a read of the trees' directory: %v %q", d.Allow, d.Reason)
 			}
 			// The whole checkout is not ignored, so a walk of it is refused.
 			if d := as(bash("find " + f.root)); d.Allow {

@@ -6,7 +6,11 @@
 package plan
 
 import (
+	"encoding/json"
 	"fmt"
+	"math"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode"
@@ -18,19 +22,98 @@ const (
 	Doing   = "doing"
 	Done    = "done"
 
-	MaxSteps    = 12
+	// MaxSteps bounds a plan. A goal of many hours needs a step for each part of it (a plan of a dozen broad steps shows a
+	// day's work as nearly done after an hour), so the bound leaves room for one step or two per milestone.
+	MaxSteps    = 24
 	MaxStepRune = 160
+	// MaxEffort is the largest estimate a step keeps (hours); a larger one is read as this.
+	MaxEffort = 200
+	// MaxMilestoneRune bounds the milestone id a step names.
+	MaxMilestoneRune = 8
 )
 
-// Item is one step.
+// Item is one step. Effort is the agent's estimate of the step's work in hours (0: none given); Milestone is the id of the goal
+// milestone the step serves ("M3", "" for none). Both weigh the step in the plan's progress (Progress).
 type Item struct {
-	Step   string `json:"step"`
-	Status string `json:"status"`
+	Step      string `json:"step"`
+	Status    string `json:"status"`
+	Effort    Hours  `json:"effort,omitempty"`
+	Milestone string `json:"milestone,omitempty"`
+}
+
+// Hours is an effort estimate in hours. It reads a JSON number or a string a model writes for one ("3", "3h", "90m", "1.5 hours",
+// "2d" for two working days of 8 hours); one it cannot read is no estimate, never a refused plan.
+type Hours float64
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (h *Hours) UnmarshalJSON(b []byte) error {
+	*h = 0
+	var n float64
+	if json.Unmarshal(b, &n) == nil {
+		*h = Hours(n)
+		return nil
+	}
+	var s string
+	if json.Unmarshal(b, &s) != nil {
+		return nil
+	}
+	*h = parseHours(s)
+	return nil
+}
+
+// hoursText is an estimate as a model writes it: a number and an optional unit.
+var hoursText = regexp.MustCompile(`(?i)^~?\s*(\d+(?:\.\d+)?)\s*(m|min|mins|minutes?|h|hr|hrs|hours?|d|days?)?\.?$`)
+
+func parseHours(s string) Hours {
+	m := hoursText.FindStringSubmatch(strings.TrimSpace(s))
+	if m == nil {
+		return 0
+	}
+	n, err := strconv.ParseFloat(m[1], 64)
+	if err != nil {
+		return 0
+	}
+	switch u := strings.ToLower(m[2]); {
+	case strings.HasPrefix(u, "m"):
+		n /= 60
+	case strings.HasPrefix(u, "d"):
+		n *= 8
+	}
+	return Hours(n)
+}
+
+// milestoneID is a milestone id as a model writes it ("M3", "m3", "3", "Milestone 3", "**M3**").
+var milestoneID = regexp.MustCompile(`(?i)^\**\s*(?:m|milestone\s*)?(\d{1,3})\b`)
+
+// normMilestone is the id a step names, as the goal numbers its milestones ("M3"): a form ParseMilestones would number is
+// rewritten, anything else kept as written (upper case, at most MaxMilestoneRune runes).
+func normMilestone(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if m := milestoneID.FindStringSubmatch(s); m != nil {
+		n, _ := strconv.Atoi(m[1])
+		return "M" + strconv.Itoa(n)
+	}
+	s = strings.ToUpper(strings.Join(strings.Fields(s), ""))
+	if r := []rune(s); len(r) > MaxMilestoneRune {
+		s = string(r[:MaxMilestoneRune])
+	}
+	return s
 }
 
 // Normalize checks a list a model wrote and returns it cleaned: single-spaced one-line steps, a missing status taken as pending, and at
 // most one step doing. The error says what to change.
-func Normalize(in []Item) ([]Item, error) {
+func Normalize(in []Item) ([]Item, error) { return normalize(in, true) }
+
+// NormalizeDelegated is Normalize for the plan of an agent that hands its steps to others, a team's manager: any number of steps
+// may be doing at once, one for each that a worker is on. Held to one, a manager with four workers on four steps was refused ("4
+// steps are doing; one at a time") and could only mark finished work done or running work pending. A replay of a saved plan
+// (resume, the web view) uses it too, since the tool already judged what it saved.
+func NormalizeDelegated(in []Item) ([]Item, error) { return normalize(in, false) }
+
+func normalize(in []Item, oneDoing bool) ([]Item, error) {
 	if len(in) == 0 {
 		return nil, fmt.Errorf(`the plan has no steps: give "items" as a list of {"step": "...", "status": "pending|doing|done"}`)
 	}
@@ -64,9 +147,16 @@ func Normalize(in []Item) ([]Item, error) {
 		default:
 			return nil, fmt.Errorf("step %d has the status %q: use pending, doing or done", i+1, it.Status)
 		}
-		out = append(out, Item{Step: step, Status: st})
+		e := float64(it.Effort)
+		switch {
+		case math.IsNaN(e) || e < 0:
+			e = 0
+		case e > MaxEffort:
+			e = MaxEffort
+		}
+		out = append(out, Item{Step: step, Status: st, Effort: Hours(math.Round(e*100) / 100), Milestone: normMilestone(it.Milestone)})
 	}
-	if doing > 1 {
+	if oneDoing && doing > 1 {
 		return nil, fmt.Errorf("%d steps are doing; one at a time: mark the others pending or done", doing)
 	}
 	return out, nil
@@ -94,9 +184,115 @@ func Lines(items []Item) string {
 		case Doing:
 			mark = "[>]"
 		}
-		fmt.Fprintf(&b, "%s %d. %s\n", mark, i+1, it.Step)
+		fmt.Fprintf(&b, "%s %d. %s%s\n", mark, i+1, it.Step, Tag(it))
 	}
 	return b.String()
+}
+
+// Tag is what a line of the plan says beside a step's text: its milestone and its estimate (" (M3, 4h)"), "" for a step with
+// neither.
+func Tag(it Item) string {
+	var parts []string
+	if it.Milestone != "" {
+		parts = append(parts, it.Milestone)
+	}
+	if it.Effort > 0 {
+		parts = append(parts, FormatHours(float64(it.Effort)))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " (" + strings.Join(parts, ", ") + ")"
+}
+
+// FormatHours is an estimate as a person reads it: "45m", "3h", "1.5h".
+func FormatHours(h float64) string {
+	if h < 1 {
+		return strconv.Itoa(int(math.Max(1, math.Round(h*60)))) + "m"
+	}
+	return strconv.FormatFloat(math.Round(h*10)/10, 'f', -1, 64) + "h"
+}
+
+// Mark is what the judge has ruled on one milestone of a goal: Ruled says whether it has ruled on the goal's milestones yet.
+type Mark struct {
+	ID    string
+	Met   bool
+	Ruled bool
+}
+
+// Weighed is how far a plan is, in the plan's own estimate (hours, or steps when no step has one): Done is the work of the steps
+// done, Claimed the part of the steps marked done that the judge has ruled unmet (counted open), and Total all of it, with a share
+// for each milestone that no step names (Missing). Hours says whether the weights are estimates in hours.
+type Weighed struct {
+	Done, Claimed, Total float64
+	Missing              []string
+	Hours                bool
+}
+
+// Pct is Done as a share of Total, from 0 to 100.
+func (w Weighed) Pct() int {
+	if w.Total <= 0 {
+		return 0
+	}
+	return int(math.Floor(100 * w.Done / w.Total))
+}
+
+// Progress weighs a plan against its goal's milestones (ms; none for a plan without a goal). Each step weighs its estimate; a
+// step without one weighs the mean of those that have one (one step, when none has). A done step counts as done unless it serves a
+// milestone the judge has ruled unmet: the judge's ruling wins over the agent's mark, which is the step's Claimed share. A
+// milestone no step names adds an open share of the mean weight, so a plan that leaves out part of the goal does not show the goal
+// nearer its end than it is.
+func Progress(items []Item, ms []Mark) Weighed {
+	var w Weighed
+	sum, n := 0.0, 0
+	for _, it := range items {
+		if it.Effort > 0 {
+			sum += float64(it.Effort)
+			n++
+		}
+	}
+	mean := 1.0
+	if n > 0 {
+		mean, w.Hours = sum/float64(n), true
+	}
+	byID := make(map[string]Mark, len(ms))
+	for _, m := range ms {
+		byID[m.ID] = m
+	}
+	named := map[string]bool{}
+	for _, it := range items {
+		e := float64(it.Effort)
+		if e <= 0 {
+			e = mean
+		}
+		w.Total += e
+		named[it.Milestone] = true
+		if it.Status != Done {
+			continue
+		}
+		if m, ok := byID[it.Milestone]; ok && m.Ruled && !m.Met {
+			w.Claimed += e
+			continue
+		}
+		w.Done += e
+	}
+	for _, m := range ms {
+		if !named[m.ID] && !m.Met {
+			w.Missing = append(w.Missing, m.ID)
+			w.Total += mean
+		}
+	}
+	return w
+}
+
+// Summary is a plan's progress in one line: "3 of 14 steps done, about 20% of 41h estimated".
+func Summary(items []Item, ms []Mark) string {
+	w := Progress(items, ms)
+	s := fmt.Sprintf("%d of %d steps done", len(items)-Open(items), len(items))
+	if w.Hours {
+		s += fmt.Sprintf(", about %d%% of %s estimated", w.Pct(), FormatHours(w.Total))
+	}
+	return s
 }
 
 // Frame is the plan as the hot tail carries it ("" for no plan): one <live plan> frame, which the agent guards like any other.

@@ -62,6 +62,24 @@ type TaskX struct {
 	Cost float64 `json:"cost,omitempty"`
 	Plan bool    `json:"plan,omitempty"`
 	Reqs int     `json:"reqs,omitempty"`
+	// Since is the session time (seconds) at which the task entered its column or changed hands: what its time in the column counts
+	// from. A keyframe re-dates every event, so the page cannot learn it from the event's own t.
+	Since float64 `json:"since,omitempty"`
+	// Hist is the task's life as stretches, oldest first (state.Task.History): the session time each began, its column (todo,
+	// running, verify, merged, or failed) and who held the task then. The board draws it as the card's history strip.
+	Hist []Stretch `json:"hist,omitempty"`
+}
+
+// Stretch is one stretch of a task's life on the page: from T (session seconds), in column S, held by Owner. Why is the board's
+// word on the task as it began (why it went back to todo, or why it failed); Cost and Reqs are what was spent on it during the
+// stretch (marked as the task's, with TaskX.Plan), so the strip can say what each attempt cost.
+type Stretch struct {
+	T     float64 `json:"t"`
+	S     string  `json:"s"`
+	Owner string  `json:"owner,omitempty"`
+	Why   string  `json:"why,omitempty"`
+	Cost  float64 `json:"cost,omitempty"`
+	Reqs  int     `json:"reqs,omitempty"`
 }
 
 // MailX is a mail event with Tok, the estimated size of the text in tokens, and Digest, the number of messages a mailman's digest

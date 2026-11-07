@@ -197,6 +197,8 @@ type Config struct {
 	Limiter Limiter
 	Gate    Gate
 	Sink    Sink
+	// Images says how many images a request carries and who describes the ones it does not (images.go).
+	Images ImagePolicy
 	// Hooks runs user-configured commands around tool calls and before the agent
 	// stops (nil: none).
 	Hooks Hooks
@@ -420,6 +422,7 @@ type Agent struct {
 	pending     *pendingBatch // a batch that cannot write, running (Config.Barrier; see Recoverable)
 
 	comp compactionState
+	imgs imageState // images attached, described and retired (images.go)
 
 	// life is the agent's lifetime: compaction jobs run on it, and Close ends it.
 	// jobs counts the jobs in flight so that Close (and a swarm's Shutdown) can wait
@@ -431,10 +434,14 @@ type Agent struct {
 }
 
 // inboxMsg is one queued message. Steering typed by a human is preserved through
-// compaction as an instruction; mail from other agents is data and is not.
+// compaction as an instruction; mail from other agents is data and is not. person
+// marks what the person typed (Steer), as opposed to a harness note that is kept
+// like steering (Send without the mail prefix).
 type inboxMsg struct {
-	text  string
-	steer bool
+	text   string
+	steer  bool
+	person bool
+	still  func() bool // SendIf: whether the message still holds when it is taken; nil for one that always does
 }
 
 // New builds an agent with an empty thread.
@@ -541,12 +548,23 @@ const mailPrefix = "[mail"
 // that carries the router's "[mail" prefix is mail from another agent (data, not
 // instructions); anything else is human steering and survives compaction
 // verbatim in the instructions notes. Use Steer to say so explicitly.
-func (a *Agent) Send(text string) { a.enqueue(text, !strings.HasPrefix(text, mailPrefix)) }
+func (a *Agent) Send(text string) {
+	a.enqueue(inboxMsg{text: text, steer: !strings.HasPrefix(text, mailPrefix)})
+}
+
+// SendIf is Send for a message that may stop being true before the agent reads it: still is asked when the message is taken
+// for the next turn or tool results, and a message it says no longer holds is dropped unread. A harness notice ("T23 has
+// waited in review for 5 minutes") was queued while the manager was accepting T23, and reached it after the accept. still is
+// called without the agent's lock held, so it may read anything but the agent itself.
+func (a *Agent) SendIf(text string, still func() bool) {
+	a.enqueue(inboxMsg{text: text, steer: !strings.HasPrefix(text, mailPrefix), still: still})
+}
 
 // Steer queues human steering: text typed by the person driving this agent. It
-// rides with the next tool results (or as its own turn) and, unlike mail, is
-// copied into the instructions notes when its turn is compacted.
-func (a *Agent) Steer(text string) { a.enqueue(text, true) }
+// rides with the next tool results (or as its own turn) behind kv.PersonFrame,
+// which tells the model whose words they are and that they come first, and, unlike
+// mail, is copied into the instructions notes when its turn is compacted.
+func (a *Agent) Steer(text string) { a.enqueue(inboxMsg{text: text, steer: true, person: true}) }
 
 // QueueAssignment replaces the pending harness assignment, without changing an
 // in-flight prompt. The next request carries it as task data; compaction preserves
@@ -571,10 +589,10 @@ func (a *Agent) drainAssignment() {
 	}
 }
 
-// enqueue appends an inbox message and its steering flag under the agent lock.
-func (a *Agent) enqueue(text string, steer bool) {
+// enqueue appends an inbox message under the agent lock.
+func (a *Agent) enqueue(m inboxMsg) {
 	a.mu.Lock()
-	a.inbox = append(a.inbox, inboxMsg{text: text, steer: steer})
+	a.inbox = append(a.inbox, m)
 	a.mu.Unlock()
 }
 
@@ -695,6 +713,7 @@ func (a *Agent) push(t core.Turn) core.Turn {
 	t = a.thread.Append(t)
 	_ = a.cfg.Archive.Put(a.cfg.ID, t)
 	a.emit(events.TypeTurnAppend, t)
+	a.noteImages(t)
 	return t
 }
 
@@ -730,7 +749,8 @@ func (a *Agent) emit(typ string, data any) {
 func (a *Agent) Run(ctx context.Context, input string) (*Result, error) {
 	var blocks []core.Block
 	if input != "" {
-		blocks = []core.Block{core.Text(input)}
+		text, imgs := a.attachImages(input)
+		blocks = append([]core.Block{core.Text(text)}, imgs...)
 	}
 	return a.run(ctx, core.OriginUser, blocks)
 }
@@ -779,6 +799,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 	planNudges := 0   // times a finished answer was sent back because the plan still had open steps
 	verifyNudges := 0 // times a finished answer was sent back because code was changed and no test ran since
 	leakNudges := 0   // times an answer was sent back because it held the markup of a tool call and no call
+	a.beginImageRun()
 	if len(input) > 0 {
 		a.pushUser(origin, input)
 		a.emit(events.TypeUserInput, inputEvent(origin, input))
@@ -845,6 +866,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 			}
 		}
 
+		a.retireImages(ctx)
 		phase = "model"
 		resp, epoch, err := a.request(ctx)
 		if errors.Is(err, ErrRepeatedCalls) && repeats < maxRepeatRounds {
@@ -852,7 +874,7 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 			// told why, so that the next response is not the same loop.
 			repeats++
 			a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("the response repeated the same tool call and was stopped: asking the model again (%d of %d)", repeats, maxRepeatRounds))
-			a.pushUser(core.OriginSystem, a.wrapUp([]core.Block{core.Text(repeatedCallsNudge)}, limit-step-1))
+			a.pushUser(core.OriginSystem, a.wrapUp([]core.Block{core.Text(repeatedCallsText(repeatedTool(err)))}, limit-step-1))
 			continue
 		}
 		if err != nil {
@@ -998,16 +1020,21 @@ func (a *Agent) toolBatch(ctx context.Context, calls []core.Block, left int) (st
 // reads (text), and, for a task the harness handed over, who it speaks for (origin) and
 // the assignment it carries. A person's input keeps the plain {"text": …} shape.
 func inputEvent(origin core.Origin, blocks []core.Block) map[string]any {
-	var text, card []string
+	var text, card, imgs []string
 	for _, b := range blocks {
 		switch {
 		case kv.IsTask(b):
 			card = append(card, b.Text)
 		case b.Kind == core.BlockText:
 			text = append(text, b.Text)
+		case b.Kind == core.BlockImage:
+			imgs = append(imgs, b.MediaRef)
 		}
 	}
 	m := map[string]any{"text": strings.Join(text, "\n")}
+	if len(imgs) > 0 {
+		m["images"] = imgs // the blobs of the pictures the person attached, in the order the text numbers them
+	}
 	if origin != core.OriginUser {
 		m["origin"] = string(origin)
 	}
@@ -1050,6 +1077,18 @@ const maxRepeatRounds = 2
 // repeatedCallsNudge is what the model reads after a response that was stopped for repeating one call.
 const repeatedCallsNudge = "[harness] Your last response was stopped: it wrote the same tool call again and again in one response, and none of it ran. " +
 	"Make each call once. Take the next step with one or a few distinct calls, then read their results before you go on."
+
+// repeatedCallsText is repeatedCallsNudge naming the tool whose call repeated (when known), and saying that distinct calls in one
+// response are not what was stopped: a manager told to batch independent calls read the bare nudge as at odds with that.
+func repeatedCallsText(tool string) string {
+	if tool == "" || len(tool) > 40 || strings.IndexFunc(tool, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-' || r == '.')
+	}) >= 0 {
+		return repeatedCallsNudge // the name is the model's own text: only a plain tool name is repeated back
+	}
+	return "[harness] Your last response was stopped: it wrote the same " + tool + " call (same arguments) again and again in one response, and none of it ran. " +
+		"Make each call once: several different calls in one response are fine. Take the next step with one or a few distinct calls, then read their results before you go on."
+}
 
 // thinkingCutoffNudge replaces cutoffNudge when the cut-off response held only reasoning: no answer text and no call. Reasoning
 // that planned the whole task at once does not finish by being continued; one step taken does.
@@ -1118,7 +1157,7 @@ func (a *Agent) drainInbox(resuming bool) {
 		origin := core.OriginMail
 		steerOnly := true
 		for _, b := range blocks {
-			if !kv.IsSteer(b) {
+			if !kv.IsSteer(b) && b.Kind != core.BlockImage { // the pictures a person attached to their steer are theirs too
 				steerOnly = false
 			}
 		}
@@ -1129,31 +1168,50 @@ func (a *Agent) drainInbox(resuming bool) {
 	}
 }
 
-// takeInbox returns the queued messages as blocks: at most one steering block
-// and one mail block per drain. Every block is a position for the provider's
-// cache lookback (20 positions), so a burst of mail must not become a burst of
-// blocks; steering keeps its own block because it is preserved differently.
+// takeInbox returns the queued messages as blocks: at most one steering block,
+// one mail block and one block of the person's words (kv.Person) per
+// drain. Every block is a position for the provider's cache lookback (20
+// positions), so a burst of mail must not become a burst of blocks; steering keeps
+// its own block because it is preserved differently. The person's words come last,
+// nearest the model's next step.
 func (a *Agent) takeInbox() []core.Block {
 	a.mu.Lock()
+	taken := a.inbox
+	a.inbox = nil
+	a.mu.Unlock()
+	kept := taken[:0:0]
+	for _, m := range taken {
+		if m.still == nil || m.still() { // outside the lock: still reads the harness's state
+			kept = append(kept, m)
+		}
+	}
+	a.mu.Lock()
 	defer a.mu.Unlock()
-	if len(a.inbox) == 0 {
+	if len(kept) == 0 {
 		return nil
 	}
-	var steer, mail []string
-	for _, m := range a.inbox {
-		if m.steer {
+	var steer, mail, person []string
+	for _, m := range kept {
+		switch {
+		case m.person:
+			person = append(person, m.text)
+		case m.steer:
 			steer = append(steer, m.text)
-		} else {
+		default:
 			mail = append(mail, m.text)
 		}
 	}
-	a.inbox = nil
 	var blocks []core.Block
 	if len(steer) > 0 {
-		blocks = append(blocks, kv.Steer(strings.Join(steer, "\n\n")))
+		text, imgs := a.attachImages(strings.Join(steer, "\n\n"))
+		blocks = append(blocks, kv.Steer(text))
+		blocks = append(blocks, imgs...)
 	}
 	if len(mail) > 0 {
 		blocks = append(blocks, core.Text(strings.Join(mail, "\n")))
+	}
+	if len(person) > 0 {
+		blocks = append(blocks, kv.Person(strings.Join(person, "\n\n")))
 	}
 	return blocks
 }
@@ -1163,6 +1221,18 @@ func (a *Agent) PendingInbox() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return len(a.inbox)
+}
+
+// PendingPerson reports whether something the person typed (Steer) awaits the next turn boundary.
+func (a *Agent) PendingPerson() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, m := range a.inbox {
+		if m.person {
+			return true
+		}
+	}
+	return false
 }
 
 // ---- hot tail delivery -----------------------------------------------------------

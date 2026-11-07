@@ -5,6 +5,10 @@
       "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
     },
     {
+      "item": "cache.attached_images",
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
+    },
+    {
       "item": "cache.compact_at_percent",
       "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
     },
@@ -14,6 +18,10 @@
     },
     {
       "item": "cache.compaction_mode",
+      "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
+    },
+    {
+      "item": "cache.describe_images",
       "reason": "tuning of the prompt-cache engine: set in a configuration file or a SLEIPNIR_CACHE_* variable in both interfaces; Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
     },
     {
@@ -111,6 +119,14 @@
     {
       "item": "resources.unlimited",
       "reason": "the machine share of the agents' commands: set in the user's configuration file or a SLEIPNIR_RESOURCES_* variable in both interfaces (a project file cannot set it); Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does"
+    },
+    {
+      "item": "storage.clean",
+      "reason": "the housekeeping of the data directory: set in the user's configuration file or a SLEIPNIR_STORAGE_* variable in both interfaces (a project file cannot set it); Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does, and the command runner of the page runs `sleipnir storage clean` as the terminal does"
+    },
+    {
+      "item": "storage.worktree_idle",
+      "reason": "the housekeeping of the data directory: set in the user's configuration file or a SLEIPNIR_STORAGE_* variable in both interfaces (a project file cannot set it); Settings > Configuration shows the effective value and its file read-only, as `sleipnir config` does, and the command runner of the page runs `sleipnir storage clean` as the terminal does"
     },
     {
       "item": "swarm.max_concurrent_requests",

@@ -220,7 +220,7 @@ const (
 
 // positionals are the positionals CLI.md states in prose, per command path.
 var positionals = map[string][]wire.CLIPositional{
-	"init": {}, "config": {}, "sessions": {}, "sessions prune": {}, "chat": {}, "web": {},
+	"init": {}, "config": {}, "sessions": {}, "sessions prune": {}, "storage": {}, "storage clean": {}, "chat": {}, "web": {},
 	"run":      {many("PROMPT", false, goalArg)},
 	"swarm":    {pos("N", true, "number of workers (8 or more, one of each role; the manager comes on top)"), many("GOAL", false, goalArg)},
 	"recon":    {pos("DIR", false, "project directory (default: the current one)")},
@@ -238,6 +238,8 @@ var positionals = map[string][]wire.CLIPositional{
 	"schedule rm": {pos("ID", true, "the job id `sleipnir schedule` lists")},
 	"daemon":      {}, "demo": {}, "mock": {}, "sim": {},
 	"friction": {many("PATH", true, "a session directory, a directory of sessions, or a benchmark run directory")},
+	"council":  {many("SCREENSHOT", true, "the screenshots of the candidate (PNG, JPEG, WebP or GIF)")},
+	"tooleval": {},
 	"version":  {}, "mcp list": {},
 	"mcp approve": {pos("NAME", true, "the project server to approve")},
 	"mcp revoke":  {pos("NAME", true, "the approval to forget")},
@@ -392,6 +394,9 @@ var modes = map[string]modeOf{
 	"config": {mode: ModeRun}, "sessions": {mode: ModeRun},
 	"sessions prune": {mode: ModeRun, why: "with --yes it deletes sessions: it asks for a confirmation first",
 		when: []wire.CLIModeRule{{Flag: "yes", Mode: ModePriv}}},
+	"storage": {mode: ModeRun},
+	"storage clean": {mode: ModeRun, why: "with --yes it deletes sessions and worktrees: it asks for a confirmation first",
+		when: []wire.CLIModeRule{{Flag: "yes", Mode: ModePriv}}},
 	"models fav list": {mode: ModeRun}, "recon": {mode: ModeRun},
 	"research": {mode: ModeRun, why: "with --export it writes the wiki into the project: it asks for a confirmation first",
 		when: []wire.CLIModeRule{{Flag: "export", Mode: ModePriv}}}, "sim": {mode: ModeRun}, "friction": {mode: ModeRun},
@@ -428,7 +433,7 @@ var modes = map[string]modeOf{
 	"rl show": {mode: ModeRun}, "rl report": {mode: ModeRun}, "rl compare": {mode: ModeRun}, "rl expand": {mode: ModeRun},
 	"rl tasks stats": {mode: ModeRun}, "rl tasks validate": {mode: ModeRun}, "rl tasks filter": {mode: ModeRun},
 	"rl tasks split": {mode: ModeRun}, "rl tasks update-scorer": {mode: ModeRun}, "rl verify": {mode: ModeRun},
-	"models": {mode: ModeNet}, "doctor": {mode: ModeNet},
+	"models": {mode: ModeNet}, "doctor": {mode: ModeNet}, "council": {mode: ModeNet}, "tooleval": {mode: ModeNet},
 	"update": {mode: ModePriv, why: "it replaces this program with the latest release: it asks for a confirmation first; --check only looks",
 		when: []wire.CLIModeRule{{Flag: "check", Mode: ModeNet}}},
 	"rl eval":              {mode: ModeNet},

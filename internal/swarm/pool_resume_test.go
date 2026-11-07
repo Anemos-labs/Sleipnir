@@ -45,7 +45,7 @@ func TestAResumedExecutingPoolKeepsItsMembersAndPlan(t *testing.T) {
 		for id, owner := range owners {
 			i := taskIdx(d.Snapshot, id)
 			p := d.Tasks[i]
-			p.Status, p.Owner, p.Line = StatusTodo, owner, resumedLine
+			p.Status, p.Owner, p.Line = StatusTodo, owner, ResumedLine
 			if err := d.put(i, p); err != nil {
 				return err
 			}
@@ -117,7 +117,7 @@ func TestAResumedExecutingPoolGoesOnWithoutAnAbsentMember(t *testing.T) {
 	if err := r.sw.Board.mutate("harness", "requeue", func(d *draft) error { // what Board.RestoreKeeping leaves after a resume
 		i := taskIdx(d.Snapshot, r.parent.ID)
 		p := d.Tasks[i]
-		p.Status, p.Owner, p.Line = StatusTodo, r.lead, resumedLine
+		p.Status, p.Owner, p.Line = StatusTodo, r.lead, ResumedLine
 		if err := d.put(i, p); err != nil {
 			return err
 		}

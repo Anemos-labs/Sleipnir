@@ -28,19 +28,21 @@ import (
 // The session decides early (planIsolation: before the provider is built, so a
 // project that cannot be isolated fails at once) and builds late (buildIsolation: the
 // workspace manager and merge queue that the swarm's Deps carry). The trees live in the
-// user's cache directory, never inside the repository and never under the state
-// directory:
+// data directory with everything else the harness keeps, never inside the repository:
 //
-//	<cache>/sleipnir/worktrees/<session id>/<agent>       the trees; branch sleipnir/<session id>/<agent>
-//	<cache>/sleipnir/worktrees/<session id>/_integration  the merge queue's tree
+//	<state>/worktrees/<session id>/<agent>       the trees; branch sleipnir/<session id>/<agent>
+//	<state>/worktrees/<session id>/_integration  the merge queue's tree
 //
-// where <cache> is the platform's per-user cache directory ($XDG_CACHE_HOME or
-// ~/.cache on Linux). Worker edits remain there until session pruning salvages
-// them into Git branches; removing a cache tree manually can lose uncommitted work. The state
-// directory (~/.sleipnir) is out: it is a protected configuration directory, where
-// every write asks for approval in every mode. Nothing in the configuration chooses
-// the location either: a project's config file must not be able to point where a
-// harness creates and deletes directories.
+// where <state> is $SLEIPNIR_HOME, else ~/.sleipnir (WorktreesDir). Worker edits remain
+// there until the session is deleted, by hand or by the storage cleanup (docs/STORAGE.md),
+// which first salvages them into Git branches; removing a tree by hand can lose
+// uncommitted work. The rest of the state directory is protected (every write there asks,
+// in every mode); the permission engine leaves the session's own trees out of that
+// protection, as they are the agents' workspace. Nothing in the configuration chooses the
+// location: a project's config file must not be able to point where a harness creates and
+// deletes directories. Sessions started before the trees moved there keep theirs in the
+// user's cache directory (<cache>/sleipnir/worktrees), where they are resumed and cleaned
+// up as before (legacyWorktreesDir).
 //
 // The permission engine treats the session's directory as part of the workspace and
 // applies every rule that is relative to the workspace inside each tree as it does in
@@ -54,8 +56,8 @@ type isoPlan struct {
 	commit  bool
 	repo    *gitx.Repo
 	subdir  string // the session's directory relative to the repository root ("" for the root)
-	top     string // <cache>/sleipnir/worktrees: the directory every session's trees are under
-	dir     string // <cache>/sleipnir/worktrees/<session id>
+	top     string // <state>/worktrees: the directory every session's trees are under
+	dir     string // <state>/worktrees/<session id>
 	prefix  string // sleipnir/<session id>
 	mgr     *workspace.Manager
 	queue   *workspace.Queue
@@ -124,12 +126,18 @@ func (s *Session) planIsolation(ctx context.Context) error {
 		return err
 	}
 
-	top := worktreesRoot(o.Home)
+	top := WorktreesDir(o.Home)
 	dir := filepath.Join(top, s.ID)
+	if prior != nil {
+		// A session started before the trees moved into the data directory resumes with its trees where they are.
+		if legacy := legacyWorktreesDir(o.Home); legacy != "" && samePathLoose(prior.Dir, filepath.Join(legacy, s.ID)) {
+			top, dir = legacy, prior.Dir
+		}
+	}
 	plan := &isoPlan{commit: o.Commit, repo: repo, top: top, dir: dir, prefix: "sleipnir/" + s.ID}
 	if prior != nil {
 		if prior.Prefix != plan.prefix || !samePathLoose(prior.Dir, dir) {
-			return fmt.Errorf("the session's worktrees belong at %s; restore the original cache location before resuming", prior.Dir)
+			return fmt.Errorf("the session's worktrees belong at %s; restore the original data directory (SLEIPNIR_HOME) before resuming", prior.Dir)
 		}
 		base, err := repo.BranchSHA(ctx, plan.prefix+"/_resume")
 		if err != nil || base != prior.Base {
@@ -161,23 +169,6 @@ func (s *Session) planIsolation(ctx context.Context) error {
 	}
 	s.iso = plan
 	return nil
-}
-
-// worktreesRoot is the directory the trees of every session of this user live under.
-func worktreesRoot(home string) string {
-	return filepath.Join(cacheRoot(home), "sleipnir", "worktrees")
-}
-
-// cacheRoot is the per-user cache directory: the platform's own for the real home
-// directory. A session run for another home (tests, the RL harness) keeps everything
-// under that home instead.
-func cacheRoot(home string) string {
-	if h, err := os.UserHomeDir(); err == nil && home != "" && samePathLoose(h, home) {
-		if c, err := os.UserCacheDir(); err == nil && c != "" {
-			return c
-		}
-	}
-	return filepath.Join(home, ".cache")
 }
 
 // isolationCheck is what decides whether a session isolates its writers, and whether it can: the effective mode and whether it was asked
@@ -254,19 +245,61 @@ func checkIsolation(ctx context.Context, c isolationCheck, dirty func(context.Co
 			return nil, "", fmt.Errorf("commit: %w", err)
 		}
 		if d {
-			return nil, "", errors.New("commit needs a clean checkout: your working tree has uncommitted changes (commit or stash them, or leave --commit out: the result is then applied as uncommitted edits)")
+			return nil, "", fmt.Errorf("commit needs a clean checkout: your working tree has uncommitted changes%s (commit or stash them, or leave --commit out: the result is then applied as uncommitted edits)", changedNames(ctx, repo))
 		}
 	}
 
-	top := worktreesRoot(c.home)
+	top := WorktreesDir(c.home)
 	dir := filepath.Join(top, c.id)
 	switch {
 	case inside(repo.Root(), evalLoose(dir)):
-		return nil, "", fmt.Errorf("worktree isolation keeps its trees under %s, which is inside the repository %s: set XDG_CACHE_HOME to a directory outside it", top, repo.Root())
-	case inside(evalLoose(filepath.Join(c.home, ".sleipnir")), evalLoose(dir)), inside(evalLoose(filepath.Join(c.home, ".claude")), evalLoose(dir)):
-		return nil, "", fmt.Errorf("worktree isolation keeps its trees under %s, which is inside a protected configuration directory (every write there asks for approval): set XDG_CACHE_HOME to a directory outside it", top)
+		return nil, "", fmt.Errorf("worktree isolation keeps its trees under %s, which is inside the repository %s: set SLEIPNIR_HOME to a directory outside it", top, repo.Root())
+	case inside(evalLoose(filepath.Join(c.home, ".claude")), evalLoose(dir)), inside(evalLoose(filepath.Join(c.home, ".agents")), evalLoose(dir)):
+		return nil, "", fmt.Errorf("worktree isolation keeps its trees under %s, which is inside a protected configuration directory (every write there asks for approval): set SLEIPNIR_HOME to a directory outside it", top)
 	}
 	return repo, realRoot, nil
+}
+
+// changedNames is ", in a, b and 3 more" for the paths git status shows in repo (staged, modified, untracked, conflicted), so a refusal
+// names what to commit or stash; "" when status cannot be read or shows nothing.
+func changedNames(ctx context.Context, repo *gitx.Repo) string {
+	st, err := repo.Status(ctx)
+	if err != nil {
+		return ""
+	}
+	seen := map[string]bool{}
+	var paths []string
+	add := func(p string) {
+		if p != "" && !seen[p] {
+			seen[p] = true
+			paths = append(paths, p)
+		}
+	}
+	for _, c := range st.Conflicted {
+		add(c.Path)
+	}
+	for _, c := range st.Staged {
+		add(c.Path)
+	}
+	for _, c := range st.Unstaged {
+		add(c.Path)
+	}
+	for _, p := range st.Untracked {
+		add(p)
+	}
+	if len(paths) == 0 {
+		return ""
+	}
+	const shown = 5
+	names := make([]string, 0, shown)
+	for _, p := range paths[:min(len(paths), shown)] {
+		names = append(names, clipRunes(strings.Join(strings.Fields(p), " "), 120)) // a path may hold a newline: keep the refusal on one line
+	}
+	txt := strings.Join(names, ", ")
+	if len(paths) > shown {
+		txt += fmt.Sprintf(" and %d more", len(paths)-shown)
+	}
+	return ", in " + txt
 }
 
 // sourceDirty reports whether the working tree differs from HEAD (tracked edits and

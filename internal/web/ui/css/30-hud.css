@@ -83,6 +83,7 @@
 .stab .sg{font:700 12px var(--f-num);font-style:normal;width:12px;text-align:center}
 .stab[data-state="run"] .sg{color:var(--ok)}.stab[data-state="ask"] .sg{color:var(--warm)}.stab[data-state="done"] .sg{color:var(--ok)}.stab[data-state="paused"] .sg{color:var(--warm)}
 .stab .sn{max-width:130px;overflow:hidden;text-overflow:ellipsis}
+.stab .spn{flex:none;color:var(--c-mgr);margin-right:-3px;transform:rotate(-12deg)}
 .stab .sc{font:500 11px var(--f-num);color:var(--dim)}
 .stab .sh{font-size:10px;color:var(--dim);border:1px solid var(--line2);padding:1px 3px;border-radius:2px}
 .nb{display:inline-block;background:var(--warm-a);color:var(--warm);border:1px solid var(--warm-b);font:700 10px/1 var(--f-num);padding:2px 5px;border-radius:8px;white-space:nowrap}

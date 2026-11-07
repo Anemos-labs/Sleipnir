@@ -55,6 +55,8 @@ const MetaChange = "memory_change"
 // Tool is the memory tool over the user's notes file and, when a project is known, the project's.
 type Tool struct {
 	path, project string
+	// noProject is why scope project is refused when project is "" (WithoutProject); empty is the generic reason.
+	noProject string
 	// saving is called before a note of the project's is added or removed, and the function it returns once the notes file changed
 	// (nil tells nobody).
 	saving func() (saved func())
@@ -67,6 +69,13 @@ func New(path string) *Tool { return &Tool{path: path} }
 // then refused with the reason).
 func NewScoped(userPath, projectPath string) *Tool {
 	return &Tool{path: userPath, project: projectPath}
+}
+
+// WithoutProject sets why this session keeps no project notes, the reason a call with scope project is refused (the project is
+// not trusted, there is no project), and returns t. It has no effect on a tool that has a project notes file.
+func (t *Tool) WithoutProject(why string) *Tool {
+	t.noProject = strings.TrimSpace(why)
+	return t
 }
 
 // OnProjectSave has fn called before each add or remove of a project note, and the function fn returns called once the write changed
@@ -124,7 +133,11 @@ func (t *Tool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	case "", "user":
 	case "project":
 		if t.project == "" {
-			return tools.Errorf("this session keeps no project notes (it has no project, or the project is not trusted): use scope user"), nil
+			why := t.noProject
+			if why == "" {
+				why = "it has no project, or the project is not trusted"
+			}
+			return tools.Errorf("this session keeps no project notes (%s). Save the note with scope user instead, naming the project in it", why), nil
 		}
 		file = t.project
 	default:

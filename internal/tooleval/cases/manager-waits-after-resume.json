@@ -1,0 +1,57 @@
+{
+  "id": "manager-waits-after-resume",
+  "source": "runs/2026-10-26-ravenwatch-small, friction 10",
+  "failure": "After a resume, T1 was reserved for be-1 and only a spawn restarts it, but the manager waited for the harness to restart it.",
+  "team": [
+    "architect",
+    "backend",
+    "backend",
+    "backend",
+    "tester",
+    "reviewer"
+  ],
+  "goal": "Build ledgerly, a small command-line ledger in Go: add, list and report subcommands over a JSON file. Keep it small.",
+  "board": "<live board=\"v9\">\nyou: mgr (manager)\ntasks:\n  T1 todo \"Scaffold the Go module and the ledgerly command\" — reserved for be-1\n  T2 todo \"add and list subcommands\" (needs T1)\n  T3 todo \"report subcommand\" (needs T1)\nboard: 3 open, 0 done\nteam (3 others: 0 running, 3 idle):\n  be-1 backend idle\n  be-2 backend idle\n  ts-1 tester idle\nteam: architect 0/1 · backend 2/3 · tester 1/1 · reviewer 0/1\nbe-1 idle, T1 ready: give it the task now (spawn agent=be-1 task=T1)\n</live>",
+  "turns": [
+    {
+      "assistant": "T1 is the scaffold everything waits on; be-1 has it.",
+      "calls": [
+        {
+          "tool": "spawn",
+          "args": {
+            "role": "backend",
+            "task": "T1",
+            "solo": true
+          }
+        }
+      ]
+    },
+    {
+      "results": [
+        {
+          "text": "be-1 started; it will report through the board. Use wait to sleep until something changes."
+        }
+      ]
+    },
+    {
+      "user": "<notice>The session was resumed. Workers' runs were stopped by the restart; their tasks are back on the board, reserved for the worker that had them. A reserved task restarts when you spawn it.</notice>"
+    }
+  ],
+  "expect": {
+    "any": [
+      {
+        "tool": "spawn",
+        "args": {
+          "task": "^T1$"
+        },
+        "why": "only a spawn restarts a reserved task"
+      }
+    ],
+    "none": [
+      {
+        "tool": "wait",
+        "why": "nothing is running: waiting waits for nothing"
+      }
+    ]
+  }
+}

@@ -455,8 +455,31 @@ func TestStallReviewStarved(t *testing.T) {
 		if !nudged(r, "mgr") {
 			t.Error("the manager was not told")
 		}
+		r.sw.stalls.mu.Lock()
+		gen := r.sw.stalls.gen[f.key()]
+		r.sw.stalls.mu.Unlock()
+		holds := r.sw.stallHolds(f, gen)
+		if !holds() {
+			t.Fatal("the nudge of a task still waiting in review does not hold")
+		}
+		if r.sw.stallHolds(f, gen-1)() {
+			t.Fatal("the nudge of an earlier raise of the finding holds beside the current one's")
+		}
+		r.sw.stalls.mu.Lock()
+		cleared := r.sw.stalls.active[f.key()]
+		delete(r.sw.stalls.active, f.key()) // a sweep cleared it while the task is still in review
+		r.sw.stalls.mu.Unlock()
+		if holds() {
+			t.Fatal("the nudge of a cleared finding still holds")
+		}
+		r.sw.stalls.mu.Lock()
+		r.sw.stalls.active[f.key()] = cleared
+		r.sw.stalls.mu.Unlock()
 		if err := r.sw.Board.Accept("mgr", task.ID, ""); err != nil {
 			t.Fatal(err)
+		}
+		if holds() {
+			t.Fatal("the nudge still holds after the manager accepted the task, before any sweep: it would reach the manager stale")
 		}
 		r.sw.sweepStalls()
 		if _, ok := active(r, StallReviewStarved); ok {
@@ -680,10 +703,10 @@ func TestStallReviewOverrun(t *testing.T) {
 	r.sw.StartManager()
 	now := r.sw.deps.Now()
 	work := Task{ID: "T1", Role: "backend", Rev: 1}
-	r.sw.review.noteBegan(work.ID, work.Rev, now.Add(-19*time.Minute))
+	r.sw.review.noteBegan(work.ID, work.Rev, now.Add(-19*time.Minute), "")
 	r.sw.noteAccepted(work)
 	beside := Task{ID: "T2", Role: "backend", Rev: 1} // built side by side: the bound is the longest, not the sum
-	r.sw.review.noteBegan(beside.ID, beside.Rev, now.Add(-15*time.Minute))
+	r.sw.review.noteBegan(beside.ID, beside.Rev, now.Add(-15*time.Minute), "")
 	r.sw.noteAccepted(beside)
 	if took, ids := r.sw.review.unreviewedWork(); took.Round(time.Minute) != 19*time.Minute || len(ids) != 2 || ids[0] != "T1" || ids[1] != "T2" {
 		t.Fatalf("unreviewed work = %v %v", took, ids)
@@ -729,6 +752,19 @@ func TestStallReviewOverrun(t *testing.T) {
 	}
 	if !nudged(r, id) {
 		t.Error("the reviewer was not told")
+	}
+	// a pooled review's leader runs its members' parts, each a review held to the bound itself: the parent is not overrun
+	if err := r.sw.Board.mutate("mgr", "update", func(d *draft) error {
+		i := taskIdx(d.Snapshot, task)
+		tk := d.Tasks[i]
+		tk.Pool = &PoolState{Members: []string{id}, Phase: "reconciling", Revision: 1}
+		return d.put(i, tk)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.sweepStalls()
+	if _, ok := active(r, StallReviewOverrun); ok {
+		t.Fatal("a pooled review's parent was found overrun")
 	}
 	r.sw.stopRun(r.sw.get(id), "test over", false)
 	rvWait(t, "the reviewer to stop", func() bool { return r.idle(id) })

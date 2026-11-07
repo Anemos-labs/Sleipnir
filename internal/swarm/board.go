@@ -22,6 +22,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
 )
@@ -45,13 +46,13 @@ const (
 // rendering of the board, so what one agent can add is what every agent pays for.
 const (
 	maxTitleRunes  = 160
-	maxDescRunes   = 2000
+	maxDescRunes   = 12000 // a description is shown to its owner and read with task get, not on every agent's board
 	maxRoleRunes   = 32
 	maxTaskDeps    = 16
 	maxLineRunes   = 140
 	maxResultRunes = 160
 	maxEvidRunes   = 320
-	maxReportRunes = 4000
+	maxReportRunes = 16000
 	maxAssumptions = 8   // assumptions one submission may list
 	maxAssumeRunes = 200 // runes in one assumption
 	maxNoteRunes   = 300
@@ -538,6 +539,10 @@ func (b *Board) createLocked(d *draft, spec TaskSpec) (Task, error) {
 	if title == "" {
 		return Task{}, fmt.Errorf(`task needs a title: pass it in the "title" field`)
 	}
+	spec.Desc = spillTitle(spec.Title, spec.Desc)
+	if err := descFits(spec.Desc); err != nil {
+		return Task{}, err
+	}
 	if dup, ok := openTwin(d.Snapshot, spec.Parent, title); ok {
 		where := "under " + dup.Parent
 		if dup.Parent == "" {
@@ -572,7 +577,7 @@ func (b *Board) createLocked(d *draft, spec TaskSpec) (Task, error) {
 		return Task{}, err
 	}
 	b.next++
-	t := Task{ID: "T" + strconv.Itoa(b.next), Title: title, Desc: cleanBlock(spec.Desc, maxDescRunes), Status: StatusTodo,
+	t := Task{ID: "T" + strconv.Itoa(b.next), Title: title, Desc: cleanDesc(spec.Desc), Status: StatusTodo,
 		Role: cleanText(spec.Role, maxRoleRunes), Kind: spec.Kind, Deps: deps, Files: files, Parent: spec.Parent, Solo: spec.Solo}
 	if t.Solo && t.Parent != "" {
 		b.next--
@@ -979,7 +984,7 @@ func (b *Board) submitReportAt(agent, id string, rev uint64, sub submission, che
 		t.Status, t.Line = StatusReview, ""
 		t.VerificationFailures = 0
 		t.Result, t.Evidence = cleanText(result, maxResultRunes), cleanText(evidence, maxEvidRunes)
-		t.Report = truncRunes(strings.TrimSpace(cleanBlock(report, 0)), maxReportRunes)
+		t.Report = truncRunes(strings.TrimSpace(cleanBlockLines(report, 0, 0)), maxReportRunes)
 		t.Agreement = agreement
 		t.Assumptions = cleanAssumptions(sub.assumptions)
 		return d.put(i, t)
@@ -1359,7 +1364,7 @@ func (b *Board) Unblock(by, id string) error {
 			return fmt.Errorf("no task %s", id)
 		}
 		t := d.Tasks[i]
-		if t.Status == StatusTodo && t.Owner != "" && t.Line == resumedLine {
+		if t.Status == StatusTodo && t.Owner != "" && t.Line == ResumedLine {
 			// a manager in a resumed team run took "waiting to restart" for a block and tried this
 			return fmt.Errorf("%s is todo, not blocked: the resume reserved it for %s, and a spawn starts it again (spawn task=%s agent=%s)", id, t.Owner, id, t.Owner)
 		}
@@ -1482,8 +1487,9 @@ func (b *Board) requeueChildren(by, parent, agent, reason string) []Task {
 	return out
 }
 
-// resumedLine explains why an interrupted task is waiting after recovery.
-const resumedLine = "the session was resumed: waiting to restart"
+// ResumedLine explains why an interrupted task is waiting after recovery. It is also the line of the resume's own requeue in the
+// log, which a later resume tells apart from a release of work (session.restoreWorkers).
+const ResumedLine = "the session was resumed: waiting to restart"
 
 // Restore gives an empty board the tasks and the pending notes of an earlier session's (ReplayBoard of its log): a resumed team starts
 // where the last one stopped. Nothing is running, so a task that was somebody's (doing, review, blocked) is todo again with no owner,
@@ -1521,7 +1527,7 @@ func (b *Board) RestoreKeeping(prev *Snapshot, owners map[string]string, keep ma
 				if t.Status == StatusTodo && t.Owner == "" && owners[t.ID] == "" || keep[t.ID] {
 					break
 				}
-				t.Status, t.Owner, t.Line, t.Rev = StatusTodo, owners[t.ID], resumedLine, d.Version
+				t.Status, t.Owner, t.Line, t.Rev = StatusTodo, owners[t.ID], ResumedLine, d.Version
 				t.BlockedOn, t.Report, t.Assumptions = "", "", nil
 				back = append(back, t.ID)
 			}
@@ -1536,7 +1542,7 @@ func (b *Board) RestoreKeeping(prev *Snapshot, owners map[string]string, keep ma
 			b.note = max(b.note, n.ID)
 		}
 		d.set("tasks", back)
-		d.set("line", resumedLine)
+		d.set("line", ResumedLine)
 		if len(owners) > 0 {
 			d.set("owners", owners)
 		}
@@ -1551,6 +1557,10 @@ func (b *Board) RestoreKeeping(prev *Snapshot, owners map[string]string, keep ma
 // pending, and the buffer keeps only the newest: what one agent can add is what
 // every agent's prompt carries.
 func (b *Board) AddNote(from, scope, role, text string) (int, error) {
+	if n := utf8.RuneCountInString(strings.Join(strings.Fields(text), " ")); n > maxNoteRunes {
+		// Refused, not cut: a fact cut short is a wrong fact on every agent's board.
+		return 0, fmt.Errorf("note too long: %d characters, %d over the %d-character limit. A note is one durable fact; put the detail in a mail, a task description or a file, and note where it is", n, n-maxNoteRunes, maxNoteRunes)
+	}
 	text = cleanText(text, maxNoteRunes)
 	if text == "" {
 		return 0, fmt.Errorf("empty note")
@@ -1574,7 +1584,9 @@ func (b *Board) AddNote(from, scope, role, text string) (int, error) {
 			}
 		}
 		if mine >= b.lim.MaxNotesPerAgent {
-			return fmt.Errorf("you already have %d proposed notes waiting to be merged: wait for them, or fold your facts into one note", mine)
+			// Nothing merges or expires a note but eviction by newer notes, so waiting frees nothing: say how to make room.
+			return fmt.Errorf("you already have %d notes on the board (%s), the most one agent may have; they stay until newer notes push them out. "+
+				"Take back one that is wrong or no longer needed with note withdraw=<id>, or fold your facts into one note", mine, noteIDs(d.Notes, from))
 		}
 		b.note++
 		id = b.note
@@ -1595,6 +1607,52 @@ func (b *Board) AddNote(from, scope, role, text string) (int, error) {
 		return nil
 	})
 	return id, err
+}
+
+// WithdrawNote takes back a note its author put on the board (a fact that turned out wrong, or one to fold into another).
+// Only the author may withdraw a note; the error names the author's notes, so the agent can pick the right one.
+func (b *Board) WithdrawNote(from string, id int) error {
+	err := b.mutate(from, "notes-take", func(d *draft) error {
+		keep := make([]Note, 0, len(d.Notes))
+		found := false
+		for _, n := range d.Notes {
+			if n.ID == id && n.From == from {
+				found = true
+				continue
+			}
+			keep = append(keep, n)
+		}
+		if !found {
+			for _, n := range d.Notes {
+				if n.ID == id {
+					return fmt.Errorf("note #%d is %s's: only its author can withdraw it; mail %s if it is wrong", id, n.From, n.From)
+				}
+			}
+			mine := noteIDs(d.Notes, from)
+			if mine == "none" {
+				return fmt.Errorf("there is no note #%d on the board, and you have no notes on it", id)
+			}
+			return fmt.Errorf("there is no note #%d on the board; yours are %s", id, mine)
+		}
+		d.Notes, d.cn = keep, true
+		d.set("notes", []int{id})
+		return nil
+	})
+	return err
+}
+
+// noteIDs lists the ids of one author's notes ("#3, #7"), or "none".
+func noteIDs(notes []Note, from string) string {
+	var ids []string
+	for _, n := range notes {
+		if n.From == from {
+			ids = append(ids, "#"+strconv.Itoa(n.ID))
+		}
+	}
+	if len(ids) == 0 {
+		return "none"
+	}
+	return strings.Join(ids, ", ")
 }
 
 // TakeNotes removes and returns the pending notes with the given ids (the curator
@@ -1769,4 +1827,28 @@ func (b *Board) Wait(after uint64, timeout time.Duration) *Snapshot {
 			return b.Snapshot()
 		}
 	}
+}
+
+// cleanDesc is a task description as the board keeps it: every line, defused, within maxDescRunes.
+func cleanDesc(desc string) string { return cleanBlockLines(desc, maxDescRunes, 0) }
+
+// descFits refuses a description over maxDescRunes, which would otherwise lose its end, with the size to aim for.
+func descFits(desc string) error {
+	if n := utf8.RuneCountInString(strings.TrimSpace(desc)); n > maxDescRunes {
+		return fmt.Errorf("description too long: %d characters, %d over the %d-character limit. Split the work into several tasks, or put the detail in a file in the task's scope and name it in the description", n, n-maxDescRunes, maxDescRunes)
+	}
+	return nil
+}
+
+// spillTitle keeps a title too long for the board whole: the board shows its first maxTitleRunes characters, and the
+// whole title opens the description, so the worker reads what the creator wrote.
+func spillTitle(title, desc string) string {
+	t := strings.Join(strings.Fields(title), " ")
+	if utf8.RuneCountInString(t) <= maxTitleRunes {
+		return desc
+	}
+	if strings.TrimSpace(desc) == "" {
+		return t
+	}
+	return t + "\n\n" + desc
 }

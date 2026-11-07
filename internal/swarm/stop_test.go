@@ -166,3 +166,168 @@ func TestStallStopAndTaskTimeoutCanBeTurnedOff(t *testing.T) {
 		t.Fatal("task_overrun held with TaskTimeout off")
 	}
 }
+
+// A resume keeps the start of work still in flight: the team's task bound counts from when the assignment began, read from the
+// log, not from the run the resumed team starts on it, so a worker that ran past the bound before the restart is still overrun.
+// The resumed board gives the task a new revision, so the start is carried by task and owner to the owner's first run on it.
+func TestAResumeKeepsTheStartOfWorkInFlight(t *testing.T) {
+	clock := newFakeClock()
+	cfg := stallCfg()
+	cfg.StallTurns = 100 // the turn-based kinds stay quiet: only the clock decides here
+	cfg.TaskTimeout = 30 * time.Minute
+	r := newRVRigWith(t, cfg, gatedWorkers(nil), func(d *Deps) { d.Now = clock.Now })
+	r.sw.StartManager()
+	// The log says be-1 had held T1 for 45 minutes when the team stopped, and another worker had held T9.
+	r.sw.RestoreReviewGate(r.sw.Board.Snapshot(), []ReviewOp{
+		{Task: "T1", Owner: "be-1", Began: clock.Now().Add(-45 * time.Minute)},
+		{Task: "T2", Owner: "be-7", Began: clock.Now().Add(-45 * time.Minute)},
+	})
+	id, task := spawnWorker(t, r, "build the importer", 1)
+	if id != "be-1" || task.ID != "T1" {
+		t.Fatalf("the rig started %s on %s", id, task.ID)
+	}
+	r.sw.sweepStalls()
+	f, ok := active(r, StallTaskOverrun)
+	if !ok || f.Task != task.ID || f.Agent != id || !strings.Contains(f.Detail, "for 45 minutes") {
+		t.Fatalf("finding = %+v, %v", f, ok)
+	}
+	// Another worker's start does not carry over: T2 goes to be-2 here, whose work begins now.
+	other, task2 := spawnWorker(t, r, "build the exporter", 1)
+	if task2.ID != "T2" || other == "be-7" {
+		t.Fatalf("the rig started %s on %s", other, task2.ID)
+	}
+	if at, ok := r.sw.review.beganAt(task2.ID, task2.Rev); !ok || !at.Equal(clock.Now()) {
+		t.Fatalf("%s began at %v, %v: another worker's start carried over", task2.ID, at, ok)
+	}
+}
+
+// A worker the person stops is not started again on the task it held: with persistent pools the repair retries a requeued task on
+// its last owner, and it gave the task straight back to the worker that had just been stopped. The task waits for the manager.
+func TestAStoppedWorkerIsNotRepairedOntoItsTask(t *testing.T) {
+	cfg := stallCfg()
+	cfg.StallTurns = 100
+	cfg.PersistentPools = true
+	r := newRVRigWith(t, cfg, gatedWorkers(nil), nil)
+	r.sw.StartManager()
+	id, task := spawnWorker(t, r, "build the importer", 1)
+	if _, err := r.sw.StopAgent(id); err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, id+" to stop", func() bool { return r.idle(id) })
+	rvWait(t, task.ID+" to go back to todo", func() bool {
+		got, _ := r.sw.Board.Snapshot().Task(task.ID)
+		return got.Status == StatusTodo
+	})
+	r.sw.repairTick(time.Now().Add(time.Hour))
+	if got, _ := r.sw.Board.Snapshot().Task(task.ID); got.Status != StatusTodo || got.Owner != "" {
+		t.Fatalf("after the repair pass %s is %s, owned by %q: the stopped worker was started on it again", task.ID, got.Status, got.Owner)
+	}
+	told := strings.Join(harnessMailTo(r, "mgr"), "\n")
+	if !strings.Contains(told, task.ID+" returned to todo") {
+		t.Fatalf("the manager was not handed the task: %q", told)
+	}
+}
+
+// The team's task bound counts the time the work ran, not the time its task waited blocked on another: a worker that blocked T1
+// for 40 minutes while it waited, and worked 25 minutes on it in all, is not overrun at a 30 minute bound until it has worked 30.
+func TestATaskBlockedOnAnotherIsNotOverrunByTheWait(t *testing.T) {
+	clock := newFakeClock()
+	cfg := stallCfg()
+	cfg.StallTurns = 100 // the turn-based kinds stay quiet: only the clock decides here
+	cfg.TaskTimeout = 30 * time.Minute
+	r := newRVRigWith(t, cfg, gatedWorkers(nil), func(d *Deps) { d.Now = clock.Now })
+	r.sw.StartManager()
+	id, task := spawnWorker(t, r, "build the importer", 1)
+	tool := secRevTool(t, r.sw, "task")
+	call := func(action string) {
+		t.Helper()
+		if res := secRevCall(t, tool, id, "backend", map[string]any{"action": action, "id": task.ID, "text": "waits for the schema"}); res.IsError {
+			t.Fatalf("%s: %s", action, res.Text)
+		}
+	}
+	clock.Advance(20 * time.Minute)
+	call("block")
+	clock.Advance(40 * time.Minute)
+	call("resume")
+	clock.Advance(5 * time.Minute)
+	r.sw.sweepStalls()
+	if f, ok := active(r, StallTaskOverrun); ok {
+		t.Fatalf("overrun after 25 minutes of work and a 40 minute wait: %+v", f)
+	}
+	clock.Advance(10 * time.Minute)
+	r.sw.sweepStalls()
+	if f, ok := active(r, StallTaskOverrun); !ok || f.Task != task.ID || !strings.Contains(f.Detail, "for 35 minutes") {
+		t.Fatalf("finding = %+v, %v", f, ok)
+	}
+}
+
+// A worker that resumes a task it blocked in an earlier run takes it on in this run: a stop of the run returns that task too. A
+// docs worker on a catch-up task resumed the README it had blocked, overran on it, and the harness's stop for the README returned
+// only the catch-up task, leaving the README with the stopped worker.
+func TestAStopReturnsATaskResumedDuringTheRun(t *testing.T) {
+	cfg := stallCfg()
+	cfg.StallTurns = 100
+	r := newRVRigWith(t, cfg, gatedWorkers(nil), nil)
+	r.sw.StartManager()
+	readme, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "write the README", Role: "backend"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, task := spawnWorker(t, r, "catch up the docs", 1)
+	if err := r.sw.Board.Assign("mgr", id, readme.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.BlockOn(id, readme.ID, "", "waits for the features"); err != nil {
+		t.Fatal(err)
+	}
+	tool := secRevTool(t, r.sw, "task")
+	if res := secRevCall(t, tool, id, "backend", map[string]any{"action": "resume", "id": readme.ID}); res.IsError {
+		t.Fatal(res.Text)
+	}
+	if got := r.sw.get(id).currentTask(); got != readme.ID {
+		t.Fatalf("current task after resume = %q, want %q", got, readme.ID)
+	}
+	if _, err := r.sw.StopAgent(id); err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, id+" to stop", func() bool { return r.idle(id) })
+	for _, want := range []string{task.ID, readme.ID} {
+		if got, _ := r.sw.Board.Snapshot().Task(want); got.Status != StatusTodo || got.Owner != "" {
+			t.Errorf("after the stop %s is %s, owned by %q", want, got.Status, got.Owner)
+		}
+	}
+}
+
+// Resuming the task the worker already holds keeps that assignment as it is: the count of runs peer mail started for it is
+// not reset, so a worker that blocks and resumes its task cannot get past the bound on mail wakes.
+func TestResumingTheHeldTaskKeepsItsMailWakeCount(t *testing.T) {
+	cfg := stallCfg()
+	cfg.StallTurns = 100
+	r := newRVRigWith(t, cfg, gatedWorkers(nil), nil)
+	r.sw.StartManager()
+	id, task := spawnWorker(t, r, "write the README", 1)
+	m := r.sw.get(id)
+	m.mu.Lock()
+	m.mailWakes, m.wakeLimited = 1, true
+	m.mu.Unlock()
+	if err := r.sw.Board.BlockOn(id, task.ID, "", "waits for the features"); err != nil {
+		t.Fatal(err)
+	}
+	tool := secRevTool(t, r.sw, "task")
+	if res := secRevCall(t, tool, id, "backend", map[string]any{"action": "resume", "id": task.ID}); res.IsError {
+		t.Fatal(res.Text)
+	}
+	m.mu.Lock()
+	wakes, limited := m.mailWakes, m.wakeLimited
+	m.mu.Unlock()
+	if wakes != 1 || !limited {
+		t.Fatalf("after the resume the mail wake count is %d (limited %v), want 1 (limited true)", wakes, limited)
+	}
+	if _, err := r.sw.StopAgent(id); err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, id+" to stop", func() bool { return r.idle(id) })
+	if got, _ := r.sw.Board.Snapshot().Task(task.ID); got.Status != StatusTodo || got.Owner != "" {
+		t.Errorf("after the stop %s is %s, owned by %q", task.ID, got.Status, got.Owner)
+	}
+}

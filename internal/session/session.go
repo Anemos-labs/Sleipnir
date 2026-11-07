@@ -375,6 +375,10 @@ type Session struct {
 	effort provider.EffortSetting
 	// objective is the standing goal's objective as last saved or loaded (goal.go), under mu.
 	objective string
+	// goalMarks are the standing goal's milestones as last saved (goal.go), under mu, and goalOn whether a goal is set: the plan
+	// tool holds the main agent's plan to them (planCheck).
+	goalMarks []plan.Mark
+	goalOn    bool
 	started   bool
 	closed    bool
 	// endReason is why the session ended (SetEndReason), for the SessionEnd hooks.
@@ -802,6 +806,7 @@ func (s *Session) buildFallback() error {
 	if err != nil {
 		return fmt.Errorf("fallback model %s: %w", ref, err)
 	}
+	s.markTextOnly(context.Background(), p, m) // the fallback renders its own requests: a text-only one gets notes in place of images
 	s.fallbackP, s.fallbackModel, s.fallbackRef, s.fallbackPrice, s.fallbackMaxOut = p, m.ID, mr.String(), m.Price, m.MaxOutput
 	return nil
 }
@@ -809,7 +814,7 @@ func (s *Session) buildFallback() error {
 // clientFor is BuildProvider for this session: the client of ref, with the session's token capture, behind Options.WrapProvider
 // when one is set.
 func (s *Session) clientFor(ref ModelRef) (provider.Provider, cost.Model, error) {
-	p, m, err := BuildProvider(s.cfg, ref, ProviderOptions{CaptureTokens: s.opts.CaptureTokens})
+	p, m, err := BuildProvider(s.cfg, ref, ProviderOptions{CaptureTokens: s.opts.CaptureTokens, Media: BlobMedia(s.Blobs)})
 	if err == nil && s.opts.WrapProvider != nil {
 		p = s.opts.WrapProvider(p)
 	}
@@ -1046,6 +1051,9 @@ func (s *Session) build(ctx context.Context) error {
 	s.archive = archive
 	plans := plan.NewStore() // each agent's plan: the plan tool sets it, the hot tail shows it back (internal/plan)
 	s.plans = plans
+	if s.opts.Resume != "" {
+		restorePlans(filepath.Join(s.Dir, "events.jsonl"), plans) // a resumed agent keeps the plan it had
+	}
 	// Each tool plugin registers its tools through the plugin kernel, in the set's order. A plugin that is off adds
 	// nothing, for every agent alike: the tool list never depends on the project or the role (docs/CACHE-DESIGN.md).
 	s.kernel = plugin.NewKernel(map[string]plugin.Activator{
@@ -1098,13 +1106,21 @@ func (s *Session) build(ctx context.Context) error {
 			if o.TrustProject {
 				proj = filepath.Join(o.Root, filepath.FromSlash(memory.ProjectNotes))
 			}
-			reg.Register(memtool.NewScoped(filepath.Join(o.Home, ".sleipnir", "MEMORY.md"), proj).OnProjectSave(func() func() {
+			why := ""
+			if proj == "" {
+				// The refusal says what would change it: trust is the person's word (sleipnir trust, --trust-project), never the agent's.
+				why = "this session's project " + o.Root + " is not trusted, and only a project the person trusted keeps notes; the person trusts it with `sleipnir trust` or --trust-project"
+				if o.Root == "" {
+					why = "it has no project"
+				}
+			}
+			reg.Register(memtool.NewScoped(filepath.Join(o.Home, ".sleipnir", "MEMORY.md"), proj).WithoutProject(why).OnProjectSave(func() func() {
 				renew := s.trustWrite()
 				return func() { renew([]string{memory.ProjectNotes}, "a note the memory tool saved") }
 			}))
 			return nil
 		},
-		plugin.PlanTool: func(*plugin.Scope) error { reg.Register(plantool.New(plans)); return nil },
+		plugin.PlanTool: func(*plugin.Scope) error { reg.Register(plantool.New(plans).WithCheck(s.planCheck)); return nil },
 		plugin.Harness:  func(*plugin.Scope) error { reg.Register(harnessTool{s}); return nil },
 		// MCP servers add their tools here, before the list is frozen: every agent of
 		// the session then sends the same tools array, byte for byte.
@@ -1161,6 +1177,10 @@ func (s *Session) build(ctx context.Context) error {
 		s.Registry, s.Specs = reg, specs
 		s.budget = o.BudgetUSD
 		role := soloRole()
+		images, err := s.imagePolicy(ctx, o)
+		if err != nil {
+			return err
+		}
 		mk := func() (*agent.Agent, error) {
 			comp, compModel, err := s.buildCompactor(ctx, o)
 			if err != nil {
@@ -1176,7 +1196,8 @@ func (s *Session) build(ctx context.Context) error {
 			}
 			return agent.New(agent.Config{
 				ID: "main", Role: role.Name, Model: s.Model, Provider: s.Provider, Compactor: comp, CompactorModel: compModel, CompactorHealth: health,
-				Tools: reg, ToolSpecs: specs,
+				Images: images,
+				Tools:  reg, ToolSpecs: specs,
 				Const: constLayer, Shared: shared, RoleL: role.Layer(),
 				Params: p, Effort: &s.effort, Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files,
 				Hot: func(id string) []core.Block {
@@ -1254,8 +1275,12 @@ func (s *Session) build(ctx context.Context) error {
 	if comp != nil {
 		health = agent.NewCompactorHealth()
 	}
+	images, err := s.imagePolicy(ctx, o)
+	if err != nil {
+		return err
+	}
 	deps := swarm.Deps{
-		Provider: s.Provider, Model: s.Model, Compactor: comp, CompactorModel: compModel, CompactorHealth: health, Registry: reg, Plans: plans,
+		Provider: s.Provider, Model: s.Model, Compactor: comp, CompactorModel: compModel, CompactorHealth: health, Images: images, Registry: reg, Plans: plans,
 		Const: constLayer, Shared: shared,
 		Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files, Perm: s.Perm,
 		Snap: s.Ckpt, Handles: handles,
@@ -1456,6 +1481,38 @@ func (s *Session) buildCompactor(ctx context.Context, o Options) (provider.Provi
 	return p, s.describe(ctx, p, m), nil
 }
 
+// VisionRole is the name under which models.roles and --role-model give the model that describes images: each image an
+// agent's request no longer carries is replaced in its history by a description this model writes (agent.ImagePolicy). It
+// is not an agent. Without one each agent's own model describes; with one, an agent on a model that cannot see still works
+// from the pictures a person attaches and the screenshots its tools take.
+const VisionRole = "vision"
+
+// imagePolicy is the agents' agent.ImagePolicy: the cache section's attached_images and describe_images, and the vision
+// role's model when one is named.
+func (s *Session) imagePolicy(ctx context.Context, o Options) (agent.ImagePolicy, error) {
+	pol := agent.ImagePolicy{Attached: s.cfg.Cache.AttachedImages}
+	if d := s.cfg.Cache.DescribeImages; d != nil && !*d {
+		pol.NoDescribe = true
+	}
+	ref := o.RoleModels[VisionRole]
+	if ref == "" {
+		ref = s.cfg.Models.Roles[VisionRole]
+	}
+	if ref == "" || pol.NoDescribe {
+		return pol, nil
+	}
+	mr, err := ResolveModel(s.cfg, ref)
+	if err != nil {
+		return pol, fmt.Errorf("vision model %s: %w", ref, err)
+	}
+	p, m, err := s.clientFor(mr)
+	if err != nil {
+		return pol, fmt.Errorf("vision model %s: %w", ref, err)
+	}
+	pol.Describer, pol.DescriberModel = p, s.describe(ctx, p, m)
+	return pol, nil
+}
+
 // JudgeRole is the name under which models.roles and --role-model give the model a standing goal is judged on. Like the
 // compactor it is not a swarm role: no agent has it. Without one the session's own model judges.
 const JudgeRole = "judge"
@@ -1464,7 +1521,7 @@ const JudgeRole = "judge"
 // and the lesson memory's embedder and reranker): one a single-agent session can set too, and one no team role takes.
 func ServiceRole(role string) bool {
 	switch role {
-	case CompactorRole, JudgeRole, EmbedderRole, RerankerRole, FallbackRole:
+	case CompactorRole, JudgeRole, EmbedderRole, RerankerRole, FallbackRole, VisionRole:
 		return true
 	}
 	return false
@@ -1496,7 +1553,7 @@ func (s *Session) buildJudge(ctx context.Context) error {
 // named. (models.roles in the configuration is not checked this way: a file may serve
 // projects whose roles differ.)
 func (s *Session) checkRoleModels(overrides map[string]string) error {
-	known := map[string]bool{CompactorRole: true, JudgeRole: true, EmbedderRole: true, RerankerRole: true, FallbackRole: true}
+	known := map[string]bool{CompactorRole: true, JudgeRole: true, EmbedderRole: true, RerankerRole: true, FallbackRole: true, VisionRole: true}
 	for name := range s.ext.roles {
 		known[name] = true
 	}
@@ -1571,6 +1628,13 @@ const InterruptNote = "[The person interrupted your previous turn. Answer the me
 
 // runTurn gives the session one model turn without starting a GitHub controller.
 func (s *Session) runTurn(ctx context.Context, goal string) (*Result, error) {
+	return s.runTurnWith(ctx, goal, "", false)
+}
+
+// runTurnWith is runTurn, or with onMail a turn on mail instead of the person's goal: a message from outside the session (RunMail)
+// that the agent reads as mail, or ("" mail) what already waits in its inbox. The prompt hooks see the person's words only, so a turn
+// on mail runs none.
+func (s *Session) runTurnWith(ctx context.Context, goal, mail string, onMail bool) (*Result, error) {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -1593,9 +1657,18 @@ func (s *Session) runTurn(ctx context.Context, goal string) (*Result, error) {
 		}
 	}()
 
-	goal, err := s.promptHook(ctx, first, goal)
-	if err != nil {
-		return nil, err
+	if !onMail {
+		var err error
+		goal, err = s.promptHook(ctx, first, goal)
+		if err != nil {
+			return nil, err
+		}
+	} else if first {
+		// a session whose first turn is on mail (one another session started with a message) still starts: SessionStart runs,
+		// and what it adds goes with the mail
+		if c := s.sessionStartHook(ctx); c != "" && mail != "" {
+			mail += "\n\n[context from your hooks]\n" + c
+		}
 	}
 	if after {
 		goal = InterruptNote + goal
@@ -1641,15 +1714,55 @@ func (s *Session) runTurn(ctx context.Context, goal string) (*Result, error) {
 		}
 		s.Log.Emit("", events.TypeSessionStart, start)
 	}
-	s.Ckpt.Begin(fmt.Sprintf("turn %d: %s", turn, oneLine(goal, 60)))
+	s.Ckpt.Begin(fmt.Sprintf("turn %d: %s", turn, oneLine(firstNonEmpty(goal, mail), 60)))
 
 	if s.Swarm != nil {
 		s.Swarm.Start(s.swarmContext(ctx))
+		if onMail {
+			res, err := s.Swarm.RunManagerMail(ctx, mail)
+			return s.result(res, err)
+		}
 		res, err := s.Swarm.RunManager(ctx, goal)
 		return s.result(res, err)
 	}
+	if mail != "" {
+		s.Agent.Send(mail)
+	}
 	res, err := s.Agent.Run(ctx, goal)
 	return s.result(res, err)
+}
+
+// MailPrefix starts every message a host delivers from another session (RunMail, Send while a turn runs): the agent reads text
+// that starts with it as mail, data from a peer and not the person's words (agent.Send), and a team's stop words in it stop nothing.
+const MailPrefix = "[mail from session "
+
+// RunMail runs a turn of the agent the person talks to (a team's manager) on a message from another session of the same program:
+// the host frames it (it starts with MailPrefix) and the agent reads it as mail, never as the person's instructions. A turn on mail
+// runs no prompt hook, lifts no stop of the person's and does not count as the person writing to the team. A team's manager that
+// is already running takes the message into that run, and the result is then empty.
+func (s *Session) RunMail(ctx context.Context, mail string) (*Result, error) {
+	if !strings.HasPrefix(mail, MailPrefix) {
+		return nil, errors.New("a message from another session starts with " + MailPrefix)
+	}
+	return s.runTurnWith(ctx, "", mail, true)
+}
+
+// PendingMail reports how many messages wait in the inbox of the agent the person talks to: mail that reached it as its run was
+// ending, which no run reads until the next one (RunInbox).
+func (s *Session) PendingMail() int {
+	if a := s.Main(); a != nil {
+		return a.PendingInbox()
+	}
+	return 0
+}
+
+// RunInbox runs a turn of the agent the person talks to on what waits in its inbox (PendingMail), as RunMail runs one on a message.
+// With nothing waiting it runs nothing.
+func (s *Session) RunInbox(ctx context.Context) (*Result, error) {
+	if s.PendingMail() == 0 {
+		return &Result{SessionID: s.ID, Dir: s.Dir}, nil
+	}
+	return s.runTurnWith(ctx, "", "", true)
 }
 
 // swarmContext is the context the swarm runs on. A batch run's swarm lives on the

@@ -35,11 +35,25 @@
   ui.boardMarks = function (B, m) {
     let failed = 0, blocked = 0;
     const failedIn = {}; // failed tasks by the column they stay in: todo, or the column a canceled or superseded task had
+    const stalls = stallsByTask(m);
     m.torder.forEach(id => {
       const t = m.tasks[id], n = B.nodes[id]; if (!t || !n) return; const tow = n.querySelector('.tcr .tow');
       const isF = !!t.failed, isB = /^blocked_on/.test(t.closure || ''); if (isF) { failed++; failedIn[t.st] = (failedIn[t.st] || 0) + 1; } if (isB) blocked++;
+      /* the card's state at a glance: its owner working on it now (live), the stall detector's word on it (stalled), failed */
+      const own = t.owner && m.ag[t.owner], live = !isF && t.st === 'running' && !!own && LIVE_ST.includes(own.state), stall = !isF && t.st !== 'merged' ? stalls[id] : null;
+      n.classList.toggle('live', live); n.classList.toggle('stalled', !!stall); n.classList.toggle('failed', isF);
+      if (live) n.dataset.live = own.state; else delete n.dataset.live;
       let mk2 = n.querySelector('.fmark');
       if (isF && tow) { if (!mk2) { mk2 = document.createElement('span'); mk2.className = 'bad fmark'; mk2.textContent = '✗'; tow.appendChild(mk2); } mk2.title = 'failed: ' + (t.closure || 'closed'); } else if (mk2) mk2.remove();
+      /* on the Board view, why it failed or what stalls it, in words, under its title */
+      let why = n.querySelector('.twhy'); const whyText = !B.big || n.classList.contains('trow') ? '' : isF ? '✗ ' + ui.closureWords(t.closure, t.attempts) : stall ? '⚠ ' + (stall.text || stall.kind || 'stalled') : '';
+      if (whyText) { if (!why) { why = document.createElement('span'); why.className = 'twhy ' + (isF ? 'bad' : 'warm'); const tti = n.querySelector('.tti'); if (tti) tti.after(why); else n.appendChild(why); } why.className = 'twhy ' + (isF ? 'bad' : 'warm'); why.textContent = whyText; why.title = isF ? 'failed: ' + (t.closure || 'closed') : (stall.kind || 'stall') + ': ' + (stall.text || ''); } else if (why) why.remove();
+      /* and under the reason, what to do about it: the step that fits why it failed, as buttons (the board's click handler runs them) */
+      let tdo = n.querySelector('.tdo'); const doHtml = isF && B.big && !n.classList.contains('trow') ? ui.whatToDo(id, t, B.S || SL.sessions.active) : '';
+      if (doHtml) { if (!tdo) { tdo = document.createElement('span'); tdo.className = 'tdo'; const w = n.querySelector('.twhy'); if (w) w.after(tdo); else n.appendChild(tdo); } if (tdo._h !== doHtml) { tdo._h = doHtml; tdo.innerHTML = doHtml; } } else if (tdo) tdo.remove();
+      let sm = n.querySelector('.smark');
+      if (stall && tow) { if (!sm) { sm = document.createElement('span'); sm.className = 'smark'; sm.textContent = '⚠'; tow.appendChild(sm); } sm.title = (stall.kind || 'stall') + ': ' + (stall.text || ''); } else if (sm) sm.remove();
+      if (stall && !isF) n.title = n.title.replace(/ · ⚠ .*$/, '') + ' · ⚠ ' + (stall.text || stall.kind || 'stalled');
       let tr = n.querySelector('.tmark'); const nTry = t.attempts > 1 ? 'try ' + t.attempts : '';
       if (nTry && tow) { if (!tr) { tr = document.createElement('span'); tr.className = 'dim tmark'; tow.appendChild(tr); } tr.textContent = nTry; } else if (tr) tr.remove();
       /* what the agents that held it spent on it, and in how many requests: where a team's money and turns went */
@@ -48,8 +62,66 @@
     });
     /* a failed task stays in todo with its ✗, and a canceled one (the person stopped the team) in the column it had: the head counts
      *  them apart, so that the count still accounts for every card of the column and a canceled task is not counted as running */
+    ui.board.ages(B, m);
     Object.keys(failedIn).forEach(col => { const n = failedIn[col], c = B.host.querySelector('[data-col="' + col + '"] .cnt'); if (!c) return; const left = Math.max(0, (+c.textContent || 0) - n); c.innerHTML = left + ' <span class="bad">+ ' + n + ' ✗</span>'; c.title = left + (col === 'todo' ? ' to do, ' : ' ' + col + ', ') + n + ' failed'; });
     return { failed, blocked, failedIn };
+  };
+  /** The agent states that mean its owner is working on a running task right now. */
+  const LIVE_ST = ['think', 'tool', 'edit'];
+  /** The raised stalls by the task they name (a stall of an agent counts for the task it holds). */
+  function stallsByTask(m) {
+    const out = Object.create(null);
+    Object.keys(m.stalls || {}).forEach(k => { const s = m.stalls[k], tk = s.task || (s.id && m.ag[s.id] && m.ag[s.id].task); if (tk && !out[tk]) out[tk] = s; });
+    return out;
+  }
+  /** Why a task failed, in words, from its closure (kind or kind(target), internal/swarm/closure.go) and its number of attempts. */
+  ui.closureWords = (closure, attempts) => {
+    const c = String(closure || ''), i = c.indexOf('('), kind = i >= 0 ? c.slice(0, i) : c, target = i >= 0 ? c.slice(i + 1).replace(/\)$/, '') : '';
+    switch (kind) {
+      case 'verifier': return 'verification kept failing';
+      case 'exhausted': return 'out of attempts' + (attempts > 1 ? ' (' + attempts + ')' : '') + ': its workers kept stopping';
+      case 'denied': return 'the manager refused the work';
+      case 'canceled': return 'canceled';
+      case 'superseded': return target ? 'replaced by ' + target : 'replaced by another task';
+      case 'blocked_on': return target ? 'blocked on ' + target : 'blocked on another task';
+      default: return c ? 'failed (' + c + ')' : 'failed';
+    }
+  };
+  /** What to do about a failed task, by why it failed: a hint in words and the buttons that take the step (data-tdo: verify, its
+   *  verify output; ask, a message to the manager about it; agent, the details of the agent that held it last; go, the card of the
+   *  task it waits for or that replaced it). '' for a task the person canceled, which needs nothing. */
+  ui.whatToDo = (id, t, S) => {
+    const c = String(t.closure || ''), i = c.indexOf('('), kind = i >= 0 ? c.slice(0, i) : c, target = i >= 0 ? c.slice(i + 1).replace(/\)$/, '') : '';
+    const b = (act, label, arg, title) => '<button type="button" class="tdo-b" data-tdo="' + act + '" data-tid="' + esc(id) + '"' + (arg ? ' data-arg="' + esc(arg) + '"' : '') + ' title="' + esc(title) + '">' + esc(label) + '</button>';
+    const ask = b('ask', 'Ask the manager', '', 'write to the manager about ' + id + ': to retry it, split it or drop it');
+    /* the verify output is the merge queue's, so only a team whose workers have their own copies has it; otherwise the worker that held
+     * the task last ran its tests, and its details show them */
+    const isol = !!(S && S.meta && S.meta.isolation === 'worktree'), owner = t.owner ? b('agent', 'Open ' + t.owner, t.owner, 'the details of ' + t.owner + ', which held it last') : '';
+    const verify = isol ? b('verify', 'Verify output', '', 'what the verify command said about ' + id) : owner;
+    let hint, btns;
+    switch (kind) {
+      case 'canceled': return '';
+      case 'verifier': hint = 'Read why verification failed, then ask the manager to fix, split or drop it.'; btns = [verify, ask]; break;
+      case 'exhausted': hint = 'See where its last worker stopped, then ask the manager to retry it another way.'; btns = [owner, ask]; break;
+      case 'denied': hint = 'Ask the manager why it refused the work, or change the goal.'; btns = [ask]; break;
+      case 'superseded': hint = target ? 'Nothing to do here: follow ' + target + ', which replaced it.' : 'Nothing to do here: another task replaced it.'; btns = target ? [b('go', 'Go to ' + target, target, 'the card of ' + target)] : []; break;
+      case 'blocked_on': hint = target ? 'It waits for ' + target + ': unblock that one first.' : 'It waits for another task.'; btns = [target ? b('go', 'Go to ' + target, target, 'the card of ' + target) : '', ask]; break;
+      default: hint = 'Look at how it ended, then ask the manager what to do with it.'; btns = [verify, ask];
+    }
+    return '<span class="tdo-h"><b>What to do:</b> ' + esc(hint) + '</span>' + (btns.filter(Boolean).length ? '<span class="tdo-bs">' + btns.filter(Boolean).join('') + '</span>' : '');
+  };
+  /** Take a step of a failed card's What to do line (the button btn, of ui.whatToDo). */
+  ui.doStep = btn => {
+    const id = btn.dataset.tid, arg = btn.dataset.arg, S = SL.sessions.active, t = S && S.m && S.m.tasks[id];
+    switch (btn.dataset.tdo) {
+      case 'verify': if (ui.ws && ui.ws.verify) ui.ws.verify(id); break;
+      case 'ask': if (ui.compose) ui.compose('About task ' + id + (t && t.failed ? ' (it failed: ' + ui.closureWords(t.closure, t.attempts) + ')' : '') + ': '); break;
+      case 'agent': if (arg) ui.openDrawer(arg); break;
+      case 'go': { const n = document.querySelector('.kan .tcard[data-task="' + CSS.escape(arg) + '"]') || document.querySelector('.tcard[data-task="' + CSS.escape(arg) + '"]');
+        if (!n) { ui.toast(arg + ' is not on the board', 'warm'); break; }
+        if (n.scrollIntoView) n.scrollIntoView({ block: 'nearest', behavior: document.body.classList.contains('still') ? 'auto' : 'smooth' });
+        n.classList.remove('tflash'); void n.offsetWidth; n.classList.add('tflash'); setTimeout(() => n.classList.remove('tflash'), 1600); if (n.focus) n.focus({ preventScroll: true }); break; }
+    }
   };
   /** The words added to a board summary: " (N blocked)", " · N failed". */
   ui.boardExtra = x => (x.blocked ? ' (' + x.blocked + ' blocked)' : '') + (x.failed ? ' · ' + x.failed + ' failed' : '');

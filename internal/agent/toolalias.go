@@ -195,6 +195,9 @@ func jsonTypeIs(t any, v json.RawMessage) bool {
 		case w == "number" && got == "string", w == "integer" && got == "string", w == "boolean" && got == "string":
 			// the tools read numbers and flags written as strings ("30", "true"); so does a call under a borrowed name
 			return true
+		case w == "array" && got == "string":
+			// a list sent as one string becomes the list before the tool runs (tools.CoerceLists)
+			return true
 		}
 	}
 	return false

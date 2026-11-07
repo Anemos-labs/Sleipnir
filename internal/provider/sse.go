@@ -36,9 +36,6 @@ func NewSSEReaderLimits(r io.Reader, l StreamLimits) *SSEReader {
 	return &SSEReader{r: bufio.NewReaderSize(r, 1<<16), lim: l.Normalized()}
 }
 
-// Bytes reports how many bytes of the stream have been consumed.
-func (s *SSEReader) Bytes() int64 { return s.bytes }
-
 // readLine returns the next line with its terminator, valid until the next call.
 // The error is io.EOF (with any final unterminated line), a read error, or the
 // *Error of an exceeded limit.

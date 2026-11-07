@@ -291,8 +291,10 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 	// A task's last merge counts only when it came after the task was last started.
 	merges := map[string]swarm.RestoredMerge{}
 	var reviewOps []swarm.ReviewOp
-	scopes := map[string][]string{} // each task's files as the log last gave them
-	began := map[string]time.Time{} // when each task's current assignment was first started, for the review gate's durations
+	scopes := map[string][]string{}   // each task's files as the log last gave them
+	began := map[string]time.Time{}   // when each task's current assignment was first started, for the review gate's durations
+	blocked := map[string]time.Time{} // when each task still blocked was blocked (trackBegan)
+	var lastOp time.Time              // the last board op so far: where a run that was resumed left off
 	for _, a := range prev.Agents {
 		if a.ID != managerAgent && a.Role != "mailman" {
 			selected[a.ID] = true
@@ -302,21 +304,15 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 		switch e.Type {
 		case events.TypeBoardOp:
 			var op struct {
-				Op, Agent, Task, Status, Title string
-				Files                          []string
-				Closure                        swarm.Closure
+				Op, Agent, Task, Status, Title, Line string
+				Files, Tasks                         []string
+				Closure                              swarm.Closure
 			}
 			if err := json.Unmarshal(e.Data, &op); err != nil {
 				return err
 			}
-			if op.Op == "requeue" && op.Task != "" {
-				delete(began, op.Task) // back on the board: the next assignment's work starts afresh
-			}
-			if op.Task != "" && op.Status == string(swarm.StatusDoing) {
-				if _, ok := began[op.Task]; !ok {
-					began[op.Task] = e.TS
-				}
-			}
+			trackBegan(began, blocked, op.Op, op.Task, op.Status, op.Line, op.Tasks, e.TS, lastOp)
+			lastOp = e.TS
 			if op.Op == "requeue" && op.Task != "" && op.Title != "" {
 				// A revision (a requeue that restates the task) lands what the task covered and what it covers now.
 				reviewOps = append(reviewOps, swarm.ReviewOp{Task: op.Task, Land: true, Files: append(slices.Clone(scopes[op.Task]), op.Files...)})
@@ -367,6 +363,14 @@ func (s *Session) restoreWorkers(prev *swarm.Snapshot, evs []events.Event) error
 		}
 	}
 	for _, task := range prev.Tasks {
+		if at, ok := began[task.ID]; ok && task.Status == swarm.StatusDoing {
+			// Work still in flight keeps the start of its assignment: the team's task bound counts from there, not from the resume,
+			// and not over the time the team was down since its last board op.
+			if now := time.Now(); !lastOp.IsZero() && now.After(lastOp) {
+				at = at.Add(now.Sub(lastOp))
+			}
+			reviewOps = append(reviewOps, swarm.ReviewOp{Task: task.ID, Began: at, Owner: task.Owner})
+		}
 		if task.Owner != "" && task.Owner != managerAgent && task.Status != swarm.StatusDone && task.Status != swarm.StatusFailed {
 			// A prepare record and an owned task recover the window before roster
 			// publication. Once published, only current roster membership counts:
@@ -472,4 +476,67 @@ func (s *Session) EarlierSessions(n int) []string {
 func (s *Session) CheckResume(spec string) error {
 	_, err := ResolveResume(s.opts.Home, s.opts.Root, spec)
 	return err
+}
+
+// trackBegan keeps, from one board op of the log (logged at ts), when each task's current assignment was first started. A requeue
+// puts work back on the board, so the next assignment starts afresh: one task's, or a worker's tasks released together
+// (RequeueOwned). A resume's own requeue (swarm.ResumedLine) is not one: the work it puts back is the work in flight, which keeps
+// its start. The time a task waited blocked is not the work's: its resume, or a resume of the run that puts it back on the board,
+// moves the start on by it, as the review gate does. Nor is the time the team was not running, from the previous run's last board
+// op (ranUntil, zero when unknown) to the resume's requeue.
+func trackBegan(began, blocked map[string]time.Time, op, task, status, line string, tasks []string, ts, ranUntil time.Time) {
+	if op == "requeue" {
+		if task != "" {
+			delete(began, task)
+			delete(blocked, task)
+		}
+		for _, id := range tasks {
+			if line != swarm.ResumedLine {
+				delete(began, id)
+				delete(blocked, id)
+				continue
+			}
+			// The resume puts the work in flight back on the board, and it keeps its start, less the time nothing ran: from the
+			// previous run's last board op (ranUntil), or from its block if it was blocked then.
+			from := ts
+			if !ranUntil.IsZero() && ranUntil.Before(ts) {
+				from = ranUntil
+			}
+			if since, ok := blocked[id]; ok {
+				delete(blocked, id)
+				from = minTime(from, since)
+			}
+			if b, ok := began[id]; ok && ts.After(from) {
+				began[id] = b.Add(ts.Sub(from))
+			}
+		}
+	}
+	if task == "" {
+		return
+	}
+	switch {
+	case op == "block" && status == string(swarm.StatusBlocked):
+		if _, ok := blocked[task]; !ok {
+			blocked[task] = ts
+		}
+	case op == "resume" && status == string(swarm.StatusDoing):
+		if since, ok := blocked[task]; ok {
+			delete(blocked, task)
+			if b, ok := began[task]; ok && ts.After(since) {
+				began[task] = b.Add(ts.Sub(since))
+			}
+		}
+	}
+	if status == string(swarm.StatusDoing) {
+		if _, ok := began[task]; !ok {
+			began[task] = ts
+		}
+	}
+}
+
+func minTime(a, b time.Time) time.Time {
+	if b.Before(a) {
+		return b
+	}
+	return a
 }

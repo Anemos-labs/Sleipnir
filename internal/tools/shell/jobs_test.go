@@ -20,12 +20,6 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
 
-// lastLine returns the final line of a tool result: the status trailer.
-func lastLine(s string) string {
-	s = strings.TrimRight(s, "\n")
-	return s[strings.LastIndexByte(s, '\n')+1:]
-}
-
 func jobEvents(h *harness) []JobEvent {
 	var out []JobEvent
 	for _, e := range h.log.OfType(EventJob) {

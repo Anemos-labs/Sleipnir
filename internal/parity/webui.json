@@ -895,6 +895,15 @@
   },
   {
    "group": "sessions",
+   "name": "Pin or unpin this session",
+   "kind": "action",
+   "live": true,
+   "effects": [
+    "act:pinSession"
+   ]
+  },
+  {
+   "group": "sessions",
    "name": "Close this session…",
    "kind": "action",
    "live": true,
@@ -946,6 +955,15 @@
    "live": true,
    "effects": [
     "settings:config"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir council",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:council"
    ]
   },
   {
@@ -1607,11 +1625,38 @@
   },
   {
    "group": "the program (sleipnir ...)",
+   "name": "sleipnir storage",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:storage"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir storage clean",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:storage clean"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
    "name": "sleipnir swarm",
    "kind": "program",
    "live": true,
    "effects": [
     "runner:swarm"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir tooleval",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:tooleval"
    ]
   },
   {
@@ -2598,6 +2643,8 @@
    "demo",
    "sessions",
    "sessions prune",
+   "storage",
+   "storage clean",
    "replay",
    "watch",
    "inspect",
@@ -2612,6 +2659,8 @@
    "doctor",
    "mock",
    "sim",
+   "council",
+   "tooleval",
    "plugins",
    "plugins add",
    "plugins disable",
@@ -2923,6 +2972,26 @@
      "yes": "priv"
     }
    },
+   "storage": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [],
+    "modeWith": {}
+   },
+   "storage clean": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [
+     "idle",
+     "keep",
+     "older-than",
+     "sessions",
+     "yes"
+    ],
+    "modeWith": {
+     "yes": "priv"
+    }
+   },
    "replay": {
     "mode": "tty_only",
     "positionals": [
@@ -3110,6 +3179,51 @@
     ],
     "modeWith": {
      "mode": "priv"
+    }
+   },
+   "council": {
+    "mode": "net",
+    "positionals": [
+     "SCREENSHOT"
+    ],
+    "flags": [
+     "beat-refs",
+     "categories",
+     "json",
+     "ledger",
+     "model",
+     "product",
+     "ref",
+     "staged",
+     "target",
+     "timeout",
+     "trust-project"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
+    }
+   },
+   "tooleval": {
+    "mode": "net",
+    "positionals": [],
+    "flags": [
+     "case",
+     "cases",
+     "harvest",
+     "json",
+     "max-tokens",
+     "min-pass",
+     "model",
+     "out",
+     "parallel",
+     "samples",
+     "sizes",
+     "timeout",
+     "trust-project",
+     "variants"
+    ],
+    "modeWith": {
+     "trust-project": "priv"
     }
    },
    "plugins": {

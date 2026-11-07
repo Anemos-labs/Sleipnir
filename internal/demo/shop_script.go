@@ -82,9 +82,8 @@ func (s *shopScript) marked(name string) bool {
 }
 
 var (
-	shopWho     = regexp.MustCompile(`you: (\S+) \((\w+)\)`)
-	shopUnitRe  = regexp.MustCompile(`(?m)^\s+t(\d+)(?:-t(\d+))? · ([^·]*) · (.*)$`)
-	shopTaskRef = regexp.MustCompile(`task (T\d+)`)
+	shopWho    = regexp.MustCompile(`you: (\S+) \((\w+)\)`)
+	shopUnitRe = regexp.MustCompile(`(?m)^\s+t(\d+)(?:-t(\d+))? · ([^·]*) · (.*)$`)
 )
 
 // who is the agent that is asking, as it says so in its prompt (and as a model would read it).

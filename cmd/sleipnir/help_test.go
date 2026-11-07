@@ -6,7 +6,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,27 +30,6 @@ func TestHelpIsNotAnError(t *testing.T) {
 	if code := reportError(&buf, errors.New("boom \x1b[31mred")); code != 1 || !strings.HasPrefix(buf.String(), "sleipnir: boom ") || strings.Contains(buf.String(), "\x1b") {
 		t.Errorf("an error must exit 1 and be printed without control characters: %d %q", code, buf.String())
 	}
-}
-
-// captureStderr runs fn with os.Stderr redirected and returns what was written to it.
-func captureStderr(t *testing.T, fn func()) string {
-	t.Helper()
-	orig := os.Stderr
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Stderr = w
-	done := make(chan string)
-	go func() {
-		b, _ := io.ReadAll(r)
-		done <- string(b)
-	}()
-	defer func() { os.Stderr = orig }()
-	fn()
-	w.Close()
-	os.Stderr = orig
-	return <-done
 }
 
 // `swarm -h` used to fail with "invalid value "-h" for flag -swarm": the shorthand

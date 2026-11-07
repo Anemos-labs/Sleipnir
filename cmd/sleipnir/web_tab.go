@@ -102,7 +102,15 @@ type webTab struct {
 	queue      []queued
 	nq         int
 	active     bool
-	goalTurn   bool // the running turn is the goal's (its start, a resume or a continuation), not a message the person typed: Send steers it
+	goalTurn   bool                   // the running turn reads the person's messages as steering (Send steers it): the goal's (its start, a resume or a continuation), or any run of a team's manager, which lasts while its members work
+	turning    bool                   // a turn of the agent runs (the person's, the goal's or one on another session's message): a peer's message joins it
+	parent     string                 // the tab whose agent started this one (sessions op spawn; "" when the person did)
+	peerSent   map[string]int         // messages sent to each other tab since the person last wrote (peerSendLimit)
+	peerInTurn bool                   // another session's message was handed to the running turn (readStranded)
+	answering  string                 // the tab whose message the running turn answers (mailTurn; "" for none)
+	awaiting   map[string]bool        // the tabs this one wrote to and has had no answer from (PeerWait)
+	unread     map[string][]string    // answers that reached the running turn as mail while no wait was there (PeerWait)
+	waiters    map[string]chan string // the waits of this tab's agent for the answer of each tab (PeerWait)
 	excl       int
 	cancel     context.CancelFunc // cancels the running item
 	cancelOp   context.CancelFunc // cancels a running compaction
@@ -112,11 +120,12 @@ type webTab struct {
 	prevSID    string           // the session the tab had before its restart (sessionIDs)
 	trusted    *trust.Footprint // the project files the person confirmed for trustedDir, which the session uses (nil: none)
 	trustedDir string
+	pinned     bool   // the tab's session is pinned (web_pins.go); pinMu covers a change of it with the pin list's
+	pinnedSID  string // the session pinned was last read or set for
 	lastMeta   wire.MetaPatch
 	lastRoster []wire.RosterEntry
-	metaV      uint64 // the version of the last meta frame sent (seqMu)
-	rosterV    uint64 // the version of the last roster frame sent (seqMu)
-	shownQueue int
+	metaV      uint64        // the version of the last meta frame sent (seqMu)
+	rosterV    uint64        // the version of the last roster frame sent (seqMu)
 	view       sessView      // the model, effort and budget the session has, as the tab last read them
 	endReason  string        // why the session ends when the tab closes (session.EndExit unless the server is interrupted)
 	closedDone chan struct{} // closed when the tab's close has ended
@@ -125,6 +134,9 @@ type webTab struct {
 	// against it): a model switch replaces the agent, the provider and the model without a lock of the session's own. Nothing that only
 	// reads takes it: meta and a restart read the tab's view instead.
 	sessMu sync.Mutex
+	// pinMu serialises the changes of the tab's pin (web_pins.go): the pin list's edit and pinned change together. It is taken before
+	// mu, never under it.
+	pinMu sync.Mutex
 	// pubMu makes the computing, the diffing and the sending of the tab's meta or roster frame one step: two of them cannot reach the
 	// pages in the opposite order of what they describe. A snapshot computes its meta under it too.
 	pubMu sync.Mutex
@@ -169,7 +181,8 @@ func (t *webTab) Summary() wire.TabSummary {
 
 // summaryLocked is Summary under the lock.
 func (t *webTab) summaryLocked() wire.TabSummary {
-	sum := wire.TabSummary{ID: t.id, Name: t.name, Gen: t.gen, CreatedAt: t.createdAt, Order: t.order, Cwd: t.cwdLocked(), Headless: t.base.AskTimeout > 0}
+	sum := wire.TabSummary{ID: t.id, Name: t.name, Gen: t.gen, CreatedAt: t.createdAt, Order: t.order, Cwd: t.cwdLocked(), Headless: t.base.AskTimeout > 0,
+		Pinned: t.pinned}
 	if t.s != nil && !t.starting {
 		sum.SID = t.s.ID // a tab is ready, and takes requests, once its start is over
 	}
@@ -454,7 +467,12 @@ func (t *webTab) turn(ctx context.Context, s *session.Session, prompt, display s
 		t.addHist(display)
 	}
 	t.mu.Lock()
-	t.goalTurn = !echo
+	// A team's manager runs for as long as its members work, hours on a big goal: a message queued behind that run went
+	// unanswered for all of it. It steers the run instead, as a goal's continuation does.
+	t.goalTurn, t.turning = !echo || s.Swarm != nil, true
+	if echo {
+		t.peerSent = nil // the person wrote: the sessions this one writes to may hear from it again (peerSendLimit)
+	}
 	t.mu.Unlock()
 	t.emit(&wire.Turn{S: "start"})
 	t.publishMeta()
@@ -473,12 +491,13 @@ func (t *webTab) turn(ctx context.Context, s *session.Session, prompt, display s
 	})
 	_ = err
 	t.mu.Lock()
-	t.goalTurn = false
+	t.goalTurn, t.turning = false, false
 	t.ends = append(t.ends, func() {
 		t.emit(&wire.Final{}, &wire.Turn{S: "end"})
 		t.publishRoster()
 	})
 	t.mu.Unlock()
+	t.readStranded(s) // another session's message that reached the agent as the turn ended (web_peers.go)
 }
 
 // addHist records a sent line for the history (ctrl+r, up arrow).
@@ -641,9 +660,10 @@ func (t *webTab) Send(ctx context.Context, req wire.MessageRequest) (wire.SendRe
 	return wire.SendResult{Queued: true, Position: pos, ID: id}, nil
 }
 
-// steersContinuation delivers a message as a steer when the running turn is the goal's own: the next turn may be
-// hours away (a team's manager runs one continuation while its members work), and the goal yields to the person only between turns.
-// A message that changes delivery or is too long for a steer, and one sent during the person's own turn, waits in the queue as before.
+// steersContinuation delivers a message as a steer when the running turn is the goal's own or a team manager's: the next turn may
+// be hours away (a team's manager runs while its members work), and the goal yields to the person only between turns. A message
+// that changes delivery or is too long for a steer, one sent while the judge rules, and one sent during a single agent's turn on the
+// person's message, waits in the queue as before.
 func (t *webTab) steersContinuation(ctx context.Context, req wire.MessageRequest) bool {
 	if req.AutoFix || req.AutoMerge || utf8.RuneCountInString(strings.TrimSpace(req.Text)) > maxSteerLen {
 		return false
@@ -1390,6 +1410,7 @@ func (t *webTab) Rename(ctx context.Context, name string) error {
 	if s != nil {
 		_ = session.UpdateMeta(s.Dir, func(m *session.Meta) { m.Name = name })
 		webAction(s, "rename", name)
+		t.renamePin(s)
 	}
 	t.h.Publish(wire.Frame{Type: "tab", Data: wire.TabFrame{Op: "update", Tab: sum}, Critical: true})
 	return nil

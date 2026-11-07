@@ -121,6 +121,11 @@ func (d Def) Profile() perm.RoleProfile {
 	switch {
 	case readOnly:
 		p.Mode = perm.ModePlan
+		if d.ReadOnly && len(d.Tools) == 0 {
+			// Declared read-only with no tool list to narrow it to narrow it: it verifies and researches as a read-only role does (the project's tests and
+			// checks, the web), within what the session allows.
+			p.Allow = append(p.Allow, perm.ReadOnlyAllow...)
+		}
 	case d.PermissionMode == string(perm.ModeAcceptEdits) || d.PermissionMode == string(perm.ModeDefault):
 		p.Mode = perm.Mode(d.PermissionMode) // the engine keeps the stricter of this and the session's mode
 	}

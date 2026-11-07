@@ -5,14 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"math"
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/gitx"
 	"github.com/anemos-labs/sleipnir/internal/workspace"
@@ -134,8 +133,9 @@ type PrunePlan struct {
 	// Total counts the sessions found; KeptNewest the newest ones kept whatever their age (live ones among them).
 	Total, KeptNewest int
 	// InUse are sessions old enough but written to within PruneInUse; Locked old enough but held by a process (PlanPrune only);
-	// Skipped are directories that are not sessions (no event log): never touched.
-	InUse, Locked, Skipped []string
+	// Skipped are directories that are not sessions (no event log): never touched. Pinned are sessions old enough that are pinned
+	// (pins.json beside the sessions directory): a pinned session is never pruned.
+	InUse, Locked, Skipped, Pinned []string
 }
 
 // PlanPrune applies the prune rule to the state directory's sessions: older than olderThan, not among the newest keep, not written
@@ -179,15 +179,19 @@ const maxPlanDetail = 200
 
 // PlanPruneDir is the prune rule over the sessions directory root, as `sleipnir sessions prune` applies it: every session whose
 // newest file (the directory or its log) is older than olderThan, except the newest keep sessions and any written to within
-// PruneInUse of now. The sessions named in live count as the newest and are never deleted. A directory without an events.jsonl is not
-// a session and is left alone (the state directory is the person's, and may hold other things), and so is anything that is not a
-// plain directory. Locks are not probed. The error of reading root is returned as it is (fs.ErrNotExist when there is none).
+// PruneInUse of now. The sessions named in live count as the newest and are never deleted; a pinned session (Pinned) is never
+// deleted either. A directory without an events.jsonl is not a session and is left alone (the state directory is the person's, and
+// may hold other things), and so is anything that is not a plain directory. Locks are not probed. The error of reading root is returned as it is (fs.ErrNotExist when there is none).
 func PlanPruneDir(root string, now time.Time, olderThan time.Duration, keep int, live []string) (*PrunePlan, error) {
 	ents, err := os.ReadDir(root)
 	if err != nil {
 		return nil, err
 	}
 	isLive := map[string]bool{}
+	pinned, err := pinnedIDs(root)
+	if err != nil {
+		return nil, fmt.Errorf("the pin list could not be read, so no session is planned for deletion: %w", err)
+	}
 	for _, id := range live {
 		isLive[id] = true
 	}
@@ -229,6 +233,8 @@ func PlanPruneDir(root string, now time.Time, olderThan time.Duration, keep int,
 		case s.age < olderThan:
 		case s.age < PruneInUse:
 			p.InUse = append(p.InUse, s.r.ID)
+		case pinned[s.r.ID]:
+			p.Pinned = append(p.Pinned, s.r.ID)
 		default:
 			s.r.Bytes = DirSize(s.r.Dir)
 			p.Delete = append(p.Delete, s.r)
@@ -242,23 +248,11 @@ func PlanPruneDir(root string, now time.Time, olderThan time.Duration, keep int,
 	return p, nil
 }
 
-// ParseAge reads a duration the way a person writes one for a directory of old things: 36h, 90m, 30d, 2w, or 0.
+// ParseAge reads a duration the way a person writes one for a directory of old things: 36h, 90m, 30d, 2w, or 0 (config.ParseAge).
 func ParseAge(s string) (time.Duration, error) {
-	s = strings.TrimSpace(s)
-	for suffix, unit := range map[string]time.Duration{"d": 24 * time.Hour, "w": 7 * 24 * time.Hour} {
-		if n, ok := strings.CutSuffix(s, suffix); ok {
-			v, err := strconv.ParseFloat(n, 64)
-			// NaN, an infinity or a number of days past what a duration holds would come out as a negative age, which every
-			// session is older than: refused, as a typo is
-			if err != nil || math.IsNaN(v) || v < 0 || v*float64(unit) >= math.MaxInt64 {
-				return 0, fmt.Errorf("%q is not an age (try 30d, 36h or 2w)", s)
-			}
-			return time.Duration(v * float64(unit)), nil
-		}
-	}
-	d, err := time.ParseDuration(s)
-	if err != nil || d < 0 {
-		return 0, fmt.Errorf("%q is not an age (try 30d, 36h or 2w)", s)
+	d, ok := config.ParseAge(s)
+	if !ok {
+		return 0, fmt.Errorf("%q is not an age (try 30d, 36h or 2w)", strings.TrimSpace(s))
 	}
 	return d, nil
 }

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/plan"
@@ -639,8 +640,9 @@ func isMain(hid string) bool { return hid == "main" || hid == "mgr" }
 // composer's history) and, in a followed log, the start of a turn.
 func (t *Translator) userInput(e events.Event, ts float64, at int64) {
 	var p struct {
-		Text   string `json:"text"`
-		Origin string `json:"origin"`
+		Text   string   `json:"text"`
+		Origin string   `json:"origin"`
+		Images []string `json:"images"`
 	}
 	if json.Unmarshal(e.Data, &p) != nil || (p.Origin != "" && p.Origin != "user") || !isMain(e.Agent) {
 		return
@@ -649,7 +651,13 @@ func (t *Translator) userInput(e events.Event, ts float64, at int64) {
 	if !t.d.logOnly {
 		return
 	}
-	t.put(&wire.Say{Who: "you", Text: text(p.Text, capEvent)}, ts, at, nil)
+	say := text(p.Text, capEvent)
+	for _, ref := range p.Images {
+		if events.ValidHash(core.Hash(ref)) {
+			say += " " + agent.ImageToken(core.Hash(ref), "") // the page shows the picture the person attached
+		}
+	}
+	t.put(&wire.Say{Who: "you", Text: say}, ts, at, nil)
 	if !t.d.history {
 		t.put(&wire.Turn{S: "start"}, ts, at, nil)
 		t.d.turnOpen = true
@@ -758,7 +766,7 @@ func (t *Translator) toolCall(e events.Event, ts float64, at int64) {
 		delete(t.d.hold, uid)
 	}
 	if name == "plan" && isMain(e.Agent) {
-		t.planCall(p.Input, ts, at)
+		t.planCall(e.Agent, p.Input, ts, at)
 	}
 	if !t.d.logOnly || nonAgent(e.Agent) || p.ID == "" {
 		return
@@ -773,20 +781,33 @@ func (t *Translator) toolCall(e events.Event, ts float64, at int64) {
 	t.d.pend[callKey(uid, p.ID)] = pt
 }
 
-// planCall is a call of the plan tool by the main agent: the whole plan, normalized as the tool does.
-func (t *Translator) planCall(input json.RawMessage, ts float64, at int64) {
+// planCall is a call of the plan tool by the main agent: the whole plan, normalized as the tool does (a team's manager, "mgr",
+// may have several steps doing).
+func (t *Translator) planCall(agent string, input json.RawMessage, ts float64, at int64) {
 	var in struct {
 		Items []plan.Item `json:"items"`
 	}
 	if json.Unmarshal(input, &in) != nil {
 		return
 	}
-	items, err := plan.Normalize(in.Items)
+	normalize := plan.Normalize
+	if agent == "mgr" {
+		normalize = plan.NormalizeDelegated
+	}
+	items, err := normalize(in.Items)
 	if err != nil {
 		return
 	}
 	ev := &wire.Plan{Steps: make([]string, 0, len(items)), St: make([]string, 0, len(items))}
-	for _, it := range items {
+	eff, ms := make([]float64, len(items)), make([]string, len(items))
+	for i, it := range items {
+		eff[i], ms[i] = float64(it.Effort), it.Milestone
+		if it.Effort > 0 {
+			ev.Eff = eff
+		}
+		if it.Milestone != "" {
+			ev.Mile = ms
+		}
 		ev.Steps = append(ev.Steps, line(it.Step, capPlan))
 		st := "pending"
 		switch it.Status {

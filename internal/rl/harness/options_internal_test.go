@@ -195,7 +195,6 @@ func TestTeamOwnsReachesTheSwarm(t *testing.T) {
 	for name, team := range map[string]rl.Team{
 		"a role the team does not have": {Mode: "swarm", Roles: []string{"backend"}, Owns: owns},
 		"an unknown role":               {Mode: "swarm", Owns: map[string][]string{"designer": {"*.css"}}},
-		"a read-only role":              {Mode: "swarm", Owns: map[string][]string{"reviewer": {"*.css"}}},
 		"the manager":                   {Mode: "swarm", Owns: map[string][]string{"manager": {"*.css"}}},
 	} {
 		if _, err := opts(env.RunSpec{Task: rl.Task{ID: "t", Prompt: "p", Team: team}}); err == nil || !strings.Contains(err.Error(), "team.owns") {

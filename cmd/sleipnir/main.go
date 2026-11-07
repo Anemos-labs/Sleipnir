@@ -262,6 +262,7 @@ Every day:
   login     store a key, or sign in with your ChatGPT plan; logout removes it
   models    list models and prices from a marketplace catalogue
   sessions  list recorded sessions (sessions prune: delete the old ones)
+  storage   what the data directory holds; storage clean removes what is old
   update    install the latest release (the chat says when there is one)
 
 Set up a project:
@@ -278,6 +279,8 @@ Look at a session, or measure:
   replay    play a recorded session back; --record writes an SVG, --final text
   inspect   the cache inspector: a dashboard of a session, live or recorded
   friction  rank what slowed recorded sessions down: refusals, errors, retries
+  council   score screenshots with a council of models, round after round
+  tooleval  measure how models use the tools, in situations they got wrong
   doctor    probe an endpoint: streaming, tools, prefix cache, warm-up
   demo      a scripted team on a mock endpoint: the shared cache and the bill
   sim       simulate cache policies: what layering buys, and where it stops

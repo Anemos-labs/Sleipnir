@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -41,7 +42,8 @@ var docsScope = []string{"*.md", "docs/**"}
 // of the nearest directory above it that has some (svc/README.md for a change to svc/ratelimit/: a docs worker scoped without it
 // mailed the manager for it and waited a minute for an answer that never came). The root's Markdown is in docsScope. Named files, never globs, so a
 // later code task on that directory collides with those files alone and only while the pass runs. Entries whose directory cannot
-// be told (a glob with no literal directory) add nothing.
+// be told (a glob with no literal directory) add nothing. A change inside a project of its own below the root (a directory with a
+// project marker: projectDirOf) adds that project's README.md, whether or not it exists yet.
 func (s *Swarm) docsScopeFor(b []docsChange) []string {
 	out := append([]string(nil), docsScope...)
 	root := s.deps.Root
@@ -71,6 +73,41 @@ func (s *Swarm) docsScopeFor(b []docsChange) []string {
 					out = append(out, filepath.ToSlash(rel))
 				}
 			}
+			if proj := projectDirOf(root, dir); proj != "" && !seen["project:"+proj] {
+				seen["project:"+proj] = true
+				out = append(out, proj+"/README.md")
+			}
+		}
+	}
+	return dedupe(out)
+}
+
+// projectMarkers are the files that make a directory the root of a project of its own (a module, a package, a repository).
+var projectMarkers = []string{".git", "go.mod", "package.json", "Cargo.toml", "pyproject.toml", "setup.py", "pom.xml", "build.gradle", "Gemfile", "mix.exs", "composer.json", "CMakeLists.txt"}
+
+// projectDirOf is the nearest directory at or above dir (repository-relative, below root) that holds a project marker, "" when
+// none does below the root. Its README.md is that project's front page, as the root's is the root's: a project made in a
+// subdirectory of the session's directory had its README refused to every catch-up pass, since "*.md" names the session's
+// directory alone. It is named, as a file, for a pass whose change lies in that project (docsScopeFor).
+func projectDirOf(root, dir string) string {
+	for d := dir; d != "." && d != "/" && d != ""; d = path.Dir(d) {
+		for _, m := range projectMarkers {
+			if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(d), m)); err == nil {
+				return d
+			}
+		}
+	}
+	return ""
+}
+
+// dedupe returns in without repeated entries, in their first order.
+func dedupe(in []string) []string {
+	seen := make(map[string]bool, len(in))
+	out := in[:0]
+	for _, v := range in {
+		if !seen[v] {
+			seen[v] = true
+			out = append(out, v)
 		}
 	}
 	return out
@@ -169,6 +206,9 @@ type docsKeeper struct {
 	retryAt time.Time // no new attempt before this
 	stops   int       // the counted stops of open (its Attempts) that retryAt already waits out
 	coded   bool      // an implementation task has been accepted: agreements alone may start a pass
+	// pendingAt is when the oldest change in pending was added (zero while pending is empty): a pass is held while the team is
+	// still building, at most docsHoldMax after it (docsHeld).
+	pendingAt time.Time
 
 	// edited are the product files the manager changed by itself since the last pass took them (noteManagerEdit), and
 	// editedAt is when it last changed one: no task's acceptance covers those edits, so they become one change of their
@@ -208,14 +248,17 @@ func (s *Swarm) noteManagerEdit(p string) {
 func (s *Swarm) flushManagerEdits() {
 	if k := s.docs; k != nil {
 		k.mu.Lock()
-		k.takeEditsLocked()
+		k.takeEditsLocked(s.deps.Now())
 		k.mu.Unlock()
 	}
 }
 
 // addPendingLocked adds c to the changes waiting for a pass. A task accepted again before a pass took its first
 // acceptance (a repair, a reopened review) replaces its entry, so one pass reads it once, at its latest scope.
-func (k *docsKeeper) addPendingLocked(c docsChange) {
+func (k *docsKeeper) addPendingLocked(c docsChange, now time.Time) {
+	if len(k.pending) == 0 {
+		k.pendingAt = now
+	}
 	for i := range k.pending {
 		if k.pending[i].task == c.task {
 			k.pending[i] = c
@@ -226,9 +269,12 @@ func (k *docsKeeper) addPendingLocked(c docsChange) {
 }
 
 // takeEditsLocked moves the manager's edits into pending as one change.
-func (k *docsKeeper) takeEditsLocked() {
+func (k *docsKeeper) takeEditsLocked(now time.Time) {
 	if len(k.edited) == 0 {
 		return
+	}
+	if len(k.pending) == 0 {
+		k.pendingAt = now
 	}
 	k.pending = append(k.pending, docsChange{task: managerEdits, title: "edits the manager made itself", kind: "change", files: k.edited})
 	k.edited, k.coded = nil, true
@@ -284,10 +330,10 @@ func (s *Swarm) docsTick(now time.Time) {
 		} else {
 			k.coded = true
 		}
-		k.addPendingLocked(docsChange{task: t.ID, title: t.Title, kind: kind, files: t.Files})
+		k.addPendingLocked(docsChange{task: t.ID, title: t.Title, kind: kind, files: t.Files}, now)
 	}
 	if len(k.edited) > 0 && now.Sub(k.editedAt) >= docsEditQuiet {
-		k.takeEditsLocked()
+		k.takeEditsLocked(now)
 	}
 	if k.open != "" {
 		t, ok := snap.Task(k.open)
@@ -326,11 +372,21 @@ func (s *Swarm) docsTick(now time.Time) {
 		k.mu.Unlock()
 		return
 	}
+	if open := s.stillBuilding(snap); open != "" && now.Sub(k.pendingAt) < docsHoldMax {
+		k.waiting = "held while the team is still building (" + open + ")"
+		k.mu.Unlock()
+		return
+	}
+	// The hold is over: its reason no longer stands, and a live view that kept it named a task accepted forty minutes before.
+	k.waiting = ""
 	batch := append([]docsChange(nil), k.pending...)
 	k.mu.Unlock()
 
 	agentID, busy := s.docsWorker()
 	if busy {
+		k.mu.Lock()
+		k.waiting = "the docs worker is at work on another task"
+		k.mu.Unlock()
 		return // the docs worker is at work: the changes wait for it
 	}
 	// The pass is put on the board first and then assigned by id: a start that fails
@@ -344,6 +400,11 @@ func (s *Swarm) docsTick(now time.Time) {
 		return
 	}
 	k.pending = k.pending[len(batch):]
+	if len(k.pending) > 0 {
+		k.pendingAt = now
+	} else {
+		k.pendingAt = time.Time{}
+	}
 	k.open, k.waiting, k.stops = task.ID, "", 0
 	for i := len(batch) - 1; i >= 0; i-- {
 		if batch[i].task != managerEdits {
@@ -360,6 +421,28 @@ func (s *Swarm) docsTick(now time.Time) {
 		return
 	}
 	s.emit("docs.pass", map[string]any{"agent": id, "task": task.ID, "changes": len(batch)})
+}
+
+// docsHoldMax bounds how long a catch-up pass is held while the team is still building (stillBuilding), counted from the oldest
+// change it covers: a long build still gets its documents updated along the way.
+const docsHoldMax = 20 * time.Minute
+
+// stillBuilding names an implementation task that is still open (todo, doing, blocked or in review, other than docs and test-only
+// work, the tester's suites included), "" when none is. A pass is held while one is, at most docsHoldMax: a pass started while the code it describes was still
+// being built or fixed documented defects as the current behaviour, and was rewritten twice as the rounds of review fixed them.
+func (s *Swarm) stillBuilding(snap *Snapshot) string {
+	for _, t := range snap.Tasks {
+		switch t.Status {
+		case StatusTodo, StatusDoing, StatusBlocked, StatusReview:
+		default:
+			continue
+		}
+		if t.Parent != "" || !s.implementationTask(t) || testsOnly(t.Files) || t.Role == "tester" || t.Owner != "" && s.roleOf(t.Owner) == "tester" {
+			continue
+		}
+		return t.ID + " " + string(t.Status)
+	}
+	return ""
 }
 
 // isDocsTask reports whether t is the docs worker's own work: a catch-up task, or a

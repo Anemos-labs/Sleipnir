@@ -294,7 +294,7 @@ func TestPoolAuthorityRefusalsNameTheFailedCondition(t *testing.T) {
 		"name the member with agent=", "spawn agent=MEMBER task=T2")
 	r.refused(r.callTool(context.Background(), "spawn", r.second, "backend", map[string]any{"task": "T2", "agent": r.third}), "a member's assignment",
 		id+"'s pool is led by "+r.lead)
-	if _, err := r.sw.Board.assignTask(assignReq{by: r.lead, agent: "fe-9", id: "T2", check: r.sw.claimCheck("fe-9", false)}); err == nil ||
+	if _, err := r.sw.Board.assignTask(assignReq{by: r.lead, agent: "fe-9", id: "T2", check: r.sw.claimCheck("fe-9", r.sw.roles["frontend"])}); err == nil ||
 		!strings.Contains(err.Error(), "fe-9 is not a member of "+id+"'s pool (members: "+r.lead+", "+r.second+", "+r.third+")") {
 		t.Errorf("an assignment outside the pool: %v", err)
 	}
@@ -539,7 +539,7 @@ func TestAChildOfAResumedPoolSaysHowToStartTheParent(t *testing.T) {
 	if err := r.sw.Board.mutate("harness", "requeue", func(d *draft) error { // what Board.RestoreOwners leaves after a resume
 		i := taskIdx(d.Snapshot, r.parent.ID)
 		p := d.Tasks[i]
-		p.Status, p.Line = StatusTodo, resumedLine
+		p.Status, p.Line = StatusTodo, ResumedLine
 		return d.put(i, p)
 	}); err != nil {
 		t.Fatal(err)
@@ -600,7 +600,7 @@ func TestTheManagersWaitAfterAResumeSaysWhatToStartAgain(t *testing.T) {
 		for _, id := range []string{r.parent.ID, child.ID} {
 			i := taskIdx(d.Snapshot, id)
 			p := d.Tasks[i]
-			p.Status, p.Owner, p.Line = StatusTodo, r.lead, resumedLine
+			p.Status, p.Owner, p.Line = StatusTodo, r.lead, ResumedLine
 			if err := d.put(i, p); err != nil {
 				return err
 			}

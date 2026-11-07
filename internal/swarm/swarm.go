@@ -197,6 +197,8 @@ type Deps struct {
 	Compactor       provider.Provider
 	CompactorModel  cost.Model
 	CompactorHealth *agent.CompactorHealth
+	// Images is agent.Config.Images for every agent: how many images a request carries and who describes the rest.
+	Images agent.ImagePolicy
 	// Plans holds each agent's plan (internal/plan); nil: no plan tool.
 	Plans *plan.Store
 	// OutagePatience and WaitUnreachable are agent.Config's for every agent of the swarm.
@@ -323,6 +325,7 @@ type Swarm struct {
 	// teamIDs holds the id of every team member registered in the run, retired ones included (everyMember). Guarded by mu.
 	teamIDs map[string]bool
 	queued  map[string]queuedSpawn // parents waiting for a free member of their role (spawnqueue.go), by task id; guarded by mu
+	rounds  map[string]poolRound   // pool rounds waiting on votes (poolround.go), by task id; guarded by mu
 	members map[string]*member
 	// arriving (under mu) holds the IDs of agents that are being added to the team: the task is assigned to the agent before the
 	// agent is registered, and the stall sweep must not read that interval as an owner that left (arrive).
@@ -390,6 +393,12 @@ type Swarm struct {
 	verifyWrote map[string]bool
 	bounces     map[string]int
 	treeAgents  map[string]bool // agents that ever had a tree of their own
+	// sharedCommits are the commit messages of submissions in a shared tree, by task id (sharedCommitHint): nothing commits there
+	// by itself, so the manager is given the worker's message when it accepts the task.
+	sharedCommits map[string]string
+	// sharedCommitStep is a test hook run at a named step of the kept commit messages ("cleanup": before noteSharedCommit takes
+	// the lock; "accepted": after the manager's accept, before its hint); nil in production.
+	sharedCommitStep func(step string)
 	// gateMu serializes the gates that run in gateTree, the harness's checkout of the integration tip (gateDir).
 	gateMu   sync.Mutex
 	gateTree *workspace.Tree
@@ -510,11 +519,18 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	s.Leases = NewLeases(cfg.LeaseTTL, s.Board)
 	s.Leases.SetEmitter(deps.Events)
 	s.Leases.SetRoots(s.roots()...)
-	if deps.Owners != nil {
-		s.Leases.SetOwners(deps.Owners, s.roleOf)
-	}
+	s.Leases.SetScratch(deps.Tmp)
+	// Always: the roles are also what lets a manager's lease give way to a worker (yields), which without path owners never
+	// happened, and a worker sat refused behind a file the manager had edited once.
+	s.Leases.SetOwners(deps.Owners, s.roleOf)
 	if s.isolated() {
 		s.Leases.Isolate()
+		s.Leases.SetTreeParent(deps.Isolation.Manager.Dir)
+	} else if c, ok := deps.Perm.(interface {
+		SetWriteCheck(func(agent, path string, tree bool) string)
+	}); ok {
+		// One shared tree: a worker's shell is held to its task's scope as its file tools are (Leases.ShellWriteCheck).
+		c.SetWriteCheck(s.Leases.ShellWriteCheck)
 	}
 	s.Gov = NewGovernor(GovernorConfig{RPM: cfg.RPM, MaxConcurrent: cfg.MaxConcurrent, Admit: s.budgetErr,
 		OnEvent: func(action string, data map[string]any) {
@@ -784,7 +800,10 @@ func (s *Swarm) runManager(ctx context.Context, m *member, goal, mail string) (r
 				m.a.Send(flushErr.Error())
 			}
 			u := s.unfinishedWork()
-			if flushErr == nil && u.empty() && !s.docsPending() && s.reviewPending() == "" {
+			// Workers that run holding nothing on the board are not work to repair: the stop guard has waited for them already
+			// (holdHooks.BeforeStop), and sending the manager back for them gives it nothing it can do. That holds for an answer the
+			// manager gave (err nil); a manager stopped by its step limit gave none, and goes on.
+			if flushErr == nil && (u.empty() || (u.windingDown() && err == nil)) && !s.docsPending() && s.reviewPending() == "" {
 				break
 			}
 			version := s.Board.Snapshot().Version
@@ -942,7 +961,7 @@ func taskCard(t Task, agentID string, pin bool) string {
 	if pin {
 		var sb strings.Builder
 		fmt.Fprintf(&sb, "You are %s. Your assignment is task %s: %s\n", agentID, t.ID, title)
-		if d := cleanBlock(t.Desc, maxDescRunes); d != "" {
+		if d := cleanDesc(t.Desc); d != "" {
 			sb.WriteString(d + "\n")
 		}
 		if len(t.Files) > 0 {
@@ -1012,6 +1031,9 @@ func (r roleRequester) Check(ctx context.Context, req perm.Request) perm.Decisio
 	req.Role = r.role.Name
 	if r.swarm != nil {
 		if d, handled := r.swarm.poolPermission(ctx, r.agent, r.inner, req); handled {
+			return d
+		}
+		if d, handled := r.swarm.planPermission(ctx, r.agent, r.inner, req); handled {
 			return d
 		}
 	}

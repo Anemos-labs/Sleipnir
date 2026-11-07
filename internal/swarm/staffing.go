@@ -51,7 +51,14 @@ type reviewGate struct {
 	// The wait in review for the manager's decision is the manager's time, not the work's.
 	began map[string]time.Time
 	ended map[string]time.Time
-	took  map[int]time.Duration
+	// blocked is when each assignment ("T3#rev") was last blocked and not yet resumed: the wait on another task or on the person is
+	// not the work's time, so a resume moves the start on by it (noteResumed), and the team's task bound and a review's measure
+	// count only the time the work ran.
+	blocked map[string]time.Time
+	// resumed is, by task id, the start and owner of work a resume found still in flight (restoreInFlight): the restored board
+	// gives the task a new revision, so the start waits for the owner's first run on it (noteBegan) to carry it over.
+	resumed map[string]resumedStart
+	took    map[int]time.Duration
 	// trees is the work tree each review ("T6#rev") began on (noteReviewBegan), and reviewedTree the tree of the review that
 	// last moved reviewed: what the accepted review read. A merge after it that changed tests and docs alone leaves it standing
 	// (testsSinceReview).
@@ -59,18 +66,73 @@ type reviewGate struct {
 	reviewedTree string
 }
 
-// noteBegan records when a run first took on an assignment, for the duration of the work (took). Later runs of the same
-// assignment (a restart, a handover) keep the first time: the work ran since then.
-func (g *reviewGate) noteBegan(id string, rev uint64, at time.Time) {
+// noteBegan records when agent's run first took on an assignment, for the duration of the work (took). Later runs of the same
+// assignment (a restart, a handover) keep the first time: the work ran since then. The first run of a task's owner after a resume
+// takes the start the work had before it (restoreInFlight).
+func (g *reviewGate) noteBegan(id string, rev uint64, at time.Time, agent string) {
 	key := id + "#" + strconv.FormatUint(rev, 10)
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	if r, ok := g.resumed[id]; ok {
+		delete(g.resumed, id)
+		if r.owner == agent && r.at.Before(at) {
+			at = r.at
+		}
+	}
 	if g.began == nil {
 		g.began = map[string]time.Time{}
 	}
 	if _, ok := g.began[key]; !ok {
 		g.began[key] = at
 	}
+}
+
+// noteBlocked records that the assignment rev of task id was blocked at at. Only an assignment that has begun is timed.
+func (g *reviewGate) noteBlocked(id string, rev uint64, at time.Time) {
+	key := id + "#" + strconv.FormatUint(rev, 10)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if _, ok := g.began[key]; !ok {
+		return
+	}
+	if g.blocked == nil {
+		g.blocked = map[string]time.Time{}
+	}
+	if _, ok := g.blocked[key]; !ok {
+		g.blocked[key] = at
+	}
+}
+
+// noteResumed records that the assignment rev of task id, blocked since noteBlocked, was resumed at at: its start moves on by the
+// time it waited.
+func (g *reviewGate) noteResumed(id string, rev uint64, at time.Time) {
+	key := id + "#" + strconv.FormatUint(rev, 10)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	since, ok := g.blocked[key]
+	if !ok {
+		return
+	}
+	delete(g.blocked, key)
+	if b, ok := g.began[key]; ok && at.After(since) {
+		g.began[key] = b.Add(at.Sub(since))
+	}
+}
+
+// resumedStart is the start of work in flight at a resume, and the worker that held it.
+type resumedStart struct {
+	at    time.Time
+	owner string
+}
+
+// restoreInFlight records, on resume, that owner had held task id since at: its next run on the task counts from then.
+func (g *reviewGate) restoreInFlight(id, owner string, at time.Time) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.resumed == nil {
+		g.resumed = map[string]resumedStart{}
+	}
+	g.resumed[id] = resumedStart{at: at, owner: owner}
 }
 
 // restoreEnded records at, a submission's time read from the log on resume, as the end of the work of t's assignment: replace
@@ -199,7 +261,7 @@ func (s *Swarm) noteAcceptedCheck(t Task) TaskCheck {
 			role = r
 		}
 	}
-	implementation := t.Pool == nil && t.Kind != TaskKindPlan && !s.isDocsTask(t) && !s.roles[role].ReadOnly
+	implementation := t.Pool == nil && t.Kind != TaskKindPlan && !s.isDocsTask(t) && !s.roles[role].Reports()
 	if r, ok := s.mergedFor(t); implementation && ok && r.empty {
 		// Nothing reached the shared tree (a tester's check that left no test behind): no merge, so a review running beside it
 		// still covers the result it reads.
@@ -442,7 +504,7 @@ func (s *Swarm) implementationTask(t Task) bool {
 			role = r
 		}
 	}
-	return t.Kind != TaskKindPlan && !s.isDocsTask(t) && !s.roles[role].ReadOnly
+	return t.Kind != TaskKindPlan && !s.isDocsTask(t) && !s.roles[role].Reports()
 }
 
 // hasReviewer reports whether the team has a reviewer slot.
@@ -468,12 +530,17 @@ func (s *Swarm) reviewPending() string {
 // reviewLine is the review gate's sentence for the manager: what is unreviewed and what to do. After an accepted review it
 // names the merges since, so the next review covers them and not the whole result again.
 func (s *Swarm) reviewLine(last string) string {
-	what, subject := last+" and the work merged before it have", "the merged result"
+	what, subject := shownMerge(last)+" and the work merged before it have", "the merged result"
 	if s.reviewedBefore() {
 		_, ids := s.review.unreviewedWork()
 		if len(ids) == 0 {
 			ids = []string{last}
 		}
+		shown := make([]string, len(ids))
+		for i, id := range ids {
+			shown[i] = shownMerge(id)
+		}
+		ids = shown
 		plural := "s"
 		if len(ids) == 1 {
 			plural = ""
@@ -483,10 +550,53 @@ func (s *Swarm) reviewLine(last string) string {
 	}
 	if s.reviewQuorum() > 1 {
 		return "review: " + what + " not been reviewed by two reviewers on different models: before you report the goal met, " +
-			"give a review of " + subject + " against the agreement to each " + ReviewerRole + " slot that runs on a model the reviews so far did not (spawn role=" + ReviewerRole + " agent=<id>), and accept both reports"
+			"give a review of " + subject + " against the agreement to each " + ReviewerRole + " slot that runs on a model the reviews so far did not (spawn role=" + ReviewerRole + " agent=<id>), and accept both reports" +
+			s.reviewerModels()
 	}
 	return "review: " + what + " not been reviewed: before you report the goal met, create a task for the " +
 		ReviewerRole + " to review " + subject + " against the agreement (spawn role=" + ReviewerRole + "), and accept its report"
+}
+
+// reviewerModels names the reviewer members and the model each runs on, and which of those models an accepted review already
+// covered the newest merge with, so that "a slot that runs on a model the reviews so far did not" names a slot the manager can
+// pick. A manager told only that could not see which model each slot ran on. "" before any reviewer is on the team.
+func (s *Swarm) reviewerModels() string {
+	s.mu.Lock()
+	var ids []string
+	models := map[string]string{}
+	for _, m := range s.members {
+		if m.role == ReviewerRole && !m.manager && !m.service {
+			ids = append(ids, m.id)
+			models[m.id] = m.model.ID
+		}
+	}
+	s.mu.Unlock()
+	if len(ids) == 0 {
+		return ""
+	}
+	sort.Strings(ids)
+	g := &s.review
+	g.mu.Lock()
+	newest, byModel := g.merges, g.byModel
+	parts := make([]string, 0, len(ids))
+	for _, id := range ids {
+		part := id + " on " + models[id]
+		if newest > 0 && byModel[models[id]] >= newest {
+			part += " (its model has reviewed the newest merge)"
+		}
+		parts = append(parts, part)
+	}
+	g.mu.Unlock()
+	return ". Reviewer slots: " + strings.Join(parts, ", ")
+}
+
+// shownMerge names a merge for the review line: a task id, or the manager's own edits, which the gate records as "manager
+// changes" and a manager read as a commit it could not find.
+func shownMerge(id string) string {
+	if id == "manager changes" {
+		return "the manager's own edits"
+	}
+	return id
 }
 
 // reviewedBefore reports whether an accepted review covers some merge of this run.
@@ -593,13 +703,6 @@ func (s *Swarm) staffingLines(snap *Snapshot) []string {
 		out, roleLines = offerLines(ready, idle, held, slots, used, order)
 	}
 	q := queuedLines(waiting, maxStaffingLines-roleLines)
-	for i, r := range roleKeys(waiting) {
-		if i < len(q) && len(waiting[r]) > 0 {
-			if line := spillLine(s.freeWriters(r), r, waiting[r][0]); line != "" {
-				q[i] += "; " + line
-			}
-		}
-	}
 	out = append(out, q...)
 	if roleLines+len(q) < maxStaffingLines && openTask(snap) {
 		if line := unplannedLine(s.unplannedIdle(snap, idle, held, ready, waiting), s.freeSlots(slots, used, order, ready, waiting)); line != "" {
@@ -713,7 +816,7 @@ func (s *Swarm) freeSlots(slots, used map[string]int, order []string, ready []Ta
 	out := map[string]int{}
 	for _, r := range order {
 		n := slots[r] - used[r]
-		if n <= 0 || planned[r] || s.roles[r].ReadOnly || r == DocsRole && s.AutoDocs() {
+		if n <= 0 || planned[r] || s.roles[r].Reports() || r == DocsRole && s.AutoDocs() {
 			continue
 		}
 		out[r] = n
@@ -803,10 +906,18 @@ func offerLines(ready []Task, idle map[string][]string, held map[string]string, 
 			nfree += n
 		}
 	}
+	// Only the ready tasks a free slot can take count: a free architect slot beside two ready backend tasks read as "start
+	// workers" for work no architect could take, while those tasks waited for a backend member.
+	fits := 0
+	for _, t := range ready {
+		if t.Role == "" || slices.Contains(free, t.Role) {
+			fits++
+		}
+	}
 	var out []string
-	if nfree > 0 {
-		out = append(out, fmt.Sprintf("%d free slot(s) (%s), %d ready task(s) with no owner: start workers (spawn), in parallel where the tasks are independent",
-			nfree, strings.Join(free, ", "), len(ready)))
+	if nfree > 0 && fits > 0 {
+		out = append(out, fmt.Sprintf("%d free slot(s) (%s), %d ready task(s) of those roles with no owner: start workers (spawn), in parallel where the tasks are independent",
+			nfree, strings.Join(free, ", "), fits))
 	}
 	byRole := map[string][]string{}
 	isReady := map[string]bool{}
@@ -861,9 +972,10 @@ func roleKeys(m map[string][]string) []string {
 }
 
 // freeWriters are the roles of the team, other than except, in team order, with a slot or an idle member free for a task now:
-// roles that write code, so neither a read-only role, nor docs, nor the tester, whose tasks are tests of their own. A task queued
-// behind the one member of its role can start on one of them. A manager that gave four independent modules to backend, the team's
-// one backend slot, ran them one after another while the frontend and devops slots stayed empty.
+// roles that write code, so neither a role that reports (a reviewer, a scout, a read-only role), nor the architect, nor docs, nor
+// the tester, whose tasks are tests of their own. It tells a
+// manager that edits files itself that writer roles could take that work as tasks of their own (handoffLine); it never offers one
+// role's queued task to another, since each role runs on the model chosen for its kind of work (roleMismatch).
 func (s *Swarm) freeWriters(except string) []string {
 	if !s.teamLimited() || !s.isolated() && s.activeWriters() >= s.cfg.MaxWriters {
 		return nil // at the writer limit no writer is admitted, whatever its role's slots
@@ -888,7 +1000,7 @@ func (s *Swarm) freeWriters(except string) []string {
 	}
 	var out []string
 	for _, r := range order {
-		if r == except || r == DocsRole || r == "tester" || s.roles[r].ReadOnly {
+		if r == except || r == DocsRole || r == "tester" || r == "architect" || s.roles[r].Reports() {
 			continue
 		}
 		if slots[r] > used[r] || idle[r] {
@@ -896,15 +1008,6 @@ func (s *Swarm) freeWriters(except string) []string {
 		}
 	}
 	return out
-}
-
-// spillLine is what a queued task's spawn and the live view add when other writer roles are free (freeWriters): "" when none is.
-func spillLine(free []string, role, id string) string {
-	if len(free) == 0 {
-		return ""
-	}
-	return fmt.Sprintf("free now: %s: one of them can take %s at once if it needs nothing only %s knows (spawn role=%s task=%s)",
-		strings.Join(free, ", "), id, role, free[0], id)
 }
 
 // reviewerModelHint is a one-line suggestion for a team whose reviewers all run on a model its writers use while the team has another
@@ -927,7 +1030,7 @@ func (s *Swarm) reviewerModelHint() string {
 		switch {
 		case r == ReviewerRole:
 			reviewers[id] = true
-		case !s.roles[r].ReadOnly:
+		case !s.roles[r].Reports():
 			writers[id] = true
 		}
 	}

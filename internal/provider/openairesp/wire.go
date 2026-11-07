@@ -31,6 +31,11 @@ type Options struct {
 	ReasoningSummary string
 	// ExtraBody is merged into the top level of every request.
 	ExtraBody map[string]any
+	// Media resolves an image block's blob reference to its bytes, which are sent as a data URL (core.ImageURL). Without it an
+	// image that is a blob reference is sent as a note that it cannot be shown (core.ImageNotSent).
+	Media core.MediaFunc
+	// NoImages sends a note in place of every image (provider.Profile.NoImages).
+	NoImages bool
 }
 
 // request fixes field order so bodies are reproducible for golden tests and payload diffing. Order carries no meaning for the server.
@@ -157,9 +162,9 @@ func renderMessage(m core.Message, o Options) ([]json.RawMessage, error) {
 	case core.RoleAssistant:
 		return renderAssistant(m, o)
 	case core.RoleUser:
-		return renderUser(m, "user")
+		return renderUser(m, "user", core.Imaging{Media: o.Media, TextOnly: o.NoImages})
 	case core.RoleSystem:
-		return renderUser(m, "developer") // the endpoint takes instructions and developer messages, not system ones, in the input
+		return renderUser(m, "developer", core.Imaging{Media: o.Media, TextOnly: o.NoImages}) // the endpoint takes instructions and developer messages, not system ones, in the input
 	}
 	return nil, fmt.Errorf("openairesp: unsupported role %q", m.Role)
 }
@@ -232,10 +237,11 @@ func renderAssistant(m core.Message, o Options) ([]json.RawMessage, error) {
 func replayable(b core.Block) bool { return b.WireFormat == Dialect && len(b.Wire) > 0 }
 
 // renderUser emits the tool results first (a result goes right after the call it answers), then the rest of the turn as one message.
-// The order is fixed, so the same turn always renders to the same bytes.
-func renderUser(m core.Message, role string) ([]json.RawMessage, error) {
+// The order is fixed, so the same turn always renders to the same bytes. The output of a function call is sent as text, so the images a
+// tool returned open that message, each after a line naming the call it came from.
+func renderUser(m core.Message, role string, media core.Imaging) ([]json.RawMessage, error) {
 	var out []json.RawMessage
-	var parts []map[string]any
+	var shown, parts []map[string]any
 	for _, b := range m.Blocks {
 		switch b.Kind {
 		case core.BlockToolResult:
@@ -244,12 +250,16 @@ func renderUser(m core.Message, role string) ([]json.RawMessage, error) {
 				return nil, err
 			}
 			out = append(out, it)
+			for _, img := range core.ToolResultImages(b) {
+				shown = append(shown, map[string]any{"type": "input_text", "text": "Image returned by tool call " + b.ToolID + ":"}, imagePart(img, media))
+			}
 		case core.BlockText:
 			parts = append(parts, map[string]any{"type": "input_text", "text": b.Text})
 		case core.BlockImage:
-			parts = append(parts, map[string]any{"type": "input_image", "image_url": b.MediaRef})
+			parts = append(parts, imagePart(b, media))
 		}
 	}
+	parts = append(shown, parts...)
 	if len(parts) > 0 {
 		it, err := item(map[string]any{"type": "message", "role": role, "content": parts})
 		if err != nil {
@@ -258,6 +268,15 @@ func renderUser(m core.Message, role string) ([]json.RawMessage, error) {
 		out = append(out, it)
 	}
 	return out, nil
+}
+
+// imagePart is an image block as an input part: its URL (core.ImageURL), or a note that it cannot be sent and why.
+func imagePart(b core.Block, media core.Imaging) map[string]any {
+	u, err := media.URL(b)
+	if err != nil {
+		return map[string]any{"type": "input_text", "text": core.ImageNotSent(err)}
+	}
+	return map[string]any{"type": "input_image", "image_url": u}
 }
 
 // toolResultText concatenates text children and prefixes error results unless they already begin

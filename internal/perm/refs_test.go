@@ -123,6 +123,15 @@ func TestAConfinedAgentMovesOnlyItsOwnBranch(t *testing.T) {
 			t.Errorf("%s: refused=%v (%s), want %v", tc.cmd, got, d.Reason, tc.refused)
 		}
 	}
+	// The refusal says how to read a branch without moving it: a manager that wanted to review the integration branch had no
+	// other way named, and fast-forwarded a branch of its own to see the merged files.
+	{
+		r := f.request(bash("git checkout sleipnir/s1/_integration"))
+		r.Agent, r.Cwd = "be-1", mine
+		if d := e.Check(bg, r); d.Allow || !strings.Contains(d.Reason, "git show <branch>:<path>") {
+			t.Errorf("the refusal names no way to read the branch: %s", d.Reason)
+		}
+	}
 	// An agent with no tree of its own is not this check's business.
 	r := f.request(bash("git update-ref refs/heads/claude/work HEAD"))
 	r.Agent, r.Cwd = "solo", f.root

@@ -122,8 +122,8 @@ is needed and no call can bypass it. Endpoints that cannot return ids are captur
   logged as a `lease` event of action `owner` and raises an alert. A path several roles own may be written by any of
   them. Validation requires a swarm team, roles other than the manager that are in `team.roles` when the task lists
   them, at least one path per role and valid globs; a rollout also refuses an owning role the team does not have or
-  that cannot write. A shell command's writes are not checked in a shared tree; with `swarm.isolation` `worktree` the
-  merge queue refuses a submission that changed a path another role owns, whichever tool changed it. A run with a
+  that cannot write. In a shared tree the writes a shell command is known to make (redirections, `cp`, `rm`, `sed -i`)
+  are checked too, what a program writes by itself is not; with `swarm.isolation` `worktree` the merge queue refuses a submission that changed a path another role owns, whichever tool changed it. A run with a
   single agent (`--mode single`) ignores `team.owns`. `taskgen composite` gives a composite whose reference solution
   changes a user-interface file (a path the export's `edits-ui` condition counts as UI work; test files do not count)
   `"owns": {"frontend": [...]}` with globs covering every such path (`*.css`, `web/` and the like), and adds `frontend`

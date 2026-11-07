@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -42,15 +43,24 @@ import (
 // advisory one: two writers touching the same repository-relative path raise an alert
 // that names the agents (never the file) and warns of a merge conflict.
 //
-// The guard sees the writes of the file tools only. A shell command's writes are not
-// checked in a shared tree; in an isolated run the merge queue checks ownership and
-// scope again on what a submission changed, whichever tool changed it.
+// The guard sees the writes of the file tools. In a shared tree the permission engine
+// also holds the writes a shell command is known to make (redirections, cp, mv, rm,
+// sed -i, ...) to the same ownership and scope rules (ShellWriteCheck); what a program
+// writes by itself (a build, a script) is not seen. In an isolated run the merge queue
+// checks ownership and scope again on what a submission changed, whichever tool changed it.
 type Leases struct {
 	ttl   time.Duration
 	now   func() time.Time
 	board *Board
 	ev    events.Emitter
 	roots []string
+	// scratch is the session's scratch directory ($TMPDIR, Deps.Tmp): no project file lies there, so neither a task's scope nor
+	// an isolated writer's tree refuses a write to it. "" when the session has none.
+	scratch string
+	// treeParent is the directory that holds the isolated writers' trees (workspace.Manager.Dir), "" when there is none.
+	treeParent string
+	// sysTemp are the system's temporary directories (systemTempDirs), scratch space when they are not in the workspace.
+	sysTemp []string
 
 	owners PathOwners          // nil: no path is owned
 	roleOf func(string) string // agent id -> role, for owners
@@ -76,7 +86,98 @@ func NewLeases(ttl time.Duration, board *Board) *Leases {
 		ttl = 10 * time.Minute
 	}
 	return &Leases{ttl: ttl, now: time.Now, board: board, ev: events.Discard{}, held: map[string]*lease{},
-		trees: map[string]string{}, marks: map[string]map[string]time.Time{}}
+		trees: map[string]string{}, marks: map[string]map[string]time.Time{}, sysTemp: systemTempDirs()}
+}
+
+// SetScratch names the session's scratch directory ($TMPDIR). The runtime context sends every agent's throwaway files there and
+// the file tools take $TMPDIR/name, so a write below it is not an edit of the project: it holds no lease and passes the scope,
+// ownership and tree checks. An agent the guard refuses every write (an isolated agent with no tree: a read-only role) is still
+// refused. Call it before the swarm starts.
+func (l *Leases) SetScratch(dir string) {
+	if dir != "" {
+		dir = filepath.Clean(dir)
+	}
+	l.mu.Lock()
+	l.scratch = dir
+	l.mu.Unlock()
+}
+
+// inScratch reports whether the absolute, cleaned path lies inside the scratch directory (SetScratch).
+func (l *Leases) inScratch(path string) bool {
+	l.mu.Lock()
+	dir := l.scratch
+	l.mu.Unlock()
+	if dir == "" || !filepath.IsAbs(path) {
+		return false
+	}
+	_, ok := relTo(dir, path)
+	return ok
+}
+
+// SetTreeParent names the directory that holds the isolated writers' trees: a path below it is another agent's tree even when
+// that tree is not bound (a tree kept from an earlier run).
+func (l *Leases) SetTreeParent(dir string) {
+	if dir != "" {
+		dir = filepath.Clean(dir)
+	}
+	l.mu.Lock()
+	l.treeParent = dir
+	l.mu.Unlock()
+}
+
+// inWorkspace reports whether the absolute, cleaned path lies in a directory of the team's workspace: a root (the person's
+// checkout, the session's working directory), an agent's tree or the directory of the trees. A relative path is taken to be one.
+func (l *Leases) inWorkspace(path string) bool {
+	if !filepath.IsAbs(path) {
+		return true
+	}
+	l.mu.Lock()
+	dirs := append([]string(nil), l.roots...)
+	for _, d := range l.trees {
+		dirs = append(dirs, d)
+	}
+	if l.treeParent != "" {
+		dirs = append(dirs, l.treeParent)
+	}
+	l.mu.Unlock()
+	if len(dirs) == 0 {
+		return true // nothing is known about the workspace: every path may be in it
+	}
+	for _, d := range dirs {
+		if _, ok := relTo(d, path); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// scratchSpace reports whether a write to the absolute, cleaned path is a scratch file rather than an edit of the project: it lies
+// in the session's scratch directory (SetScratch), or in the system's temporary directory (os.TempDir, and /tmp outside Windows)
+// and not in the workspace (inWorkspace: a project checked out below /tmp is still the project). The permission engine has already
+// judged the write by the session's mode and rules; the guard's scope, ownership and tree checks are about project files only.
+func (l *Leases) scratchSpace(path string) bool {
+	if l.inScratch(path) {
+		return true
+	}
+	if !filepath.IsAbs(path) || l.inWorkspace(path) {
+		return false
+	}
+	for _, d := range l.sysTemp {
+		if _, ok := relTo(d, path); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// systemTempDirs are the system's temporary directories a model may name for a scratch file: os.TempDir and, outside Windows,
+// /tmp, which models write whatever $TMPDIR says.
+func systemTempDirs() []string {
+	dirs := []string{filepath.Clean(os.TempDir())}
+	if runtime.GOOS != "windows" && dirs[0] != "/tmp" {
+		dirs = append(dirs, "/tmp")
+	}
+	return dirs
 }
 
 // Isolate puts the guard in isolated mode: see the type's comment.
@@ -116,12 +217,23 @@ func (l *Leases) SetEmitter(ev events.Emitter) {
 }
 
 // SetRoots tells the guard which directories are the repository root: absolute
-// paths are made relative to them to be checked against a task's scope.
+// paths are made relative to them to be checked against a task's scope. A root
+// reached through a symlink is kept in its resolved form too, so a path the
+// permission engine resolved (a shell write through a link) still falls in it.
 func (l *Leases) SetRoots(roots ...string) {
 	var rs []string
+	add := func(r string) {
+		if !slices.Contains(rs, r) {
+			rs = append(rs, r)
+		}
+	}
 	for _, r := range roots {
-		if r != "" {
-			rs = append(rs, filepath.Clean(r))
+		if r == "" {
+			continue
+		}
+		add(filepath.Clean(r))
+		if real, err := filepath.EvalSymlinks(r); err == nil {
+			add(filepath.Clean(real))
 		}
 	}
 	l.mu.Lock()
@@ -261,6 +373,26 @@ func (l *Leases) relFor(agent, path string) (string, bool) {
 	return l.rel(path)
 }
 
+// rootFor is the directory path is made relative to for agent's scopes (relFor): its own tree, else the first root that holds the
+// path; "" when none does.
+func (l *Leases) rootFor(agent, path string) string {
+	l.mu.Lock()
+	dir, has := l.trees[agent]
+	roots := append([]string(nil), l.roots...)
+	l.mu.Unlock()
+	if has {
+		if _, ok := relTo(dir, path); ok {
+			return dir
+		}
+	}
+	for _, r := range roots {
+		if _, ok := relTo(r, path); ok {
+			return r
+		}
+	}
+	return ""
+}
+
 // rel returns path relative to the repository root, as a slash path.
 func (l *Leases) rel(path string) (string, bool) {
 	if !filepath.IsAbs(path) {
@@ -322,8 +454,18 @@ func (l *Leases) checkScopeAt(agent, path, rel string, relOK bool) error {
 	}
 	l.raiseScopeAlert(agent, rel, relOK, ids)
 	l.emit(agent, "scope", path, "")
-	return fmt.Errorf("%s is outside the scope of your task %s (scope: %s). Edit only inside your scope; if the task needs more, ask the manager to widen it (mail)",
-		displayPath(path), strings.Join(ids, ", "), strings.Join(shownScopes(scopes), ", "))
+	hint := ""
+	if !relOK {
+		hint = "; a scratch file goes in $TMPDIR"
+	} else if root := l.rootFor(agent, path); root != "" && rel != "" {
+		// Scopes are matched against the path relative to the project root, which need not be the repository the work is in (a
+		// project made in a subdirectory of the session's directory): saying where the file lies relative to the root shows the
+		// scope that would hold it. A manager scoped tasks to internal/store/** for a project in a subdirectory, and every write
+		// was refused until it guessed the prefix.
+		hint = fmt.Sprintf(". Scopes are relative to the project root %s, where this file is %s", displayPath(root), cleanText(rel, 120))
+	}
+	return fmt.Errorf("%s is outside the scope of your task %s (scope: %s). Edit only inside your scope; if the task needs more, ask the manager to widen it (mail)%s",
+		displayPath(path), strings.Join(ids, ", "), strings.Join(shownScopes(scopes), ", "), hint)
 }
 
 // raiseScopeAlert tells the manager (in its hot view) which agent tried to write which file outside the scope of which tasks,
@@ -383,8 +525,11 @@ func (l *Leases) beforeIsolatedWrite(agent, path string) error {
 		return fmt.Errorf("this run gives every writer a git worktree of its own, and %s has none: it does not edit files. Ask the manager (mail) or, as the manager, spawn a worker for the change: the harness verifies and merges its work", safeToken(agent, 24))
 	}
 	rel, ok := relTo(dir, path)
+	if !ok && l.scratchSpace(path) {
+		return nil // $TMPDIR (or the system's temporary directory) is every writer's scratch space, not the project
+	}
 	if !ok {
-		return fmt.Errorf("%s is outside your working tree: this run gives every writer its own git worktree, so edit files under your working directory (the paths there are the project's paths)", displayPath(path))
+		return fmt.Errorf("%s is outside your working tree: this run gives every writer its own git worktree, so edit files under your working directory (the paths there are the project's paths); a scratch file goes in $TMPDIR", displayPath(path))
 	}
 	if err := l.checkOwner(agent, rel, true); err != nil {
 		return err
@@ -475,6 +620,9 @@ func (l *Leases) BeforeWrite(agent, path string) error {
 		return l.beforeIsolatedWrite(agent, path)
 	}
 	rel, relOK := l.rel(path)
+	if !relOK && l.scratchSpace(path) {
+		return nil // a scratch file is in no task's scope and nobody else's to lease
+	}
 	if err := l.checkOwner(agent, rel, relOK); err != nil {
 		return err
 	}
@@ -490,7 +638,11 @@ func (l *Leases) BeforeWrite(agent, path string) error {
 		// the roles are looked up without the lease lock (roleOf reads the swarm); a manager's lease gives way to a worker
 		if !yields(roleOf, holder, agent) {
 			if l.board != nil {
-				l.board.RaiseAlertKey("lease", path, fmt.Sprintf("%s wanted a file leased to %s", safeToken(agent, 24), safeToken(holder, 24)))
+				what := "a file"
+				if relOK && rel != "" {
+					what = safeToken(rel, 72) // the manager is told which file, not left to ask
+				}
+				l.board.RaiseAlertKey("lease", path, fmt.Sprintf("%s wanted %s, leased to %s", safeToken(agent, 24), what, safeToken(holder, 24)))
 			}
 			l.emit(agent, "conflict", path, holder)
 			return fmt.Errorf("%s is being edited by %s (last write %s ago). Work on something else, or mail %s if you need a change there", path, holder, ago, holder)
@@ -711,4 +863,64 @@ func (l *Leases) Len() int {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return len(l.held) + len(l.marks)
+}
+
+// ShellWriteCheck is the permission engine's write check in a shared tree (perm.Engine.SetWriteCheck): a write that a shell
+// command is known to make (a redirection, cp's destination, rm's operand) is held to the ownership and scope rules the file tools
+// are held to (BeforeWrite), without taking a lease, since a command's writes have no end the guard sees. It returns why the write
+// is refused, or "". Not checked: an isolated run (each writer edits a tree of its own and the merge queue checks what changed,
+// whichever tool changed it), a path outside the repository (the engine's rules decide those), the repository's .git directory,
+// and the creation of a directory that leads to the agent's scope (mkdir -p of a parent). A worker whose scope was internal/store/**
+// wrote files outside it with cat > and cp while its file-tool writes there were refused.
+func (l *Leases) ShellWriteCheck(agent, path string, tree bool) string {
+	path = filepath.Clean(path)
+	l.mu.Lock()
+	isolated := l.isolated
+	l.mu.Unlock()
+	if isolated {
+		return ""
+	}
+	rel, relOK := l.rel(path)
+	if !relOK || rel == ".git" || strings.HasPrefix(rel, ".git/") {
+		return ""
+	}
+	if err := l.checkOwner(agent, rel, true); err != nil {
+		return err.Error()
+	}
+	scopes, _, scoped := l.scopeOf(agent)
+	if !scoped || inScope(scopes, rel) && !l.parentRefused(agent, rel) {
+		return ""
+	}
+	if !tree && leadsTo(scopes, rel) {
+		return ""
+	}
+	if err := l.checkScopeAt(agent, path, rel, true); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// parentRefused reports whether a pool child's parent refuses rel (parentRefuses).
+func (l *Leases) parentRefused(agent, rel string) bool {
+	_, refused := l.parentRefuses(agent, rel)
+	return refused
+}
+
+// leadsTo reports whether the repository-relative directory rel is an ancestor of the literal directory of one of scopes
+// ("internal" and "internal/store" lead to internal/store/**): creating it is the way into the scope, not a write outside it.
+func leadsTo(scopes []string, rel string) bool {
+	rel = strings.Trim(filepath.ToSlash(rel), "/")
+	if rel == "" || rel == "." {
+		return false
+	}
+	for _, sc := range scopes {
+		dir := docsDirOf(sc)
+		if dir == "" || dir == "." {
+			continue
+		}
+		if dir == rel || strings.HasPrefix(dir, rel+"/") {
+			return true
+		}
+	}
+	return false
 }
