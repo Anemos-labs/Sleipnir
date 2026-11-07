@@ -545,10 +545,44 @@ func (s *Swarm) reviewLine(last string) string {
 	}
 	if s.reviewQuorum() > 1 {
 		return "review: " + what + " not been reviewed by two reviewers on different models: before you report the goal met, " +
-			"give a review of " + subject + " against the agreement to each " + ReviewerRole + " slot that runs on a model the reviews so far did not (spawn role=" + ReviewerRole + " agent=<id>), and accept both reports"
+			"give a review of " + subject + " against the agreement to each " + ReviewerRole + " slot that runs on a model the reviews so far did not (spawn role=" + ReviewerRole + " agent=<id>), and accept both reports" +
+			s.reviewerModels()
 	}
 	return "review: " + what + " not been reviewed: before you report the goal met, create a task for the " +
 		ReviewerRole + " to review " + subject + " against the agreement (spawn role=" + ReviewerRole + "), and accept its report"
+}
+
+// reviewerModels names the reviewer members and the model each runs on, and which of those models an accepted review already
+// covered the newest merge with, so that "a slot that runs on a model the reviews so far did not" names a slot the manager can
+// pick. A manager told only that could not see which model each slot ran on. "" before any reviewer is on the team.
+func (s *Swarm) reviewerModels() string {
+	s.mu.Lock()
+	var ids []string
+	models := map[string]string{}
+	for _, m := range s.members {
+		if m.role == ReviewerRole && !m.manager && !m.service {
+			ids = append(ids, m.id)
+			models[m.id] = m.model.ID
+		}
+	}
+	s.mu.Unlock()
+	if len(ids) == 0 {
+		return ""
+	}
+	sort.Strings(ids)
+	g := &s.review
+	g.mu.Lock()
+	newest, byModel := g.merges, g.byModel
+	parts := make([]string, 0, len(ids))
+	for _, id := range ids {
+		part := id + " on " + models[id]
+		if newest > 0 && byModel[models[id]] >= newest {
+			part += " (its model has reviewed the newest merge)"
+		}
+		parts = append(parts, part)
+	}
+	g.mu.Unlock()
+	return ". Reviewer slots: " + strings.Join(parts, ", ")
 }
 
 // reviewedBefore reports whether an accepted review covers some merge of this run.

@@ -185,7 +185,7 @@ func RenderHot(s *Snapshot, agent, role string, isManager bool, cfg HotConfig, e
 		if rank[a.ID] < rankOthers || isManager {
 			prio = 4
 		}
-		lines = append(lines, hline{prio: prio, sec: 3, text: agentLine(a), drop: pos[a.ID], agent: a.ID})
+		lines = append(lines, hline{prio: prio, sec: 3, text: agentLine(a, s), drop: pos[a.ID], agent: a.ID})
 	}
 	namesAt := len(lines) // the "not shown" line ends the team section
 	lines = append(lines, hline{prio: 1, sec: 3})
@@ -486,11 +486,16 @@ func taskLine(t Task) string {
 	return s
 }
 
-// agentLine formats an agent's identity, state, optional task, and bounded activity description.
-func agentLine(a AgentInfo) string {
+// agentLine formats an agent's identity, state, optional task, and bounded activity description. A task the board has closed is
+// said to be closed: an agent keeps its task until its run ends, and "dc-1 docs running T29" read as T29 still being worked on
+// minutes after it was accepted.
+func agentLine(a AgentInfo, snap *Snapshot) string {
 	s := fmt.Sprintf("%s %s %s", a.ID, a.Role, a.State)
 	if a.Task != "" {
 		s += " " + a.Task
+		if t, ok := snap.Task(a.Task); ok && (t.Status == StatusDone || t.Status == StatusFailed) {
+			s += " (" + string(t.Status) + ")"
+		}
 	}
 	if a.Line != "" {
 		s += " — " + oneLine(a.Line, 70)
