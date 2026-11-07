@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -414,6 +415,49 @@ func TestAParentOneSparedMemberCanTakeGoesToItAlone(t *testing.T) {
 		rs.cancel()
 	}
 	rvWait(t, members[2]+" idle", func() bool { return r.idle(members[2]) })
+	// A wake that starts the member between the pool's check and the assignment: the member stays in the pool that spared it, and
+	// the spawn fails as busy (the spawn tool queues the task), so the pool does not lose a member to a task that never started.
+	early, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "write the changelog", Role: "backend", Files: []string{"CHANGELOG.md"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, perr := r.sw.startPool(SpawnReq{Role: "backend", TaskID: early.ID, By: "mgr"}, nil)
+	var one *onePoolMember
+	if !errors.As(perr, &one) || one.id != members[2] || len(one.release) == 0 {
+		t.Fatalf("startPool for one spared member: %v", perr)
+	}
+	if f, _ := r.sw.Board.Snapshot().Task(first.ID); !slices.Equal(f.Pool.Members, members) {
+		t.Fatalf("startPool released %s before the task was its own: %v", one.id, f.Pool.Members)
+	}
+	rs, _, ok := r.sw.reserve(m)
+	if !ok {
+		t.Fatal("could not reserve " + one.id)
+	}
+	// Spawn sees the run at the pool's check (noSpareMember) or at the assignment (memberBusy); the spawn tool queues either.
+	var busy *memberBusy
+	var noSpare *noSpareMember
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: early.ID, By: "mgr"}); !errors.As(err, &busy) && !errors.As(err, &noSpare) {
+		t.Fatalf("spawn while the member's wake won: %v", err)
+	}
+	// and the assignment itself, reached past the check, refuses the busy member without releasing it
+	if _, err := r.sw.spawnReuse(SpawnReq{Role: "backend", TaskID: early.ID, Agent: one.id, Solo: true, By: "mgr"}, nil); !errors.As(err, &busy) {
+		t.Fatalf("the assignment to a member in a run: %v", err)
+	}
+	if f, _ := r.sw.Board.Snapshot().Task(first.ID); !slices.Equal(f.Pool.Members, members) {
+		t.Fatalf("a member whose wake won left its pool: %v", f.Pool.Members)
+	}
+	if e, _ := r.sw.Board.Snapshot().Task(early.ID); e.Status != StatusTodo || e.Pool != nil {
+		t.Fatalf("%s after the lost race: %s, pool %v", early.ID, e.Status, e.Pool)
+	}
+	r.sw.unreserve(m, rs)
+	if err := r.sw.Board.mutate("harness", "test", func(d *draft) error {
+		i := taskIdx(d.Snapshot, early.ID)
+		e := d.Tasks[i]
+		e.Status, e.Closure = StatusFailed, closeAs(CloseCanceled)
+		return d.put(i, e)
+	}); err != nil {
+		t.Fatal(err)
+	}
 	second, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "write the docs site", Role: "backend", Files: []string{"site/**"}})
 	if err != nil {
 		t.Fatal(err)
