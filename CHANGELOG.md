@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A parent that only one member spared by an executing pool can take goes to
+  that member alone, as a solo task, after it leaves that pool: it used to form
+  a pool of one, which planned with nobody and could sit in planning. The
+  manager's line about a stopped pool leader names the spawn that resumes the
+  pool (`spawn task=<id> agent=<leader>`). No prompt bytes change in the system
+  prompt or tool specs.
+
 - A manager's write lease now gives way to a worker's write in every team, as
   documented: it did only when the session had role-owned paths, and a worker
   was otherwise refused behind a file the manager had edited once. In a shared

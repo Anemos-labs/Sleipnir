@@ -481,6 +481,14 @@ func TestAFailedPoolLeaderIsRestartedBeforeTheManagerIsAsked(t *testing.T) {
 	if !r.prov.sawEver("You still lead pool " + parent.ID + " (phase planning)") {
 		t.Error("the restarted leader was not told it still leads its pool")
 	}
+	// The line names the spawn that resumes the pool, and that spawn does.
+	resume := "spawn task=" + parent.ID + " agent=" + lead
+	if harnessMail(r, "existing members ("+resume+")")["mgr"] != 1 {
+		t.Errorf("the manager's line does not name %q", resume)
+	}
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: parent.ID, Agent: lead, By: "mgr"}); err != nil {
+		t.Errorf("%s: %v", resume, err)
+	}
 }
 
 // A pool member's child task that its run failed on stays the member's, in doing, while the harness restarts it: the repair

@@ -130,7 +130,9 @@ a single fix). When a small task reaches a pool anyway, the pool's start tells i
 not to divide it: the leader proposes one child it does itself, and the others agree at once. A
 parent whose pool would have one member (the others work alone or are held by pools that
 spare nobody) is given to that member as a solo task instead: a pool of one would only propose
-to itself, agree with itself and make one child repeating its parent.
+to itself, agree with itself and make one child repeating its parent. That holds when the one
+member is spared by an executing pool too: it leaves that pool and takes the task alone, once
+any run it is still ending is over (the spawn queues the task until then).
 
 Planning-pool children inherit their parent’s task kind when `kind` is omitted.
 Planning children and their reconciled parent submit agreements for acceptance
