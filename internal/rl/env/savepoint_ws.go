@@ -62,6 +62,9 @@ func (m *Workspaces) PrepareID(ctx context.Context, task rl.Task, id string) (*W
 	if err := ValidateTask(task); err != nil {
 		return nil, Infra("prepare", err)
 	}
+	if err := m.checkContainer(ctx, task); err != nil {
+		return nil, err
+	}
 	snap, err := m.snapshotFor(ctx, task)
 	if err != nil {
 		return nil, err
@@ -177,6 +180,9 @@ func (m *Workspaces) RestoreWorkspace(ctx context.Context, task rl.Task, info Wo
 	}
 	if err := ValidateTask(task); err != nil {
 		return nil, Infra("restore", err)
+	}
+	if err := m.checkContainer(ctx, task); err != nil {
+		return nil, err
 	}
 	snap, err := m.snapshotFor(ctx, task)
 	if err != nil {

@@ -26,12 +26,39 @@ type Task struct {
 	Tags     []string `json:"tags,omitempty"`
 	// Network lets the agent reach the network; off by default.
 	Network bool `json:"network,omitempty"`
+	// Container, when set, runs the agent's shell commands and the task's setup
+	// in an image instead of on the host (see Container).
+	Container *Container `json:"container,omitempty"`
 	// Requires names the tools the task's setup and verifier run ("ruby",
 	// "cargo"; see env.KnownTools). Where one is not on the PATH the commands
 	// get, the task is skipped ("skipped: missing ruby"), not failed.
 	Requires []string `json:"requires,omitempty"`
 	// Meta is free-form provenance from the generator (source commit, seed).
 	Meta json.RawMessage `json:"meta,omitempty"`
+}
+
+// Container names the image a task's agent commands and setup run in: tasks
+// whose toolchain and dependencies come with an image (a dataset that ships one
+// image per task) are done where those are. The workspace's tree is mounted in
+// the container at its own path, so absolute paths in commands still resolve,
+// and at Workdir when that is set, so build output that names the image's own
+// path (an editable install) resolves to the agent's tree. The agent's HOME
+// and TMPDIR are mounted too. The container has no network unless the task's
+// Network is set. The verifier is a host command and does not run in the
+// container; a verifier that needs the image starts it itself.
+type Container struct {
+	// Image is the image reference; it must be present on the host
+	// (a rollout never pulls).
+	Image string `json:"image"`
+	// Workdir is the absolute path in the container the tree is also mounted
+	// at ("" mounts it at its own path only).
+	Workdir string `json:"workdir,omitempty"`
+	// Path is the PATH inside the container; "" uses the usual locations of
+	// conda environments, Go and Cargo followed by the system directories.
+	Path string `json:"path,omitempty"`
+	// CPUs and Memory bound one command ("4", "8g"); 0 and "" use 4 CPUs and 8g.
+	CPUs   float64 `json:"cpus,omitempty"`
+	Memory string  `json:"memory,omitempty"`
 }
 
 // RepoSpec locates the starting state.

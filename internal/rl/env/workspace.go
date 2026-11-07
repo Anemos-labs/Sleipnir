@@ -107,6 +107,8 @@ type Workspaces struct {
 	local   *LocalSandbox
 	baseEnv []string
 	cl      cloner
+	// containerDocker is the docker binary container tasks run with ("" looks `docker` up on the PATH).
+	containerDocker string
 
 	baseCtx context.Context
 	cancel  context.CancelFunc
@@ -264,6 +266,16 @@ func (m *Workspaces) IsolationPrefix(task rl.Task) []string {
 // one that cannot be created is a workspace warning (Warnings, and the Logf of
 // the options), once per message.
 func (m *Workspaces) CommandPrefix(task rl.Task, ws *Workspace) []string {
+	if task.Container != nil && ws != nil {
+		// The container is the boundary; the image brings its own toolchain, so the host's confinement is not applied on top. The prefix
+		// ends with the image reference, and the shell the caller appends runs in it.
+		pre, err := containerArgv(*m.containerRun(task, ws.Root, ws.Dir), ws.mounts(), task.Network, ws.Env())
+		if err != nil {
+			m.warn("%s", err.Error())
+			return failingPrefix(err)
+		}
+		return pre
+	}
 	if m.local == nil || !m.local.confine.Available || ws == nil {
 		return m.IsolationPrefix(task)
 	}
@@ -476,7 +488,11 @@ func (m *Workspaces) snapshotKey(task rl.Task, src *repoSource) string {
 	if src.kind == "dir" {
 		id = src.fingerprint
 	}
-	base := hashHex("snapshot/v1", m.opts.Mode, src.kind, src.ident, id, task.Repo.Subdir, strings.Join(task.Setup, "\x00"))[:32]
+	parts := []string{"snapshot/v1", m.opts.Mode, src.kind, src.ident, id, task.Repo.Subdir, strings.Join(task.Setup, "\x00")}
+	if k := containerKey(task); k != "" { // only a container task's key changes: the snapshots cached for other tasks stay valid
+		parts = append(parts, k)
+	}
+	base := hashHex(parts...)[:32]
 	m.mu.Lock()
 	g := m.gen[base]
 	m.mu.Unlock()
@@ -635,6 +651,9 @@ func (m *Workspaces) newID(task, label string) string {
 func (m *Workspaces) Prepare(ctx context.Context, task rl.Task, label string) (*Workspace, error) {
 	if err := ValidateTask(task); err != nil {
 		return nil, Infra("prepare", err)
+	}
+	if err := m.checkContainer(ctx, task); err != nil {
+		return nil, err
 	}
 	snap, err := m.snapshotFor(ctx, task)
 	if err != nil {

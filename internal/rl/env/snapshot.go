@@ -823,7 +823,7 @@ func (m *Workspaces) runSetup(ctx context.Context, task rl.Task, s *snapshot, ke
 	}
 	// Confined, setup sees only the snapshot being built (tree, home, its own tmp).
 	pol := ExecPolicy{Network: true, Marker: marker, MaxOutput: m.opts.MaxOutput, Limits: m.opts.Limits, Grace: m.opts.KillGrace,
-		Mounts: &Mounts{RW: []string{s.dir}, Hide: hide}}
+		Mounts: &Mounts{RW: []string{s.dir}, Hide: hide}, Container: m.containerRun(task, s.tree, dir)}
 	var log bytes.Buffer
 	defer func() { _ = writeInDir(s.dir, "setup.log", log.Bytes()) }()
 	defer sweepMarker(marker)

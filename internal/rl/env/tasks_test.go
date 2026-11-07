@@ -58,6 +58,20 @@ func TestValidateTask(t *testing.T) {
 		{"single with agents", func(t *rl.Task) { t.Team.Agents = 3 }, "team.agents"},
 		{"swarm ok", func(t *rl.Task) { t.Team = rl.Team{Mode: "swarm", Agents: 4, Roles: []string{"a", "b"}} }, ""},
 		{"dup roles", func(t *rl.Task) { t.Team = rl.Team{Mode: "swarm", Roles: []string{"a", "a"}} }, "team.roles[1]"},
+		{"container ok", func(t *rl.Task) {
+			t.Container = &rl.Container{Image: "docker.io/swerebenchv2/a-b:12-abc", Workdir: "/repo", CPUs: 2, Memory: "4g"}
+		}, ""},
+		{"container image only", func(t *rl.Task) { t.Container = &rl.Container{Image: "alpine"} }, ""},
+		{"container no image", func(t *rl.Task) { t.Container = &rl.Container{} }, "container.image"},
+		{"container option-like image", func(t *rl.Task) { t.Container = &rl.Container{Image: "--privileged"} }, "container.image"},
+		{"container image with space", func(t *rl.Task) { t.Container = &rl.Container{Image: "a b"} }, "container.image"},
+		{"container relative workdir", func(t *rl.Task) { t.Container = &rl.Container{Image: "a", Workdir: "repo"} }, "container.workdir"},
+		{"container workdir with comma", func(t *rl.Task) { t.Container = &rl.Container{Image: "a", Workdir: "/w,x"} }, "container.workdir"},
+		{"container root workdir", func(t *rl.Task) { t.Container = &rl.Container{Image: "a", Workdir: "/"} }, "container.workdir"},
+		{"container unclean workdir", func(t *rl.Task) { t.Container = &rl.Container{Image: "a", Workdir: "/a/../b"} }, "container.workdir"},
+		{"container path newline", func(t *rl.Task) { t.Container = &rl.Container{Image: "a", Path: "/a\n/b"} }, "container.path"},
+		{"container negative cpus", func(t *rl.Task) { t.Container = &rl.Container{Image: "a", CPUs: -1} }, "container.cpus"},
+		{"container bad memory", func(t *rl.Task) { t.Container = &rl.Container{Image: "a", Memory: "8 gb"} }, "container.memory"},
 		{"owns ok", func(t *rl.Task) {
 			t.Team = rl.Team{Mode: "swarm", Roles: []string{"backend", "frontend"}, Owns: map[string][]string{"frontend": {"*.css", "/web/"}}}
 		}, ""},

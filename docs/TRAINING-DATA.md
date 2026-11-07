@@ -96,6 +96,7 @@ is needed and no call can bypass it. Endpoints that cannot return ids are captur
    "protected": ["*_test.go", "go.mod", ".github/**"]   // agent edits here are discarded and flagged
  },
  "budget": {"steps": 80, "requests": 200, "ite": 400000, "wall_s": 1800, "context_window": 200000},
+ "container": {"image": "docker.io/org/repo:123-abc", "workdir": "/repo"},   // optional: the agent's shell and setup run in this image
  "requires": ["go"],                 // tools setup and verifier run; a machine without one skips the task
  "tags": ["go", "http", "small"]
 }
@@ -104,6 +105,23 @@ is needed and no call can bypass it. Endpoints that cannot return ids are captur
 * **Isolation.** Each rollout gets a fresh worktree (or a copy when the repo is not git) and its own event log
   directory. The verifier runs in a *separate clean checkout* with the agent's diff applied minus protected paths,
   plus the hidden files, so tampering with tests or the verifier has no effect (and is flagged).
+* **Container tasks.** A task with `container` runs the agent's shell commands (and the swarm's done check) and its `setup`
+  through `docker run` in `container.image` instead of on the host, for tasks whose toolchain and dependencies come with an image
+  (a dataset that ships one image per task). The workspace's tree is mounted writable at its own path and, when `workdir` is
+  set, also at `workdir`, so that build output naming the image's own path (an editable install, a compiled extension) resolves
+  to the agent's tree; the agent's HOME and TMPDIR and the caches the environment names (`GOMODCACHE`, `PIP_CACHE_DIR`, ...)
+  are mounted too, and nothing else of the host is (the blob store, the run directory and other workspaces are never mounted).
+  The container has no network unless the task's `network` is set, runs with `--init`, `--security-opt no-new-privileges`, a
+  process limit and the task's `cpus` and `memory` (4 and `8g` when absent), and as the harness's user unless that is root, so that the
+  files it makes in the workspace stay removable. Its `PATH` is `container.path`, or the usual homes of conda environments,
+  Go and Cargo followed by the system directories. The image must be present on the host: a rollout never pulls, and a missing
+  image is an infrastructure failure that names the `docker pull` to run. The shell the harness detected on the host is started
+  in the container, so the image needs that shell (bash images do). The container confines the agent's commands, so such tasks
+  run without `--confine bwrap` (a task is skipped under it) and the verifier, a host command, may start the image itself: a
+  verifier for an image task runs `docker run` on the verification checkout. A machine without docker skips these tasks like a
+  missing tool, and the snapshot cache keys a container task by its image, `workdir` and `path`. The container's working directory is the
+  task's tree, where every agent of a rollout works (the default `swarm.isolation` of `none`). The commands reach the docker daemon
+  through the environment's scrubbed variables, as does the image check before a workspace is made, so a daemon at a non-default address needs `--pass-env DOCKER_HOST` (and `DOCKER_CONTEXT` for a context). `rl tasks check` skips a container task under `--confine bwrap` with the same reason a rollout does.
 * **Score breakdown.** The last stdout line of a `json-score` verifier may say how its score was made:
   `{"score": s, "units": {"<unit>": {"passed": n, "total": m, "weight": w}}, "guards": {"kept": k, "total": g}}`.
   A unit is a part of the work (a milestone of a test suite) of which `n` of `m` checks passed, weighing `w` (1 when
