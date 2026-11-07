@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -486,8 +487,15 @@ func TestAFailedPoolLeaderIsRestartedBeforeTheManagerIsAsked(t *testing.T) {
 	if harnessMail(r, "existing members ("+resume+")")["mgr"] != 1 {
 		t.Errorf("the manager's line does not name %q", resume)
 	}
+	before, _ := ends(r, lead)
+	members := slices.Clone(parent.Pool.Members)
 	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: parent.ID, Agent: lead, By: "mgr"}); err != nil {
-		t.Errorf("%s: %v", resume, err)
+		t.Fatalf("%s: %v", resume, err)
+	}
+	// the leader runs on its pool again (its model still fails, so the run ends), and the pool keeps its members
+	rvWait(t, "the resumed leader's run", func() bool { all, _ := ends(r, lead); return all > before })
+	if p, _ := r.sw.Board.Snapshot().Task(parent.ID); p.Pool == nil || !slices.Equal(p.Pool.Members, members) || p.Owner != lead {
+		t.Errorf("after %s the pool task = %+v", resume, p)
 	}
 }
 

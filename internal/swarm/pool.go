@@ -338,7 +338,10 @@ func (e *noSpareMember) Error() string { return e.msg }
 // onePoolMember is startPool's answer when the only member free for a new pool is id, which no other pool spares: Spawn gives the
 // task to that member alone (solo) instead. Reviews ran as pools of one while the other reviewer worked alone, and each spent a
 // round proposing and agreeing with itself, then made a child task with its parent's scope and worked that.
-type onePoolMember struct{ id string }
+type onePoolMember struct {
+	id      string
+	release map[string][]string // the executing pools that spared it, which it leaves once the task is its own
+}
 
 func (e *onePoolMember) Error() string {
 	return e.id + " is the only free member: it takes the task alone"
@@ -580,16 +583,8 @@ func (s *Swarm) startPool(req SpawnReq, files []string) (string, error) {
 					return "", &noSpareMember{role: req.Role, held: held,
 						msg: fmt.Sprintf("%s pool is busy (%s); wait and reuse its existing members", req.Role, held)}
 				}
-				released, err := s.Board.releaseMembers(req.By, release)
-				if err != nil {
-					return "", err
-				}
-				if len(released) == 0 {
-					return "", fmt.Errorf("no member of the role is free for %s any more: the ones that were took work in their pools; assign it again when one is free (call wait)", taskOrTitle(req))
-				}
-				for parent, left := range released {
-					s.notifyPoolRelease(parent, left, taskOrTitle(req))
-				}
+				// It leaves that pool only once the task is its own (Spawn): a wake that starts it first leaves it where it is.
+				return "", &onePoolMember{id: one.id, release: release}
 			}
 			return "", &onePoolMember{id: members[0].id}
 		}
