@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/rl"
 	"github.com/anemos-labs/sleipnir/internal/rl/export"
@@ -287,25 +286,6 @@ func normalize(t testing.TB, v any) any {
 		}
 	}
 	return m
-}
-
-// promptsOf returns the resolver's prompt for a step id of an episode.
-func promptOf(t testing.TB, src export.Source, stepID string) *core.Prompt {
-	t.Helper()
-	for ai := range src.Episode.Agents {
-		for si := range src.Episode.Agents[ai].Steps {
-			st := &src.Episode.Agents[ai].Steps[si]
-			if st.ID == stepID {
-				p, err := src.Prompts.Prompt(src.Episode, st)
-				if err != nil {
-					t.Fatal(err)
-				}
-				return p
-			}
-		}
-	}
-	t.Fatalf("no step %s", stepID)
-	return nil
 }
 
 var _ = events.TypeToolCall

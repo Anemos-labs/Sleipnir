@@ -67,6 +67,13 @@ type CmdRecord struct {
 	// Masked marks a test whose exit status does not reach the shell's: it is
 	// piped into something, or followed by another command.
 	Masked bool
+	// Ending is the last line the command line printed (harness notes left out), kept for a test whose status is masked: the
+	// summary line a runner prints ("131 passed", "FAILED (failures=2)") is then the best sign of how it went, though a command
+	// after the test (an echo) may have printed it instead, which the summary's wording leaves open.
+	Ending string
+	// Echoed is the status the command line printed for a masked test itself (`npm test; echo "exit=$?"`), or "" when it
+	// printed none. It is what the worker's own line says, not a status the harness saw, and the summary says so.
+	Echoed string
 }
 
 // Passed reports whether the record is a test the harness saw succeed.
@@ -167,6 +174,121 @@ func exitOf(res *tools.Result) (code int, known bool) {
 	return 0, false
 }
 
+// outputEnding is the last line of a command's output that the command printed: the harness's own bracketed notes after it
+// ("[exit code 0]", "[working directory reset ...]") are left out. It is cut to a line a summary can carry, with no "; ": the
+// command's output is not the harness's, and must not read as a clause of its own in the summary (evidenceShowsNoEdits).
+func outputEnding(out string) string {
+	lines := strings.Split(out, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		l := strings.TrimSpace(lines[i])
+		if l == "" || strings.HasPrefix(l, "[") && strings.HasSuffix(l, "]") {
+			continue
+		}
+		return cleanText(strings.ReplaceAll(l, ";", ","), 80)
+	}
+	return ""
+}
+
+// echoedStatus is the status a command line printed for its test right after it, as in `npm test; echo "exit=$?"`: the
+// command after the last test (after its pipeline, when it is piped) is an echo or printf of the test's status, and its output
+// line is found by the text around it. The test's status is "$?" when the test ends its pipeline, and "${PIPESTATUS[k]}" (bash)
+// for the test at place k of a pipeline (`make test | tail; echo "EXIT=${PIPESTATUS[0]}"`); "$?" after a pipe is the pipe's.
+// It is "" when the line prints none.
+func echoedStatus(cmd, out string) string {
+	cs := splitShell(cmd)
+	last := -1
+	for i, c := range cs {
+		if isTestWords(c.words) {
+			last = i
+		}
+	}
+	if last < 0 {
+		return ""
+	}
+	first, end := last, last // the test's pipeline
+	for first > 0 && cs[first-1].op == "|" {
+		first--
+	}
+	for end < len(cs) && cs[end].op == "|" {
+		end++
+	}
+	if end+1 >= len(cs) || cs[end].op == "&" {
+		return ""
+	}
+	marks := []string{fmt.Sprintf("${PIPESTATUS[%d]}", last-first)}
+	if end == last {
+		marks = append(marks, "$?")
+	}
+	echo := cs[end+1].words
+	if len(echo) < 2 || (echo[0] != "echo" && echo[0] != "printf") {
+		return ""
+	}
+	var mark, tmpl string
+	seen := 0 // the marks ahead of the template, to find its raw text in cmd
+	for _, m := range marks {
+		seen = 0
+		for _, c := range cs[:end+1] {
+			for _, w := range c.words {
+				seen += strings.Count(w, m)
+			}
+		}
+		for _, w := range echo[1:] {
+			if strings.Contains(w, m) {
+				mark, tmpl = m, w
+				break
+			}
+			seen += strings.Count(w, m)
+		}
+		if mark != "" {
+			break
+		}
+	}
+	before, after, ok := strings.Cut(tmpl, mark)
+	if mark == "" || !ok || strings.Contains(after, mark) {
+		return ""
+	}
+	if echo[0] == "printf" && rawEndsInNewline(cmd, mark, seen) {
+		after = strings.TrimSuffix(after, "n") // splitShell keeps the n of a quoted \n
+	}
+	before, after = strings.TrimSpace(strings.ReplaceAll(before, `\n`, "")), strings.TrimSpace(strings.ReplaceAll(after, `\n`, ""))
+	if before == "" && after == "" {
+		return "" // a bare number is not told apart from the test's own output
+	}
+	lines := strings.Split(out, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		l := strings.TrimSpace(lines[i])
+		rest, ok := strings.CutPrefix(l, before)
+		if !ok {
+			continue
+		}
+		rest, ok = strings.CutSuffix(strings.TrimSpace(rest), after)
+		if !ok {
+			continue
+		}
+		rest = strings.TrimSpace(rest)
+		if n, err := strconv.Atoi(rest); err == nil && n >= 0 && n < 256 {
+			return rest
+		}
+	}
+	return ""
+}
+
+// rawEndsInNewline reports whether the quoted text after the (skip+1)th mark in cmd ends in a \n escape.
+func rawEndsInNewline(cmd, mark string, skip int) bool {
+	rest := cmd
+	for range skip + 1 {
+		i := strings.Index(rest, mark)
+		if i < 0 {
+			return false
+		}
+		rest = rest[i+len(mark):]
+	}
+	if end := strings.IndexAny(rest, "\"'"); end >= 0 {
+		rest = rest[:end]
+	}
+	return strings.HasSuffix(rest, `\n`)
+}
+
 // editedBy lists the paths a successful edit call changed, nil for any other call.
 func editedBy(call core.Block, res *tools.Result) []string {
 	if res == nil || res.IsError || res.Unchanged { // a write that left every file as it was edited nothing
@@ -222,6 +344,10 @@ func (e *Evidence) Observe(call core.Block, res *tools.Result, now time.Time) {
 		isTest, masked := classifyCommand(cmd)
 		rec := CmdRecord{Cmd: cleanText(firstLine(cmd, 100), 100), At: now, Test: isTest, Masked: masked}
 		rec.Exit, rec.Known = exitOf(res)
+		if isTest && masked && res != nil {
+			rec.Ending = outputEnding(res.Text)
+			rec.Echoed = echoedStatus(cmd, res.Text)
+		}
 		e.cur.commands = append(e.cur.commands, rec)
 		if len(e.cur.commands) > 40 {
 			e.cur.commands = e.cur.commands[len(e.cur.commands)-40:]
@@ -329,6 +455,12 @@ func (r *evRecord) summary() string {
 			verdict = "ran (exit status unknown)"
 		case t.Masked:
 			verdict = "ran (exit status masked by the command line)"
+			if t.Ending != "" {
+				verdict = fmt.Sprintf("ran (exit status masked by the command line, whose output ended %q)", t.Ending)
+			}
+			if t.Echoed != "" {
+				verdict = fmt.Sprintf("ran (exit status masked by the command line, which printed the test's status as %s)", t.Echoed)
+			}
 		case t.Exit != 0:
 			verdict = fmt.Sprintf("FAILED (exit %d)", t.Exit)
 		default:

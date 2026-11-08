@@ -36,16 +36,31 @@ type overflow struct {
 	// notPeer is set when anything in the table came from the manager or the harness: the digest
 	// it becomes is then not peer mail (see member.inboxPeer).
 	notPeer bool
+	// conditional holds the harness notices that may stop being true before they are read (Message.still), kept whole
+	// instead of folded into the digest, so that each is still asked when the agent takes it. At most maxConditional, the
+	// oldest dropped first: a later sweep raises again what still holds.
+	conditional []Message
 }
+
+// maxConditional bounds the conditional notices one overflow keeps.
+const maxConditional = 8
 
 // init allocates the digest-entry map before overflow entries are collected.
 func (o *overflow) init() { o.entries = map[string]*digestEntry{} }
 
 // empty requires both the ordered overflow entries and dropped-message count to be empty.
-func (o *overflow) empty() bool { return len(o.order) == 0 && o.dropped == 0 }
+func (o *overflow) empty() bool {
+	return len(o.order) == 0 && o.dropped == 0 && len(o.conditional) == 0
+}
 
 func (o *overflow) add(msg Message, peer bool) {
 	o.notPeer = o.notPeer || !peer
+	if msg.still != nil {
+		if o.conditional = append(o.conditional, msg); len(o.conditional) > maxConditional {
+			o.conditional = o.conditional[1:]
+		}
+		return
+	}
 	k := msg.From + "\x00" + msg.Kind
 	e := o.entries[k]
 	if e == nil {
@@ -120,7 +135,11 @@ func (m *member) receiveAs(s *Swarm, msg Message, whole bool) error {
 	m.mailSeq++
 	m.autoRuns = 0
 	if m.box.empty() && m.a.PendingInbox() < s.cfg.InboxSoftCap {
-		m.a.Send(msg.Frame())
+		if msg.still != nil {
+			m.a.SendIf(msg.Frame(), msg.still)
+		} else {
+			m.a.Send(msg.Frame())
+		}
 		m.noteSent(peer)
 	} else {
 		// Coalesced, the message reaches the inbox as an excerpt: the router keeps it whole
@@ -156,8 +175,16 @@ func (m *member) pump(s *Swarm) bool {
 		return false
 	}
 	peer := !m.box.notPeer
-	m.a.Send(m.box.digest(s.nextHarnessID()))
-	m.noteSent(peer)
+	held := m.box.conditional
+	m.box.conditional = nil
+	if len(m.box.order) > 0 || m.box.dropped > 0 {
+		m.a.Send(m.box.digest(s.nextHarnessID()))
+		m.noteSent(peer)
+	}
+	for _, msg := range held {
+		m.a.SendIf(msg.Frame(), msg.still)
+		m.noteSent(false)
+	}
 	m.autoRuns = 0
 	select {
 	case m.notify <- struct{}{}:
@@ -222,11 +249,17 @@ func (s *Swarm) notify(to, kind, text string) bool { return s.notifyAs(to, kind,
 func (s *Swarm) notifyWhole(to, kind, text string) bool { return s.notifyAs(to, kind, text, true) }
 
 func (s *Swarm) notifyAs(to, kind, text string, whole bool) bool {
+	return s.notifyStill(to, kind, text, whole, nil)
+}
+
+// notifyStill is notify for a notice that may stop being true before it is read: still says whether it holds, and one that no
+// longer does is dropped unread (Message.still).
+func (s *Swarm) notifyStill(to, kind, text string, whole bool, still func() bool) bool {
 	m := s.get(to)
 	if m == nil {
 		return false
 	}
-	msg := Message{ID: s.nextHarnessID(), From: harnessSender, To: to, Kind: kind, Text: text}
+	msg := Message{ID: s.nextHarnessID(), From: harnessSender, To: to, Kind: kind, Text: text, still: still}
 	if whole && !m.hasRoom(s) {
 		return false
 	}

@@ -190,7 +190,7 @@ func (a *Agent) env() *tools.Env {
 // and changed nothing (tools.Result.Unchanged), which the repeat guard counts when it is repeated.
 func (a *Agent) runOne(ctx context.Context, call core.Block) (out core.Block, exitFailed, unchanged bool) {
 	start := time.Now()
-	name := a.toolNameFor(call.ToolName)
+	name := a.toolNameFor(call.ToolName, call.Input)
 	if tool, in, ok := actionCall(a.cfg.Tools.Get, call.ToolName, call.Input); ok {
 		name, call.Input = tool, in // "task.get": the task tool with action get (see actionCall)
 	}
@@ -348,9 +348,10 @@ func (a *Agent) shownCall(c core.Block) core.Block {
 	return c
 }
 
-// toolNameFor is the tool a call's name means once the pieces of a chat format are cut off it (repairToolName).
-func (a *Agent) toolNameFor(name string) string {
-	return repairToolName(func(n string) bool { _, ok := a.cfg.Tools.Get(n); return ok }, name)
+// toolNameFor is the tool a call's name means: the name once the pieces of a chat format are cut off it (repairToolName), else the
+// tool another harness's spelling of it names (resolveToolName).
+func (a *Agent) toolNameFor(name string, input json.RawMessage) string {
+	return resolveToolName(a.cfg.Tools.Get, a.cfg.Tools.Names, name, input)
 }
 
 // callTool is the tool a call runs as: the tool of an unambiguous "tool.action" call (actionCall), else toolNameFor its name.
@@ -359,7 +360,7 @@ func (a *Agent) callTool(c core.Block) string {
 	if tool, _, ok := actionCall(a.cfg.Tools.Get, c.ToolName, c.Input); ok {
 		return tool
 	}
-	return a.toolNameFor(c.ToolName)
+	return a.toolNameFor(c.ToolName, c.Input)
 }
 
 // dottedAction reads a call name written as "tool.action" ("task.get", "pool.agree", "functions.task.get"): some models address an
@@ -454,18 +455,6 @@ func BareToolName(name string) string {
 	return name
 }
 
-// toolAliases are names models commonly use for what Sleipnir's tools do. They are only ever suggested, never run: the
-// arguments of a borrowed name may not be the arguments of ours.
-var toolAliases = map[string]string{
-	"search": "grep", "grep_search": "grep", "ripgrep": "grep", "rg": "grep", "find_in_files": "grep",
-	"read_file": "read", "open_file": "read", "open": "read", "cat": "read", "view": "read", "view_file": "read", "readfile": "read",
-	"write_file": "write", "create_file": "write", "create": "write", "writefile": "write",
-	"edit_file": "edit", "str_replace": "edit", "str_replace_editor": "edit", "replace": "edit", "editfile": "edit",
-	"run": "bash", "shell": "bash", "sh": "bash", "run_command": "bash", "execute": "bash", "execute_bash": "bash", "terminal": "bash", "exec": "bash",
-	"list_files": "ls", "list_dir": "ls", "list_directory": "ls", "listdir": "ls", "dir": "ls",
-	"find_files": "glob", "file_search": "glob", "find": "glob",
-}
-
 // unknownToolMessage says what the tools are and, when the name is close to one of them or a usual alias of one, which it was.
 func unknownToolMessage(names []string, name string) string {
 	msg := fmt.Sprintf("unknown tool %q. The tools are: %s.", name, strings.Join(names, ", "))
@@ -484,10 +473,13 @@ func suggestTool(names []string, name string) string {
 	if i := strings.Index(low, "<|"); i >= 0 {
 		low = low[:i]
 	}
+	if t := foldedTool(names, low); t != "" {
+		return t
+	}
 	if has[low] {
 		return low
 	}
-	if t, ok := toolAliases[low]; ok && has[t] {
+	if t, ok := toolAliases[foldToolName(low)]; ok && has[t] {
 		return t
 	}
 	limit := 2 // edits; a short name is not close to anything at two

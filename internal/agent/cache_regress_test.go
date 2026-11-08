@@ -183,16 +183,6 @@ func cxLastUserText(p *core.Prompt) string {
 	return sb.String()
 }
 
-func cxAssistants(p *core.Prompt) int {
-	n := 0
-	for _, m := range p.Messages {
-		if m.Role == core.RoleAssistant {
-			n++
-		}
-	}
-	return n
-}
-
 // perfectUsage reports a perfect prefix cache: everything the previous main
 // request sent is read, the rest is uncached input.
 func (p *cxProv) perfectUsage(pr *core.Prompt) core.Usage {

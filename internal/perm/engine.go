@@ -149,6 +149,8 @@ type Engine struct {
 	persisted         map[Rule]bool // rules already handed to Config.Persist
 	granted           []string      // the allow rules added while the session ran (what the person said yes to), in order
 	confined          map[string]rootPair
+	// writeCheck, when set (SetWriteCheck), may refuse each write a request is known to make, by agent and path.
+	writeCheck func(agent, path string, tree bool) string
 
 	readOnlyOnce  sync.Once
 	readOnly      *Engine      // PlanOnly(ReadOnlyAllow...), built on the first ReadOnly check
@@ -176,6 +178,26 @@ func (e *Engine) Confine(agent, dir string) {
 	}
 	e.confined[agent] = rp
 	e.mu.Unlock()
+}
+
+// SetWriteCheck installs a check of every write a request is statically known to make: a file tool's path, a shell command's
+// redirection target, or an operand a known command writes (cp's destination, rm's operand, sed -i's file). check gets the agent,
+// the absolute path and whether the write reaches everything below it (rm -r), and returns why the agent may not write there, or
+// "". A refusal is final in every mode, as confinement is. Writes that cannot be pinned down (an operand of an unlisted program, a
+// path built from a variable, what a build tool or a script writes), formatter walks and the session's scratch directory are not
+// checked: the check sees what the engine sees, no more. A swarm sharing one tree uses it to hold a worker's shell to the scope of
+// its task, which the file tools are held to already. nil removes it.
+func (e *Engine) SetWriteCheck(check func(agent, path string, tree bool) string) {
+	e.mu.Lock()
+	e.writeCheck = check
+	e.mu.Unlock()
+}
+
+// writeChecker reads the installed write check under a read lock.
+func (e *Engine) writeChecker() func(agent, path string, tree bool) string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.writeCheck
 }
 
 // Unconfine lifts Confine (the agent's tree is gone).

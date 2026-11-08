@@ -411,9 +411,14 @@ func TestWindingDownIsOnlyRunningWorkersThatHoldNothing(t *testing.T) {
 // closing message, which the test holds back. The manager waits for the task, accepts it
 // and answers; its answer reaches the guard while the worker is still running.
 func finishingRig(t *testing.T, gate chan struct{}) (*rvRig, *recordingHooks) {
+	return finishingRigWith(t, Config{HoldManager: true, MaxWriters: 4}, gate)
+}
+
+// finishingRigWith is finishingRig with the swarm's configuration given.
+func finishingRigWith(t *testing.T, cfg Config, gate chan struct{}) (*rvRig, *recordingHooks) {
 	t.Helper()
 	inner := &recordingHooks{}
-	r := newRVRigWith(t, Config{HoldManager: true, MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply {
+	r := newRVRigWith(t, cfg, func(ctx context.Context, c *rvCall) rvReply {
 		if c.Role == "manager" {
 			switch c.Assistants {
 			case 0:
@@ -489,7 +494,10 @@ func TestGuardWaitsForAWorkerThatIsOnlyFinishing(t *testing.T) {
 }
 
 // The wait is short, and the guard has only so much of it: a worker that will not end is
-// waited for once, and after that it is an ordinary running worker that vetoes the answer.
+// waited for once. It holds nothing on the board, so after that wait it does not hold the
+// answer back either: the manager could do nothing about it, and in a persistent team (no
+// veto bound) such a worker, sitting in wait loops after its work was accepted, held a
+// finished team's answer for over an hour. The run still reports the worker it left running.
 func TestGuardsWaitForAFinishingWorkerIsBounded(t *testing.T) {
 	prev := holdSettleMax
 	holdSettleMax = 100 * time.Millisecond
@@ -507,8 +515,11 @@ func TestGuardsWaitForAFinishingWorkerIsBounded(t *testing.T) {
 	if took := time.Since(start); took > 8*time.Second {
 		t.Fatalf("the run took %s: the wait for a finishing worker is not bounded", took)
 	}
-	if n := len(r.log.OfType(events.TypeSwarmHold)); n != 3 {
-		t.Fatalf("%d swarm.hold events, want 3 (the veto bound: the wait is spent once, then each answer is vetoed)", n)
+	if n := len(r.log.OfType(events.TypeSwarmHold)); n != 0 {
+		t.Fatalf("%d swarm.hold events, want none: a worker that holds no task is waited for once, then let go", n)
+	}
+	if n := managerCalls(r); n != 4 {
+		t.Fatalf("the manager made %d requests, want 4: it was sent back for a worker it can do nothing about", n)
 	}
 	if !strings.Contains(res.Text, "[harness] Unfinished when the manager stopped: running: be-1.") {
 		t.Fatalf("the run must report the worker it left running: %q", res.Text)
@@ -735,5 +746,82 @@ func TestAManagersEditNamesTheSubmissionsWaitingOnIt(t *testing.T) {
 	last := more[0]
 	if got := edit("write"); !strings.HasPrefix(got, last.ID+" (10 min), "+t2.ID+" (2 min)") {
 		t.Fatalf("the submission past the cap was not named once the ones before it were decided: %q", got)
+	}
+}
+
+// A persistent team (no veto bound) lets the answer through too: its manager loop does not send the manager back for a worker that
+// holds nothing on the board, which it can do nothing about.
+func TestAPersistentTeamIsNotHeldByAWorkerWithNoTask(t *testing.T) {
+	prev := holdSettleMax
+	holdSettleMax = 100 * time.Millisecond
+	t.Cleanup(func() { holdSettleMax = prev })
+
+	gate := make(chan struct{}) // never opened: the worker does not end
+	r, _ := finishingRigWith(t, Config{HoldManager: true, PersistentPools: true, MaxWriters: 4}, gate)
+	t.Cleanup(func() { close(gate) })
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := r.sw.RunManager(context.Background(), "add notes")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(8 * time.Second):
+		t.Fatal("a persistent team's manager was held by a worker that holds no task")
+	}
+	if n := managerCalls(r); n != 4 {
+		t.Fatalf("the manager made %d requests, want 4: it was sent back for a worker it can do nothing about", n)
+	}
+}
+
+// A persistent team's manager that reaches its step limit while only a taskless worker runs is sent on, not ended with the limit's
+// error: the worker it can do nothing about lets a finished answer through, never one the manager has not given.
+func TestAPersistentManagerAtItsStepLimitBesideATasklessWorkerGoesOn(t *testing.T) {
+	prev := holdSettleMax
+	holdSettleMax = 100 * time.Millisecond
+	t.Cleanup(func() { holdSettleMax = prev })
+
+	gate := make(chan struct{}) // never opened: the worker does not end
+	r, _ := finishingRigWith(t, Config{HoldManager: true, PersistentPools: true, FixedSteps: true, MaxWriters: 4}, gate)
+	t.Cleanup(func() { close(gate) })
+	mgr := r.sw.roles["manager"]
+	mgr.MaxSteps = 3 // spawn, wait, accept: the limit falls before the answer
+	r.sw.roles["manager"] = mgr
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := r.sw.RunManager(context.Background(), "add notes")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("the run ended with %v: the manager at its step limit was not sent on", err)
+		}
+	case <-time.After(8 * time.Second):
+		t.Fatal("a persistent team's manager was held by a worker that holds no task")
+	}
+}
+
+// A task that waits for an unfinished one is named with what it waits for, apart from the work the manager could start now: in a
+// team run the veto listed "not started: T4" while T4 waited for T3, and the manager went to start work the board refused.
+func TestTheGuardNamesWhatAnUnstartedTaskWaitsFor(t *testing.T) {
+	r := newRVRig(t, Config{HoldManager: true, MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+	lib, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "library"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cli, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "cli", Deps: []string{lib.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := r.sw.unfinishedWork().reason()
+	want := "not started: " + lib.ID + "; waiting for dependencies: " + cli.ID + " (after " + lib.ID + ")."
+	if !strings.Contains(got, want) {
+		t.Fatalf("veto %q, want it to contain %q", got, want)
 	}
 }

@@ -530,12 +530,17 @@ func (s *Swarm) reviewPending() string {
 // reviewLine is the review gate's sentence for the manager: what is unreviewed and what to do. After an accepted review it
 // names the merges since, so the next review covers them and not the whole result again.
 func (s *Swarm) reviewLine(last string) string {
-	what, subject := last+" and the work merged before it have", "the merged result"
+	what, subject := shownMerge(last)+" and the work merged before it have", "the merged result"
 	if s.reviewedBefore() {
 		_, ids := s.review.unreviewedWork()
 		if len(ids) == 0 {
 			ids = []string{last}
 		}
+		shown := make([]string, len(ids))
+		for i, id := range ids {
+			shown[i] = shownMerge(id)
+		}
+		ids = shown
 		plural := "s"
 		if len(ids) == 1 {
 			plural = ""
@@ -545,10 +550,53 @@ func (s *Swarm) reviewLine(last string) string {
 	}
 	if s.reviewQuorum() > 1 {
 		return "review: " + what + " not been reviewed by two reviewers on different models: before you report the goal met, " +
-			"give a review of " + subject + " against the agreement to each " + ReviewerRole + " slot that runs on a model the reviews so far did not (spawn role=" + ReviewerRole + " agent=<id>), and accept both reports"
+			"give a review of " + subject + " against the agreement to each " + ReviewerRole + " slot that runs on a model the reviews so far did not (spawn role=" + ReviewerRole + " agent=<id>), and accept both reports" +
+			s.reviewerModels()
 	}
 	return "review: " + what + " not been reviewed: before you report the goal met, create a task for the " +
 		ReviewerRole + " to review " + subject + " against the agreement (spawn role=" + ReviewerRole + "), and accept its report"
+}
+
+// reviewerModels names the reviewer members and the model each runs on, and which of those models an accepted review already
+// covered the newest merge with, so that "a slot that runs on a model the reviews so far did not" names a slot the manager can
+// pick. A manager told only that could not see which model each slot ran on. "" before any reviewer is on the team.
+func (s *Swarm) reviewerModels() string {
+	s.mu.Lock()
+	var ids []string
+	models := map[string]string{}
+	for _, m := range s.members {
+		if m.role == ReviewerRole && !m.manager && !m.service {
+			ids = append(ids, m.id)
+			models[m.id] = m.model.ID
+		}
+	}
+	s.mu.Unlock()
+	if len(ids) == 0 {
+		return ""
+	}
+	sort.Strings(ids)
+	g := &s.review
+	g.mu.Lock()
+	newest, byModel := g.merges, g.byModel
+	parts := make([]string, 0, len(ids))
+	for _, id := range ids {
+		part := id + " on " + models[id]
+		if newest > 0 && byModel[models[id]] >= newest {
+			part += " (its model has reviewed the newest merge)"
+		}
+		parts = append(parts, part)
+	}
+	g.mu.Unlock()
+	return ". Reviewer slots: " + strings.Join(parts, ", ")
+}
+
+// shownMerge names a merge for the review line: a task id, or the manager's own edits, which the gate records as "manager
+// changes" and a manager read as a commit it could not find.
+func shownMerge(id string) string {
+	if id == "manager changes" {
+		return "the manager's own edits"
+	}
+	return id
 }
 
 // reviewedBefore reports whether an accepted review covers some merge of this run.
@@ -858,10 +906,18 @@ func offerLines(ready []Task, idle map[string][]string, held map[string]string, 
 			nfree += n
 		}
 	}
+	// Only the ready tasks a free slot can take count: a free architect slot beside two ready backend tasks read as "start
+	// workers" for work no architect could take, while those tasks waited for a backend member.
+	fits := 0
+	for _, t := range ready {
+		if t.Role == "" || slices.Contains(free, t.Role) {
+			fits++
+		}
+	}
 	var out []string
-	if nfree > 0 {
-		out = append(out, fmt.Sprintf("%d free slot(s) (%s), %d ready task(s) with no owner: start workers (spawn), in parallel where the tasks are independent",
-			nfree, strings.Join(free, ", "), len(ready)))
+	if nfree > 0 && fits > 0 {
+		out = append(out, fmt.Sprintf("%d free slot(s) (%s), %d ready task(s) of those roles with no owner: start workers (spawn), in parallel where the tasks are independent",
+			nfree, strings.Join(free, ", "), fits))
 	}
 	byRole := map[string][]string{}
 	isReady := map[string]bool{}

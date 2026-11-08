@@ -590,22 +590,3 @@ func (e *ExplicitEngine) Entries() []EntryInfo {
 	}
 	return out
 }
-
-// Sweep removes entries that have expired at now.
-func (e *ExplicitEngine) Sweep(now time.Time) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	for _, en := range e.entries {
-		if !now.Before(en.expires) {
-			e.removeLocked(en)
-		}
-	}
-}
-
-// Clear drops every entry.
-func (e *ExplicitEngine) Clear() {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.entries = map[string]*explicitEntry{}
-	e.tokens = 0
-}

@@ -370,13 +370,6 @@ func hunkStart(start0, count int) int {
 // IsBinary uses git's heuristic: a NUL byte in the first 8000 bytes.
 func IsBinary(b []byte) bool { return isBinary(b) }
 
-// UnifiedDiff renders the difference of two texts as /diff does (three lines of
-// context, at most 256 KiB, "[diff truncated]" past it), with the lines added and
-// removed. oldName and newName are the header names ("a/x", "b/x", "/dev/null").
-func UnifiedDiff(oldName, newName, oldText, newText string) (out string, added, removed int) {
-	return unifiedDiff(oldName, newName, oldText, newText)
-}
-
 // ---- authorship -------------------------------------------------------------------
 
 // LineAuthor says who wrote one line: the agent and the checkpoint the write was made

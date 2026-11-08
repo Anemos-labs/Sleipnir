@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -30,6 +31,13 @@ func TestASecondParentTakesTheMembersAnExecutingPoolCanSpare(t *testing.T) {
 	// planning: every member is needed
 	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: second.ID, By: "mgr"}); err == nil || !strings.Contains(err.Error(), "still agreeing on "+first.ID) {
 		t.Fatalf("a second parent while the first plans: %v", err)
+	}
+	// reconciling its finished parts: every member votes, and the refusal says that is what holds them
+	if err := r.sw.Board.poolUpdate("mgr", first.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "reconciling"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: second.ID, By: "mgr"}); err == nil || !strings.Contains(err.Error(), "still reconciling "+first.ID+"'s finished parts") {
+		t.Fatalf("a second parent while the first reconciles: %v", err)
 	}
 	// executing, with the leader and one member busy
 	if err := r.sw.Board.poolUpdate("mgr", first.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
@@ -154,7 +162,7 @@ func TestAParentWithNoFreeMemberIsQueuedAndStartedWhenOneIs(t *testing.T) {
 		}
 		return res.Text
 	}
-	if got := spawn(next.ID); !strings.Contains(got, next.ID+" is queued for the next free backend member ("+first.Owner+" leads "+first.ID+", "+members[1]+" holds "+child.ID+" (of "+first.ID+"))") || !strings.Contains(got, "do not spawn it on backend or on another role") {
+	if got := spawn(next.ID); !strings.Contains(got, next.ID+" is queued for the next free backend member ("+first.Owner+" leads "+first.ID+", "+members[1]+" holds "+child.ID+" (of "+first.ID+"))") || !strings.Contains(got, "do not spawn it again (on another backend member or another role)") {
 		t.Fatalf("the first spawn: %q", got)
 	}
 	if got := spawn(next.ID); !strings.Contains(got, next.ID+" was already queued") {
@@ -173,9 +181,22 @@ func TestAParentWithNoFreeMemberIsQueuedAndStartedWhenOneIs(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// it takes the parent once its run ends, alone: a pool of the one member would plan with nobody
+	r.sw.queueTick(r.sw.deps.Now())
+	if n, _ := r.sw.Board.Snapshot().Task(next.ID); n.Status != StatusTodo {
+		t.Fatalf("%s started on a member still in a run: %s/%s", next.ID, n.Status, n.Owner)
+	}
+	m := r.sw.get(members[1])
+	m.mu.Lock()
+	rs := m.run
+	m.mu.Unlock()
+	if rs != nil {
+		rs.cancel()
+	}
+	rvWait(t, members[1]+" idle", func() bool { return r.idle(members[1]) })
 	r.sw.queueTick(r.sw.deps.Now())
 	n, _ := r.sw.Board.Snapshot().Task(next.ID)
-	if n.Status != StatusDoing || n.Owner != members[1] {
+	if n.Status != StatusDoing || n.Owner != members[1] || n.Pool != nil || !n.Solo {
 		t.Fatalf("%s = %s/%s, want started on the free member %s", next.ID, n.Status, n.Owner, members[1])
 	}
 	rvWait(t, "the manager to be told", func() bool { return mailSent(r, next.ID+" started on "+members[1]) == 1 })
@@ -360,5 +381,97 @@ func TestATasklessRunSlowToEndIsAnnouncedOnce(t *testing.T) {
 	rvWait(t, "the manager to be told", func() bool { return mailSent(r, be.id+"'s run had no task while "+next.ID+" waited") >= 1 })
 	if n := mailSent(r, be.id+"'s run had no task while "+next.ID+" waited"); n != 1 {
 		t.Errorf("the manager was told %d times, want once", n)
+	}
+}
+
+// A parent that only one spared member can take goes to that member alone: it leaves the executing pool that spared it, and no pool
+// of one forms. A review pool of one so formed proposed, went idle in planning and held the review for twenty minutes.
+func TestAParentOneSparedMemberCanTakeGoesToItAlone(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 3, Team: []string{"backend", "backend", "backend"}},
+		func(ctx context.Context, _ *rvCall) rvReply { <-ctx.Done(); return rvReply{Text: "stopped"} })
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "control plane", Files: []string{"server/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	first := r.sw.Board.Snapshot().Tasks[0]
+	members := slices.Clone(first.Pool.Members)
+	if len(members) != 3 {
+		t.Fatalf("the first pool has %v", members)
+	}
+	if err := r.sw.Board.poolUpdate("mgr", first.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	child, err := r.sw.Board.CreateTask(first.Owner, TaskSpec{Parent: first.ID, Title: "store", Role: "backend", Files: []string{"server/store/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.Board.assignTask(assignReq{by: first.Owner, agent: members[1], id: child.ID}); err != nil {
+		t.Fatal(err)
+	}
+	m := r.sw.get(members[2])
+	m.mu.Lock()
+	rs := m.run
+	m.mu.Unlock()
+	if rs != nil {
+		rs.cancel()
+	}
+	rvWait(t, members[2]+" idle", func() bool { return r.idle(members[2]) })
+	// A wake that starts the member between the pool's check and the assignment: the member stays in the pool that spared it, and
+	// the spawn fails as busy (the spawn tool queues the task), so the pool does not lose a member to a task that never started.
+	early, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "write the changelog", Role: "backend", Files: []string{"CHANGELOG.md"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, perr := r.sw.startPool(SpawnReq{Role: "backend", TaskID: early.ID, By: "mgr"}, nil)
+	var one *onePoolMember
+	if !errors.As(perr, &one) || one.id != members[2] || len(one.release) == 0 {
+		t.Fatalf("startPool for one spared member: %v", perr)
+	}
+	if f, _ := r.sw.Board.Snapshot().Task(first.ID); !slices.Equal(f.Pool.Members, members) {
+		t.Fatalf("startPool released %s before the task was its own: %v", one.id, f.Pool.Members)
+	}
+	rs, _, ok := r.sw.reserve(m)
+	if !ok {
+		t.Fatal("could not reserve " + one.id)
+	}
+	// Spawn sees the run at the pool's check (noSpareMember) or at the assignment (memberBusy); the spawn tool queues either.
+	var busy *memberBusy
+	var noSpare *noSpareMember
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: early.ID, By: "mgr"}); !errors.As(err, &busy) && !errors.As(err, &noSpare) {
+		t.Fatalf("spawn while the member's wake won: %v", err)
+	}
+	// and the assignment itself, reached past the check, refuses the busy member without releasing it
+	if _, err := r.sw.spawnReuse(SpawnReq{Role: "backend", TaskID: early.ID, Agent: one.id, Solo: true, By: "mgr"}, nil); !errors.As(err, &busy) {
+		t.Fatalf("the assignment to a member in a run: %v", err)
+	}
+	if f, _ := r.sw.Board.Snapshot().Task(first.ID); !slices.Equal(f.Pool.Members, members) {
+		t.Fatalf("a member whose wake won left its pool: %v", f.Pool.Members)
+	}
+	if e, _ := r.sw.Board.Snapshot().Task(early.ID); e.Status != StatusTodo || e.Pool != nil {
+		t.Fatalf("%s after the lost race: %s, pool %v", early.ID, e.Status, e.Pool)
+	}
+	r.sw.unreserve(m, rs)
+	if err := r.sw.Board.mutate("harness", "test", func(d *draft) error {
+		i := taskIdx(d.Snapshot, early.ID)
+		e := d.Tasks[i]
+		e.Status, e.Closure = StatusFailed, closeAs(CloseCanceled)
+		return d.put(i, e)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	second, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "write the docs site", Role: "backend", Files: []string{"site/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: second.ID, By: "mgr"}); err != nil {
+		t.Fatalf("a parent only one spared member can take: %v", err)
+	}
+	snap := r.sw.Board.Snapshot()
+	f, _ := snap.Task(first.ID)
+	s, _ := snap.Task(second.ID)
+	if s.Pool != nil || !s.Solo || s.Owner != members[2] || s.Status != StatusDoing {
+		t.Errorf("the second parent: %+v", s)
+	}
+	if !slices.Equal(f.Pool.Members, members[:2]) {
+		t.Errorf("the first pool kept %v; want %v", f.Pool.Members, members[:2])
 	}
 }

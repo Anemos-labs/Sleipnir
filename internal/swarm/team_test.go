@@ -382,6 +382,15 @@ func TestAutoDocsStartsBesideADirectoryWriter(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// the team is still building (T2, T3): the pass is held, up to docsHoldMax
+	r.sw.docsTick(now)
+	if _, made := r.sw.Board.Snapshot().Task("T4"); made {
+		t.Fatal("a pass started while the team was still building")
+	}
+	if st := r.sw.DocsState(); !strings.Contains(st, "held while the team is still building") {
+		t.Errorf("state while the team builds: %q", st)
+	}
+	now = now.Add(docsHoldMax)
 	r.sw.docsTick(now)
 	pass, _ := r.sw.Board.Snapshot().Task("T4")
 	if !strings.HasPrefix(pass.Title, DocsTaskTitle) || pass.Owner != "" {
@@ -411,5 +420,36 @@ func TestAutoDocsStartsBesideADirectoryWriter(t *testing.T) {
 		if err := r.sw.Board.resolve("mgr", c.id, "not needed"); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// Once the team is no longer building, the docs keeper's line stops naming the hold, even while the pass still waits for a docs
+// worker that is at work on something else: a live view kept "held while the team is still building (T17 review)" forty
+// minutes after T17 was accepted.
+func TestAutoDocsHoldLineEndsWithTheHold(t *testing.T) {
+	cfg := Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "docs"}}
+	r := newRVRigWith(t, cfg, idleModel, nil)
+	now := r.sw.deps.Now()
+	r.sw.docsTick(now)
+	r.sw.Board.Restore(&Snapshot{Tasks: []Task{
+		{ID: "T1", Title: "add the cart endpoint", Status: StatusDone, Role: "backend"},
+		{ID: "T2", Title: "add the order endpoint", Status: StatusTodo, Role: "backend", Files: []string{"internal/api/**"}},
+	}})
+	if err := r.sw.Board.claim("be-1", "T2", nil); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.docsTick(now)
+	if st := r.sw.DocsState(); !strings.Contains(st, "held while the team is still building (T2 doing)") {
+		t.Fatalf("state while T2 is built: %q", st)
+	}
+	if _, err := r.sw.Spawn(SpawnReq{Role: DocsRole, Title: "write the changelog", Files: []string{"CHANGELOG.md"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.resolve("mgr", "T2", "not needed"); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.docsTick(now.Add(time.Second))
+	if st := r.sw.DocsState(); strings.Contains(st, "held while") || !strings.Contains(st, "the docs worker is at work on another task") {
+		t.Errorf("state once the hold is over: %q", st)
 	}
 }

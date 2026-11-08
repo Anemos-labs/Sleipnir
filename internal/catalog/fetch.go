@@ -246,14 +246,9 @@ type Result struct {
 	AsOf    time.Time
 }
 
-// Fetch reads the catalogues of the usable providers (UsableSources with the public Heimdallm), the local servers that answer, and a
-// signed-in ChatGPT plan; a copy younger than CacheTTL is used unless Refresh. Rows are every model listed, chat or not (Row.Chat).
-func Fetch(ctx context.Context, o Options) ([]Row, []error) {
-	r := FetchResult(ctx, o)
-	return r.Rows, r.Errors
-}
-
-// FetchResult is Fetch with the entries and the age of the list.
+// FetchResult reads the catalogues of the usable providers (UsableSources with the public Heimdallm), the local servers that
+// answer, and a signed-in ChatGPT plan; a copy younger than CacheTTL is used unless Refresh. Rows are every model listed, chat or
+// not (Row.Chat); the result also carries the entries and the age of the list.
 func FetchResult(ctx context.Context, o Options) Result {
 	now := time.Now
 	if o.Now != nil {

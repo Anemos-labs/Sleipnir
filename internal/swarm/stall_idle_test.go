@@ -2,9 +2,12 @@ package swarm
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/events"
 )
 
 // An idle-capacity rig: a configured team of four (be-1..3, fe-1) made idle, be-1 at work on T1, and the manager, which waits.
@@ -16,9 +19,15 @@ func idleCapacityRig(t *testing.T, idleFor time.Duration) *rvRig {
 // idleCapacityRigWith is idleCapacityRig whose T1 is given to be-1 only when withTask is set.
 func idleCapacityRigWith(t *testing.T, idleFor time.Duration, withTask bool) *rvRig {
 	t.Helper()
+	return idleCapacityRigFn(t, idleFor, withTask, gatedWorkers(nil))
+}
+
+// idleCapacityRigFn is idleCapacityRigWith whose agents answer with fn.
+func idleCapacityRigFn(t *testing.T, idleFor time.Duration, withTask bool, fn func(ctx context.Context, c *rvCall) rvReply) *rvRig {
+	t.Helper()
 	cfg := stallCfg()
 	cfg.PersistentPools, cfg.MaxWorkers, cfg.Team = true, 4, []string{"backend", "backend", "backend", "frontend"}
-	r := newRVRig(t, cfg, gatedWorkers(nil))
+	r := newRVRig(t, cfg, fn)
 	if _, err := r.sw.StartManager(); err != nil {
 		t.Fatal(err)
 	}
@@ -202,4 +211,129 @@ func TestStallIdleCapacitySparesTheVerdictPhase(t *testing.T) {
 	}
 	r.sw.stopRun(r.sw.get(id), "test over", false)
 	rvWait(t, "the reviewer to stop", func() bool { return r.idle(id) })
+}
+
+// stallMails counts the stall checks the harness mailed to an agent.
+func stallMails(r *rvRig, to string) int {
+	n := 0
+	for _, e := range r.log.OfType(events.TypeMailSend) {
+		var m struct{ From, To, Text string }
+		_ = json.Unmarshal(e.Data, &m)
+		if m.From == harnessSender && m.To == to && strings.HasPrefix(m.Text, "Stall check:") {
+			n++
+		}
+	}
+	return n
+}
+
+// An idle_capacity finding that clears and is raised again soon after is logged again but not mailed again: in a run whose last
+// stretch was serial the manager was told three times to assign work that did not exist. After idleCapacityQuiet it is mailed again.
+func TestStallIdleCapacityIsMailedAtMostOncePerQuietPeriod(t *testing.T) {
+	r := idleCapacityRig(t, 20*time.Minute)
+	reraise := func() {
+		r.sw.stalls.mu.Lock()
+		for k, f := range r.sw.stalls.active {
+			if f.Kind == StallIdleCapacity {
+				delete(r.sw.stalls.active, k) // as if the idle workers had been at work in between
+			}
+		}
+		r.sw.stalls.mu.Unlock()
+		r.sw.noteCoordination("mgr", "wait", "")
+		r.sw.sweepStalls()
+	}
+	r.sw.sweepStalls()
+	if n := stallMails(r, "mgr"); n != 1 {
+		t.Fatalf("first finding: %d mails", n)
+	}
+	reraise()
+	reraise()
+	if n := raised(r, StallIdleCapacity); n != 3 {
+		t.Fatalf("raised %d times, want 3 (every raise is still logged)", n)
+	}
+	if n := stallMails(r, "mgr"); n != 1 {
+		t.Fatalf("%d mails for three raises within %s", n, idleCapacityQuiet)
+	}
+	r.sw.stalls.mu.Lock()
+	r.sw.stalls.mailed = r.sw.deps.Now().Add(-idleCapacityQuiet - time.Minute)
+	r.sw.stalls.mu.Unlock()
+	reraise()
+	if n := stallMails(r, "mgr"); n != 2 {
+		t.Fatalf("%d mails after the quiet period, want 2", n)
+	}
+}
+
+// The escalation diagnosis of an idle_capacity finding counts against the same quiet period: it is not a second mail inside it.
+func TestStallIdleCapacityEscalationSharesTheQuietPeriod(t *testing.T) {
+	r := idleCapacityRig(t, 20*time.Minute)
+	r.sw.sweepStalls()
+	r.sw.stalls.mu.Lock()
+	for k := range r.sw.stalls.since {
+		r.sw.stalls.since[k] = r.sw.deps.Now().Add(-stallEscalateAfter - time.Minute)
+	}
+	r.sw.stalls.mu.Unlock()
+	r.sw.sweepStalls()
+	for _, e := range r.log.OfType(events.TypeMailSend) {
+		var m struct{ From, To, Text string }
+		_ = json.Unmarshal(e.Data, &m)
+		if m.To == "mgr" && strings.HasPrefix(m.Text, "Stall diagnosis (idle_capacity)") {
+			t.Fatalf("an idle-capacity diagnosis was mailed within the quiet period: %q", m.Text)
+		}
+	}
+	if n := stallMails(r, "mgr"); n != 1 {
+		t.Fatalf("%d stall checks", n)
+	}
+}
+
+// A diagnosis that could not be delivered (the manager's inbox is full) does not start the quiet period: it stays due and is
+// sent once there is room.
+func TestAnUndeliveredIdleCapacityDiagnosisStartsNoQuietPeriod(t *testing.T) {
+	gated := gatedWorkers(nil)
+	r := idleCapacityRigFn(t, 20*time.Minute, true, func(ctx context.Context, c *rvCall) rvReply {
+		if c.Role == "manager" {
+			return rvReply{Text: "ok"} // a manager step reads its inbox
+		}
+		return gated(ctx, c)
+	})
+	r.sw.sweepStalls()
+	m := r.sw.get("mgr")
+	rvWait(t, "the manager's inbox to fill", func() bool {
+		r.sw.notify("mgr", "info", "filler")
+		return !m.hasRoom(r.sw)
+	})
+	r.sw.stalls.mu.Lock()
+	r.sw.stalls.mailed = time.Time{} // the first nudge's quiet period is over
+	for k := range r.sw.stalls.since {
+		r.sw.stalls.since[k] = r.sw.deps.Now().Add(-stallEscalateAfter - time.Minute)
+	}
+	r.sw.stalls.mu.Unlock()
+	r.sw.sweepStalls()
+	r.sw.stalls.mu.Lock()
+	mailed, escalated := r.sw.stalls.mailed, len(r.sw.stalls.escalated)
+	r.sw.stalls.mu.Unlock()
+	if !mailed.IsZero() || escalated != 0 {
+		t.Fatalf("an undelivered diagnosis started the quiet period (%v) or was marked escalated (%d)", mailed, escalated)
+	}
+	// Once the manager has read its mail, the next sweep delivers the diagnosis and starts the quiet period. The manager of a
+	// persistent pool keeps its turn while T1 is open, so it runs beside the test until the end.
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = r.sw.RunManager(ctx, "go")
+	}()
+	defer func() { cancel(); <-done }()
+	rvWait(t, "the manager to read its mail", func() bool {
+		m.pump(r.sw)
+		return m.hasRoom(r.sw)
+	})
+	r.sw.sweepStalls()
+	if d := diagnoses(r); len(d) != 1 || !strings.Contains(d[0], "(idle_capacity)") {
+		t.Fatalf("the diagnosis was not delivered once the inbox had room: %q", d)
+	}
+	r.sw.stalls.mu.Lock()
+	mailed = r.sw.stalls.mailed
+	r.sw.stalls.mu.Unlock()
+	if mailed.IsZero() {
+		t.Fatal("a delivered diagnosis started no quiet period")
+	}
 }

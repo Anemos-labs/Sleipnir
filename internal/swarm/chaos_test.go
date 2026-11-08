@@ -655,13 +655,13 @@ func TestAQuietBoardIsNamedByTheWait(t *testing.T) {
 	wait := func() string {
 		return r.callTool(context.Background(), "wait", "mgr", "manager", map[string]any{"timeout_sec": 3}).Text
 	}
-	if got := wait(); !strings.Contains(got, "timed out after 3s") || strings.Contains(got, "waiting again will not change") {
+	if got := wait(); !strings.Contains(got, "timed out after 3s") || strings.Contains(got, "a status line alone does not tell which") {
 		t.Errorf("a first quiet wait: %q", got)
 	}
 	old := quietAfter
 	quietAfter = time.Second
 	defer func() { quietAfter = old }()
-	if got := wait(); !strings.Contains(got, "no task has changed state for") || !strings.Contains(got, "waiting again will not change") {
+	if got := wait(); !strings.Contains(got, "no task has changed state for") || !strings.Contains(got, "a status line alone does not tell which") {
 		t.Errorf("a wait after a long quiet: %q", got)
 	}
 }

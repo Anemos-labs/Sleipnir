@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
@@ -150,7 +151,11 @@ func (s *Swarm) spawn(req SpawnReq) (SpawnResult, error) {
 						return SpawnResult{}, namedNotFree(s.Board.Snapshot(), req, one.id)
 					}
 					req.Solo, req.Agent = true, one.id
-					return s.spawnReuse(req, files)
+					res, err := s.spawnReuse(req, files)
+					if err == nil && len(one.release) > 0 {
+						s.leaveSparingPools(req, one.release)
+					}
+					return res, err
 				}
 				return started(id, err)
 			}
@@ -212,9 +217,9 @@ func (s *Swarm) roleMismatch(sn *Snapshot, t Task, agent, role string) error {
 	if _, ok := s.roles[t.Role]; !ok || t.Role == "manager" || s.isService(t.Role) || s.hidden[t.Role] || !s.canStaff(t.Role) {
 		return nil
 	}
-	who := "a " + role + " member"
+	who := article(role) + " " + role + " member"
 	if agent != "" {
-		who = agent + ", a " + role + " member,"
+		who = agent + ", " + article(role) + " " + role + " member,"
 	}
 	var members []string
 	if sn != nil {
@@ -345,7 +350,7 @@ func (s *Swarm) assignFor(req SpawnReq, agentID string, role Role, files []strin
 // manager is told the most useful thing first. The board repeats the check inside its
 // critical section; this one is only for the message.
 func (s *Swarm) precheckScope(req SpawnReq, files []string, role Role) error {
-	if role.ReadOnly || s.isolated() || s.planReq(req) {
+	if sharesArea(role) || s.isolated() || s.planReq(req) {
 		return nil
 	}
 	sn := s.Board.Snapshot()
@@ -362,10 +367,37 @@ func (s *Swarm) precheckScope(req SpawnReq, files []string, role Role) error {
 	return s.scopeConflictIn(sn, t)
 }
 
+// currentWorkers lists the ids of the members that can be given a task now: not the manager, a service or a retired member.
+func (s *Swarm) currentWorkers() []string {
+	s.mu.Lock()
+	ms := make([]*member, 0, len(s.members))
+	for _, m := range s.members {
+		if !m.manager && !m.service {
+			ms = append(ms, m)
+		}
+	}
+	s.mu.Unlock()
+	var ids []string
+	for _, m := range ms {
+		m.mu.Lock()
+		if m.life != lifeRetired {
+			ids = append(ids, m.id)
+		}
+		m.mu.Unlock()
+	}
+	sort.Strings(ids)
+	if len(ids) == 0 {
+		return []string{"none started yet"}
+	}
+	return ids
+}
+
 func (s *Swarm) spawnReuse(req SpawnReq, files []string) (SpawnResult, error) {
 	m := s.get(req.Agent)
 	if m == nil || m.service {
-		return SpawnResult{}, fmt.Errorf("no agent %q", cleanText(req.Agent, 40))
+		// A member has no id until it first starts: a manager that named the tester it expected (ts-1) was told only "no agent".
+		return SpawnResult{}, fmt.Errorf("no agent %q: a member gets its id when it first starts, so leave out agent= to start the "+
+			"first free member of the role; agents now: %s", cleanText(req.Agent, 40), strings.Join(s.currentWorkers(), ", "))
 	}
 	if m.manager {
 		return SpawnResult{}, errors.New("the manager cannot be given a worker's task")
@@ -391,9 +423,9 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (SpawnResult, error) {
 			if r, handled, err := s.reserveChild(req, m, role, files, transfer); handled {
 				return r, err
 			}
-			return SpawnResult{}, fmt.Errorf("%s is still working; mail it the existing task ID to claim, or wait and reuse it", m.id)
+			return SpawnResult{}, &memberBusy{id: m.id, msg: fmt.Sprintf("%s is still working; mail it the existing task ID to claim, or wait and reuse it", m.id)}
 		}
-		return SpawnResult{}, fmt.Errorf("%s is still working; wait for it or spawn a new worker", m.id)
+		return SpawnResult{}, &memberBusy{id: m.id, msg: fmt.Sprintf("%s is still working; wait for it or spawn a new worker", m.id)}
 	}
 	if !role.ReadOnly && !s.isolated() && !s.planReq(req) {
 		// The reserved member counts as active: the cap applies to reuse as well. (An
@@ -433,6 +465,13 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (SpawnResult, error) {
 	s.launch(m, rs, ctx, start)
 	return SpawnResult{Agent: m.id}, nil
 }
+
+// memberBusy is spawnReuse's refusal when the member named by agent= is in a run and cannot be told of the task: the spawn tool
+// queues an existing todo task for that member instead (spawnqueue.go), and the queue keeps waiting while the member is busy.
+type memberBusy struct{ id, msg string }
+
+// Error is the refusal, with what to do instead.
+func (e *memberBusy) Error() string { return e.msg }
 
 // leaderTransfer reports whether by is the leader of t's pool giving away a child it
 // owns itself: a leader that claimed a child it meant for a member (a member it could
@@ -651,8 +690,8 @@ func (s *Swarm) planPermission(ctx context.Context, id string, inner perm.Reques
 }
 
 // scopeCheck is the board-side check that a task's scope does not overlap another
-// active writer's. Read-only roles neither take part nor are blocked: they cannot
-// write, so their tasks may share any area. In an isolated run writers do not
+// active writer's. Read-only roles and reviewers neither take part nor are blocked
+// (sharesArea): their tasks may share any area. In an isolated run writers do not
 // collide (each edits a tree of its own; the merge queue settles overlaps), so
 // overlapping scopes are allowed there: a scope still says which files a task may
 // touch, and the queue enforces it.
@@ -668,14 +707,22 @@ func (s *Swarm) scopeCheck(readOnly bool) TaskCheck {
 	}
 }
 
-// ownerReadOnly checks the owner's role in a board snapshot, returning false for an unknown owner.
+// ownerReadOnly reports whether the owner's role, in a board snapshot, takes no part in the shared tree's scope overlap check
+// (sharesArea); false for an unknown owner.
 func (s *Swarm) ownerReadOnly(sn *Snapshot, owner string) bool {
 	a, ok := sn.Agent(owner)
 	if !ok {
 		return false
 	}
-	return s.roles[a.Role].ReadOnly
+	return sharesArea(s.roles[a.Role])
 }
+
+// sharesArea reports whether a role's tasks may share any area with other tasks in a shared tree: a read-only role writes
+// nothing, and a reviewer's scope names the work it reviews, which is the area other tasks are still building (the whole
+// project, "**", for a review of the merged result). Its own writes (a failing test that proves a finding, a scratch probe) stay
+// held to its scope and to the per-file leases, and its fixes go back to the owners as findings. Held to the overlap check, a
+// reviewer scoped to "**" could not start while any implementation task was open, and managers gave it a made-up disjoint scope.
+func sharesArea(r Role) bool { return r.ReadOnly || r.Name == ReviewerRole }
 
 // scopeConflictIn reports overlap between a task's scope and the scopes of the
 // other tasks writers are working on. An entry that names a file in the shared
@@ -861,5 +908,25 @@ func (s *Swarm) detach(m *member) {
 			ids[i] = t.ID
 		}
 		s.notifyManager(fmt.Sprintf("%s was retired; %s returned to todo", m.id, strings.Join(ids, ", ")))
+	}
+}
+
+// leaveSparingPools takes a member that now works alone on the task req asked for out of the executing pools that spared it, and
+// tells their leaders. A member that has meanwhile become a leader there, or holds an open part, stays (releaseMembers).
+func (s *Swarm) leaveSparingPools(req SpawnReq, release map[string][]string) {
+	released, err := s.Board.releaseMembers(req.By, release)
+	if err != nil {
+		return
+	}
+	next := taskOrTitle(req)
+	if m := s.get(req.Agent); m != nil {
+		m.mu.Lock()
+		if m.task != "" {
+			next = m.task
+		}
+		m.mu.Unlock()
+	}
+	for parent, left := range released {
+		s.notifyPoolRelease(parent, left, next)
 	}
 }

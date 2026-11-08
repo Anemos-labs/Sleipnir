@@ -634,16 +634,6 @@ func Compare(w Workload, p Provider) Comparison {
 // Baseline returns the plain naive result.
 func (c Comparison) Baseline() Result { return c.Results[0] }
 
-// Find returns the result whose policy name has the given prefix.
-func (c Comparison) Find(prefix string) (Result, bool) {
-	for _, r := range c.Results {
-		if len(r.Policy) >= len(prefix) && r.Policy[:len(prefix)] == prefix {
-			return r, true
-		}
-	}
-	return Result{}, false
-}
-
 // Table renders the comparison.
 func (c Comparison) Table() string {
 	b := c.Baseline()

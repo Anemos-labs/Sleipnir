@@ -393,6 +393,12 @@ type Swarm struct {
 	verifyWrote map[string]bool
 	bounces     map[string]int
 	treeAgents  map[string]bool // agents that ever had a tree of their own
+	// sharedCommits are the commit messages of submissions in a shared tree, by task id (sharedCommitHint): nothing commits there
+	// by itself, so the manager is given the worker's message when it accepts the task.
+	sharedCommits map[string]string
+	// sharedCommitStep is a test hook run at a named step of the kept commit messages ("cleanup": before noteSharedCommit takes
+	// the lock; "accepted": after the manager's accept, before its hint); nil in production.
+	sharedCommitStep func(step string)
 	// gateMu serializes the gates that run in gateTree, the harness's checkout of the integration tip (gateDir).
 	gateMu   sync.Mutex
 	gateTree *workspace.Tree
@@ -514,12 +520,17 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 	s.Leases.SetEmitter(deps.Events)
 	s.Leases.SetRoots(s.roots()...)
 	s.Leases.SetScratch(deps.Tmp)
-	if deps.Owners != nil {
-		s.Leases.SetOwners(deps.Owners, s.roleOf)
-	}
+	// Always: the roles are also what lets a manager's lease give way to a worker (yields), which without path owners never
+	// happened, and a worker sat refused behind a file the manager had edited once.
+	s.Leases.SetOwners(deps.Owners, s.roleOf)
 	if s.isolated() {
 		s.Leases.Isolate()
 		s.Leases.SetTreeParent(deps.Isolation.Manager.Dir)
+	} else if c, ok := deps.Perm.(interface {
+		SetWriteCheck(func(agent, path string, tree bool) string)
+	}); ok {
+		// One shared tree: a worker's shell is held to its task's scope as its file tools are (Leases.ShellWriteCheck).
+		c.SetWriteCheck(s.Leases.ShellWriteCheck)
 	}
 	s.Gov = NewGovernor(GovernorConfig{RPM: cfg.RPM, MaxConcurrent: cfg.MaxConcurrent, Admit: s.budgetErr,
 		OnEvent: func(action string, data map[string]any) {
@@ -789,7 +800,10 @@ func (s *Swarm) runManager(ctx context.Context, m *member, goal, mail string) (r
 				m.a.Send(flushErr.Error())
 			}
 			u := s.unfinishedWork()
-			if flushErr == nil && u.empty() && !s.docsPending() && s.reviewPending() == "" {
+			// Workers that run holding nothing on the board are not work to repair: the stop guard has waited for them already
+			// (holdHooks.BeforeStop), and sending the manager back for them gives it nothing it can do. That holds for an answer the
+			// manager gave (err nil); a manager stopped by its step limit gave none, and goes on.
+			if flushErr == nil && (u.empty() || (u.windingDown() && err == nil)) && !s.docsPending() && s.reviewPending() == "" {
 				break
 			}
 			version := s.Board.Snapshot().Version

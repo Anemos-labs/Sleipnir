@@ -1,6 +1,7 @@
 package swarm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -42,6 +44,23 @@ func decode(in json.RawMessage, v any) *tools.Result {
 		in = json.RawMessage(`{}`)
 	}
 	if err := json.Unmarshal(in, v); err != nil {
+		return tools.Errorf("invalid arguments: %v", err)
+	}
+	return nil
+}
+
+// decodeOnly is decode for a tool whose fields a model tends to guess at: a field the tool does not have is refused with what
+// the tool does take (usage), instead of being dropped and the call doing something other than what was asked.
+func decodeOnly(in json.RawMessage, v any, usage string) *tools.Result {
+	if len(in) == 0 {
+		in = json.RawMessage(`{}`)
+	}
+	dec := json.NewDecoder(bytes.NewReader(in))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		if f, ok := strings.CutPrefix(err.Error(), "json: unknown field "); ok {
+			return tools.Errorf("nothing was done: there is no field %s; %s", f, usage)
+		}
 		return tools.Errorf("invalid arguments: %v", err)
 	}
 	return nil
@@ -87,7 +106,7 @@ func (t *taskTool) Spec() core.ToolSpec {
 			"block (id, text = reason, optional target = the id of the task it waits for), resume (id), " +
 			"handover (id, text = a short summary for your successor: what is done, what is left, what you learned; the harness gives your task, your work and the summary to a fresh worker of your role; the manager may hand over a worker's task). Manager only: create (title, description, role, deps, files = scope, kind = work or plan; a plan's deliverable is an agreement, not code: its owner changes no file while it plans; rigor = plan adds a plan task the work waits for and inherits, rigor = reviewed also a reviewer's check of that plan, for work that is risky or hard to undo), " +
 			"update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback the worker can act on alone: what is wrong and how you saw it, what to keep, what will show it is fixed) or reopen, " +
-			"fail (id, reason = blocked_on, superseded, canceled, denied or verifier; target = the task id for blocked_on and superseded; text = one-line note).",
+			t.failUse(),
 		InputSchema: json.RawMessage(`{"type":"object","properties":{
 "action":{"type":"string","enum":["create","list","get","claim","update","done","block","resume","handover","accept","reject","reopen","fail","revise","resolve","deliver"]},
 "id":{"type":"string"},"title":{"type":"string"},"description":{"type":"string"},"role":{"type":"string"},
@@ -99,6 +118,18 @@ func (t *taskTool) Spec() core.ToolSpec {
 "reason":{"type":"string","enum":["blocked_on","superseded","canceled","denied","verifier"]},"target":{"type":"string"}},"required":["action"]}`),
 	}
 }
+
+// failUse is the task tool's line for fail. A team that keeps its workers repairs a task instead (revise) or closes it (resolve),
+// and refuses fail: a manager that read fail and its reasons here called it for a superseded task and was refused.
+func (t *taskTool) failUse() string {
+	if t.s != nil && t.s.cfg.PersistentPools {
+		return "This team keeps its workers, so a task is not failed: revise repairs it, resolve closes one that is superseded, canceled or no longer needed."
+	}
+	return "fail (id, reason = blocked_on, superseded, canceled, denied or verifier; target = the task id for blocked_on and superseded; text = one-line note)."
+}
+
+// taskFields is what the task tool takes, for the refusal of a field it does not have.
+const taskFields = "the task tool takes action, id, title, description, role, parent, kind, rigor, deps, files, text (a done's result, a reject's feedback, a note), commit, agreement, assumptions, reason and target"
 
 type taskIn struct {
 	Action, ID, Title, Description, Role, Kind, Text, Agreement, Reason, Target, Parent, Rigor, Commit string
@@ -124,7 +155,11 @@ func (s *Swarm) readTaskNoted(c *tools.Call, id, how string, note func(Task) str
 	if !ok {
 		return tools.Errorf("no task %s", cleanText(id, 20))
 	}
-	data, err := json.MarshalIndent(task, "", "  ")
+	shown := task
+	if c.Env.Agent != task.Owner && len(task.Agreements) > 0 {
+		shown.Agreements = agreementPointers(s.Board.Snapshot(), task.Agreements)
+	}
+	data, err := json.MarshalIndent(shown, "", "  ")
 	if err != nil {
 		return tools.Errorf("%v", err)
 	}
@@ -135,6 +170,51 @@ func (s *Swarm) readTaskNoted(c *tools.Call, id, how string, note func(Task) str
 		}
 	}
 	return c.Env.Finish(string(data), false)
+}
+
+// agreementPointers stands in for the agreements a task inherited, in a read by anyone but its owner: each names the task whose
+// agreement it is and its size, and that task's own read holds the text. The owner builds to them and reads them whole; anyone
+// else has read them where they were made. A manager deciding the tasks that followed a plan got the plan's 12,000-character
+// agreement inline in every task get of them, eleven times in one run.
+//
+// A pointer stands only where the task it points at still holds the same text: an agreement revised after this task inherited
+// it (its plan reopened and agreed again) is shown whole, since this task builds to the copy it inherited.
+func agreementPointers(sn *Snapshot, in []TaskAgreement) []TaskAgreement {
+	out := make([]TaskAgreement, len(in))
+	for i, a := range in {
+		out[i] = a
+		if src, ok := sn.Task(a.Task); ok && (src.Agreement == a.Text || src.Pool != nil && src.Pool.Agreement == a.Text) {
+			out[i].Text = fmt.Sprintf("(%d characters, inherited from %s: task get %s shows it)", len(a.Text), a.Task, a.Task)
+		}
+	}
+	return out
+}
+
+// reviewWaitsForNothingHint is what the creation of a top-level review task with no dependencies adds while implementation work
+// is still open: the review starts at once, over a tree without that work, and the goal still needs a review after the last
+// merge. A manager created its reviewer task with no deps; the reviewer reviewed a tree three merges short, and a second review
+// had to follow. Not refused: a review of what has landed so far can be what the manager wants.
+func (s *Swarm) reviewWaitsForNothingHint(t Task) string {
+	if t.Role != ReviewerRole || len(t.Deps) > 0 || t.Parent != "" {
+		return ""
+	}
+	var open []string
+	for _, o := range s.Board.Snapshot().Tasks {
+		if o.ID == t.ID || o.Parent != "" || o.Status == StatusDone || o.Status == StatusFailed || o.Role == ReviewerRole || !s.implementationTask(o) {
+			continue
+		}
+		open = append(open, o.ID)
+	}
+	if len(open) == 0 {
+		return ""
+	}
+	shown := open
+	if len(shown) > holdListCap {
+		shown = append(shown[:holdListCap:holdListCap], fmt.Sprintf("%d more", len(open)-holdListCap))
+	}
+	return fmt.Sprintf(". It waits for nothing while %s %s still open: a review that starts now sees the tree without %s, and the goal "+
+		"still needs a review accepted after the last merge. If it should cover them, make them its deps (task revise id=%s deps=[...] text=why)",
+		joinNames(shown), pluralWord(len(open), "is", "are"), pluralWord(len(open), "it", "them"), t.ID)
 }
 
 // reviewRefusal says why a worker may not accept, reject, reopen, fail, revise or resolve a task: these are the manager's, except
@@ -171,7 +251,9 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		return r, nil
 	}
 	var in taskIn
-	if r := decode(c.Input, &in); r != nil {
+	// Fields are checked: a tester's 5,600-character table sent as result= (not text=) was dropped, its task read "completed",
+	// and the manager had to take the table by mail.
+	if r := decodeOnly(c.Input, &in, taskFields); r != nil {
 		return r, nil
 	}
 	in.ID = strings.TrimSpace(in.ID)
@@ -225,14 +307,15 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			return tools.Errorf("%v", err), nil
 		}
 		task := made[len(made)-1]
+		hint := s.scopeHint(task.Files) + s.reviewWaitsForNothingHint(task)
 		if len(made) > 1 {
-			return text("created %s %q, waiting for %s; start with %s", task.ID, task.Title, rigorChain(made[:len(made)-1]), made[0].ID), nil
+			return text("created %s %q, waiting for %s; start with %s%s", task.ID, task.Title, rigorChain(made[:len(made)-1]), made[0].ID, hint), nil
 		}
 		if strings.TrimSpace(in.Description) == "" {
 			// Not refused: a title can say it all. But a worker sees only what the task holds, and a weak manager forgets.
-			return text("created %s %q. It has no description: the worker sees only the title and files, so if the title does not say what to do and how to know it is done, mail the worker that when it takes the task (and give the next task a description)", task.ID, task.Title), nil
+			return text("created %s %q. It has no description: the worker sees only the title and files, so if the title does not say what to do and how to know it is done, mail the worker that when it takes the task (and give the next task a description)%s", task.ID, task.Title, hint), nil
 		}
-		return text("created %s %q", task.ID, task.Title), nil
+		return text("created %s %q%s", task.ID, task.Title, hint), nil
 	case "list":
 		return c.Env.Finish(renderTaskList(s.Board.Snapshot()), false), nil
 	case "get":
@@ -391,8 +474,12 @@ func (t *taskTool) update(c *tools.Call, in taskIn) *tools.Result {
 		if err != nil {
 			return tools.Errorf("%v", err)
 		}
-		if err := s.Board.SetScope(me, in.ID, files, s.scopeCheck(false)); err != nil {
+		check := func(sn *Snapshot, cand Task) error { return s.scopeCheck(s.ownerReadOnly(sn, cand.Owner))(sn, cand) }
+		if err := s.Board.SetScope(me, in.ID, files, check); err != nil {
 			return tools.Errorf("cannot change the scope: %v", err)
+		}
+		if line := openChildScopes(s.Board.Snapshot(), in.ID); line != "" && in.Text == "" {
+			return text("updated %s. %s", in.ID, line)
 		}
 	}
 	if in.Text != "" {
@@ -408,6 +495,9 @@ func (t *taskTool) update(c *tools.Call, in taskIn) *tools.Result {
 					}
 					return text("%s's scope set (%s); its workers keep going. The text was not recorded: it is the progress line of %s's owner, %s; to tell %s something, mail it", in.ID, strings.Join(task.Files, ", "), in.ID, task.Owner, task.Owner)
 				}
+				if task.Owner == "" {
+					return tools.Errorf("update's text is the progress line of %s's owner, and nobody holds %s yet. To change the task: files= widens or sets its scope (with update, or revise with only files), revise with a description changes its requirements; to start it, spawn it", in.ID, in.ID)
+				}
 				return tools.Errorf("update's text is the progress line of %s's owner, %s. To change the task: files= widens or sets its scope (with update, or revise with only files), revise with a description changes its requirements; to tell %s something, mail it", in.ID, task.Owner, task.Owner)
 			}
 		}
@@ -416,6 +506,29 @@ func (t *taskTool) update(c *tools.Call, in taskIn) *tools.Result {
 		}
 	}
 	return text("updated %s", in.ID)
+}
+
+// openChildScopes says, after a task's scope changed, which of its open children keep scopes of their own: a child's scope is not
+// widened with its parent's, and in a team run the manager widened a parent for a file, the child's worker was refused writing it,
+// and the child needed a second widening. "" when the task has no open child.
+func openChildScopes(sn *Snapshot, id string) string {
+	var kids []string
+	for _, t := range sn.Tasks {
+		if t.Parent != id || t.Status == StatusDone || t.Status == StatusFailed {
+			continue
+		}
+		who := string(t.Status)
+		if t.Owner != "" {
+			who += ", " + t.Owner
+		}
+		kids = append(kids, fmt.Sprintf("%s (%s: %s)", t.ID, who, cleanText(strings.Join(t.Files, ", "), 120)))
+	}
+	if len(kids) == 0 {
+		return ""
+	}
+	sort.Strings(kids)
+	return "Its open children keep their own scopes, which this change did not widen: " + strings.Join(kids, "; ") +
+		". If a child's worker needs the new paths, widen that child too (task update id=<child> files=...)."
 }
 
 // done is a worker's request to finish. The harness decides: the task moves to
@@ -523,6 +636,9 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		}
 		summary = out.evidence + "; " + summary
 	}
+	if m == nil || m.tree == nil {
+		s.noteSharedCommit(task, taskCommitMessage(task, in.Text, in.Commit, s.everyMember()))
+	}
 	if err := s.Board.submitReportAt(me, in.ID, task.Rev, submission{result: result, report: report, evidence: summary, agreement: in.Agreement, assumptions: in.Assumptions}, taskGateCheck(task), s.reviewSubmission(task)); err != nil {
 		return tools.Errorf("%v", err)
 	}
@@ -608,18 +724,29 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 				return tools.Errorf("%s was not accepted: verification could not run (%v). Retry, or reject it.", in.ID, cleanText(vr.err.Error(), 200))
 			}
 			tail, _ := tools.Truncate(vr.out, 3000)
-			return &tools.Result{IsError: true, Text: fmt.Sprintf("%s was not accepted: verification `%s` failed (exit %d). Reject it with feedback, or fix it.\n%s",
-				in.ID, ExpandVerify(s.cfg.VerifyCmd, c.Env.Cwd, task.Files), vr.code, tail)}
+			return &tools.Result{IsError: true, Text: fmt.Sprintf("%s was not accepted: verification `%s` failed (exit %d). Reject it with feedback, or fix it.%s\n%s",
+				in.ID, ExpandVerify(s.cfg.VerifyCmd, c.Env.Cwd, task.Files), vr.code, s.inFlightNote(task), tail)}
 		}
+		commitMsg := s.sharedCommitMessage(in.ID) // before the accept: once done, the message may be dropped at the bound
 		if err := s.Board.Accept(me, in.ID, in.Text, taskGateCheck(task), empty, s.noteAcceptedCheck(task)); err != nil {
 			return tools.Errorf("%v", err)
 		}
 		s.wakeBlockedOn(in.ID)
 		s.flushLearned(task)
-		if last := s.reviewPending(); last != "" && s.roleOf(task.Owner) != ReviewerRole {
-			return text("%s accepted. The merged result is not reviewed yet: a reviewer task is due before the goal is reported met%s", in.ID, s.planNudge(me))
+		commit := ""
+		if !s.hadTree(task.Owner) {
+			s.sharedCommitAt("accepted")
+			commit = s.sharedCommitHint(task, commitMsg)
 		}
-		return text("%s accepted%s", in.ID, s.planNudge(me))
+		if last := s.reviewPending(); last != "" && s.roleOf(task.Owner) != ReviewerRole {
+			// Once a review is under way, the line names it instead: a manager that accepted the fixes a running review had asked
+			// for read "a reviewer task is due" after each of them, with two reviewer tasks open, and called it noise.
+			if open := s.runningReviews(); len(open) > 0 {
+				return text("%s accepted. A review is open (%s): it covers what is merged when it reports%s%s", in.ID, strings.Join(open, ", "), commit, s.planNudge(me))
+			}
+			return text("%s accepted. The merged result is not reviewed yet: a reviewer task is due before the goal is reported met%s%s", in.ID, commit, s.planNudge(me))
+		}
+		return text("%s accepted%s%s", in.ID, commit, s.planNudge(me))
 	case "reject", "reopen":
 		if task.Status == StatusFailed || (in.Action == "reopen" && task.Status == StatusDone) {
 			if err := s.Board.Reopen(me, in.ID); err != nil {
@@ -661,7 +788,8 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 		return text("%s sent back to %s with feedback", in.ID, task.Owner)
 	default: // fail
 		if s.cfg.PersistentPools {
-			return tools.Errorf("repair this task with revise; use resolve with an explanation only if it is no longer needed")
+			return tools.Errorf("%s was not failed: this team keeps its workers, so a task is repaired with revise (text = what to change), "+
+				"or closed with resolve (text = why) when it is superseded, canceled or no longer needed", in.ID)
 		}
 		c, err := managerFailClosure(in.Reason, in.Target)
 		if err != nil {
@@ -675,6 +803,33 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 		}
 		return text("%s marked failed (%s)", in.ID, c.String())
 	}
+}
+
+// inFlightNote is what a failed verification of t in the shared checkout adds when other tasks are being worked on there: the
+// verifier ran over their unfinished edits too, so a failure in their files is theirs. A manager twice rejected nothing: the
+// failures it was shown (an assignment mismatch in main.go, an undefined helper in a test) came from two other workers' edits
+// in progress, while the tasks it was accepting were a review report and a README line. "" when no other task is in progress.
+func (s *Swarm) inFlightNote(t Task) string {
+	var open []string
+	for _, o := range s.Board.Snapshot().Tasks {
+		if o.ID == t.ID || o.Status != StatusDoing || o.Owner == "" || o.Owner == t.Owner || s.hadTree(o.Owner) {
+			continue
+		}
+		line := o.ID + " (" + o.Owner
+		if len(o.Files) > 0 {
+			line += ": " + strings.Join(shownScopes(o.Files), ", ")
+		}
+		open = append(open, line+")")
+	}
+	if len(open) == 0 {
+		return ""
+	}
+	more := ""
+	if len(open) > 3 {
+		more, open = fmt.Sprintf(" and %d more", len(open)-3), open[:3]
+	}
+	return " Other work is in progress in this checkout (" + strings.Join(open, ", ") + more + "), and the verifier ran over its " +
+		"unfinished edits too: if the failure is in files of that work, not of " + t.ID + ", accept again once that work is submitted."
 }
 
 func renderTaskList(s *Snapshot) string {
@@ -697,7 +852,7 @@ func renderTaskList(s *Snapshot) string {
 		sb.WriteByte('\n')
 	}
 	for _, a := range s.Agents {
-		sb.WriteString(agentLine(a) + "\n")
+		sb.WriteString(agentLine(a, s) + "\n")
 	}
 	return sb.String()
 }
@@ -773,10 +928,12 @@ func (t *noteTool) Spec() core.ToolSpec {
 	return core.ToolSpec{
 		Name:         "note",
 		NoTreeWrites: true, // tree mutations use the verified integration bridge
-		Description: "Record one true, durable fact for the team (a command, convention or gotcha). It shows up on every agent's " +
+		Description: "Record one true, durable fact for the team (a command, convention or gotcha), at most " + strconv.Itoa(maxNoteRunes) + " characters: a longer note is refused, not cut. It shows up on every agent's " +
 			"live board while it fits; older notes can be evicted. For a durable shared contract use task done agreement and dependent tasks. scope: shared (default) or role; " +
-			"a role note is also kept, when your task is accepted, for the agents of your role in later sessions of this project (a command, a trap, where a thing lives).",
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string"},"scope":{"type":"string","enum":["shared","role"]}},"required":["text"]}`),
+			"a role note is also kept, when your task is accepted, for the agents of your role in later sessions of this project (a command, a trap, where a thing lives). " +
+			"A note stays on the board until newer notes push it out; withdraw=<id> takes back one of your own (a fact that turned out wrong).",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string","description":"one fact, at most ` + strconv.Itoa(maxNoteRunes) + ` characters"},"scope":{"type":"string","enum":["shared","role"]},` +
+			`"withdraw":{"type":"integer","description":"the id of one of your own notes to take off the board (text and scope are then not needed)"}}}`),
 	}
 }
 
@@ -784,9 +941,21 @@ func (t *noteTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error) 
 	if r := t.s.refuseService(c.Env.Role); r != nil {
 		return r, nil
 	}
-	var in struct{ Text, Scope string }
-	if r := decode(c.Input, &in); r != nil {
+	var in struct {
+		Text, Scope string
+		Withdraw    int
+	}
+	if r := decodeOnly(c.Input, &in, "note takes text and scope to add a fact, or withdraw=<id> to take back one of your own notes"); r != nil {
 		return r, nil
+	}
+	if in.Withdraw != 0 {
+		if strings.TrimSpace(in.Text) != "" {
+			return tools.Errorf("note: give withdraw=<id> or text, not both: withdraw the old note, then add the corrected one"), nil
+		}
+		if err := t.s.Board.WithdrawNote(c.Env.Agent, in.Withdraw); err != nil {
+			return tools.Errorf("%v", err), nil
+		}
+		return text("withdrew note #%d", in.Withdraw), nil
 	}
 	if in.Scope == "" {
 		in.Scope = "shared"
@@ -871,7 +1040,25 @@ func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error)
 			}
 		}
 	}
+	if c.Env.Role == "manager" {
+		if r := t.queueBehindDeps(req); r != nil {
+			return r, nil
+		}
+	}
 	r, err := t.s.spawn(req)
+	var mb *memberBusy
+	if errors.As(err, &mb) && req.TaskID != "" && c.Env.Role == "manager" {
+		if task, ok := t.s.Board.Snapshot().Task(req.TaskID); ok && task.Status == StatusTodo && (task.Owner == "" || task.Owner == mb.id) {
+			// The member named is in a run: the harness gives it the task when the run ends, so re-tasking a busy worker is not a
+			// guess at when it is free.
+			was := "is queued"
+			if !t.s.queueSpawn(req, task.Rev) {
+				was = "was already queued"
+			}
+			return text("%s %s for %s, which is still working: the harness starts it on %s when its run ends and tells you. Use wait.",
+				req.TaskID, was, mb.id, mb.id), nil
+		}
+	}
 	var busy *noSpareMember
 	if errors.As(err, &busy) && req.TaskID != "" && c.Env.Role == "manager" {
 		if task, ok := t.s.Board.Snapshot().Task(req.TaskID); ok && task.Status == StatusTodo && task.Owner == "" {
@@ -882,7 +1069,7 @@ func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error)
 			}
 			// It waits for its own role: each role runs on the model chosen for its kind of work, so a member of another role that
 			// happens to be free is not offered.
-			return text("%s %s for the next free %s member (%s). The harness starts it then and tells you: do not spawn it on %s or on another role; use wait.",
+			return text("%s %s for the next free %s member (%s). The harness starts it then and tells you, so do not spawn it again (on another %s member or another role); use wait.",
 				req.TaskID, was, busy.role, busy.held, busy.role), nil
 		}
 	}
@@ -892,7 +1079,91 @@ func (t *spawnTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error)
 	if r.Reserved {
 		return text("%s is still in a turn, so %s is reserved for it: it was told to claim it, and is started on it if its run ends first. Use wait to sleep until something changes.", r.Agent, req.TaskID), nil
 	}
-	return text("%s started; it will report through the board. Use wait to sleep until something changes.", r.Agent), nil
+	hint, pool := "", ""
+	id := req.TaskID
+	if id == "" { // a spawn by title: the task it made is the started member's
+		if m := t.s.get(r.Agent); m != nil {
+			m.mu.Lock()
+			id = m.task
+			m.mu.Unlock()
+		}
+	}
+	if task, ok := t.s.Board.Snapshot().Task(id); ok && id != "" {
+		hint = t.s.scopeHint(task.Files)
+		if task.Pool != nil && len(task.Pool.Members) > 1 {
+			// The task went to the role's pool: a manager that named one member read "be-1 started" and expected one owner, and
+			// learned of the pool only when its plan round held both members.
+			pool = fmt.Sprintf(" %s leads %s as the %s pool (%s): its members agree on a plan before they divide the work. For small work with one owner, spawn with solo=true instead.",
+				r.Agent, task.ID, task.Role, strings.Join(task.Pool.Members, ", "))
+		}
+	} else {
+		hint = t.s.scopeHint(req.Files)
+	}
+	return text("%s started; it will report through the board. Use wait to sleep until something changes.%s%s", r.Agent, pool, hint), nil
+}
+
+// queueBehindDeps queues the manager's spawn of an existing todo task whose dependencies are not done yet, and answers what was
+// done; nil when that does not apply (no such task, not todo or already owned, its dependencies done, or one of them failed, which
+// the spawn's own refusal explains). A blocked task can be assigned ahead of time: the harness starts it as soon as the last of its
+// dependencies is done (queueTick), on the member agent= names or the first free member of its role.
+func (t *spawnTool) queueBehindDeps(req SpawnReq) *tools.Result {
+	if req.TaskID == "" {
+		return nil
+	}
+	sn := t.s.Board.Snapshot()
+	task, ok := sn.Task(req.TaskID)
+	if !ok || task.Status != StatusTodo || task.Owner != "" {
+		return nil
+	}
+	done, dep := depsDone(sn, task)
+	if done || dep.Status == StatusFailed {
+		return nil
+	}
+	role := req.Role
+	if m := t.s.get(req.Agent); m != nil {
+		role = m.role
+	}
+	if t.s.roleMismatch(sn, task, req.Agent, role) != nil {
+		return nil // the spawn's own refusal names the task's role and its members
+	}
+	if req.Role == "" {
+		req.Role = task.Role
+	}
+	was := "is queued"
+	if !t.s.queueSpawn(req, task.Rev) {
+		was = "was already queued"
+	}
+	on := "the first free " + req.Role + " member"
+	if req.Role == "" {
+		on = "a free member"
+	}
+	if req.Agent != "" {
+		on = req.Agent
+	}
+	return text("%s waits for %s (%s), so it %s: the harness starts it on %s once its dependencies are done, and tells you. Do not spawn it again; use wait.",
+		task.ID, dep.ID, dep.Status, was, on)
+}
+
+// runningReviews lists the top-level reviewer tasks not yet submitted (todo, doing or blocked), sorted: each covers what is
+// merged when it reports. One already in review does not: its report was fixed when it was submitted.
+func (s *Swarm) runningReviews() []string {
+	var out []string
+	for _, t := range s.Board.Snapshot().Tasks {
+		if (t.Status != StatusTodo && t.Status != StatusDoing && t.Status != StatusBlocked) || t.Parent != "" {
+			continue
+		}
+		role := t.Role
+		if t.Owner != "" {
+			if r := s.roleOf(t.Owner); r != "" {
+				role = r
+			}
+		}
+		if role == ReviewerRole {
+			out = append(out, t.ID)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return lessTaskID(out[i], out[j]) })
+	return out
 }
 
 // ---- wait -------------------------------------------------------------------
@@ -1035,7 +1306,7 @@ func (t *waitTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 				now := time.Now().UnixNano()
 				s.quietSince.CompareAndSwap(0, now-int64(timeout)) // the quiet began when this wait did, at the latest
 				if q := time.Duration(now - s.quietSince.Load()); q >= quietAfter {
-					why += fmt.Sprintf("; no task has changed state for %s: waiting again will not change that. Look at what the workers are stuck on (agents, task list, what a verifier prints), tell them, or end the run and say what is stuck", q.Round(time.Minute))
+					why += fmt.Sprintf("; no task has changed state for %s. That may be a long task or a stuck worker, and a status line alone does not tell which: look at what each worker is on (agents, task get, what a verifier prints), then wait again, tell it, or end the run and say what is stuck", q.Round(time.Minute))
 				}
 			}
 			return c.Env.Finish(report(cur, digest, why), false), nil
@@ -1075,9 +1346,38 @@ func (s *Swarm) stalledWaitReason(agentID string) string {
 	if len(u.running) > 0 || u.empty() {
 		return ""
 	}
+	if s.onlyQueuedLeft(u) {
+		// The harness starts a queued task itself (queueTick) and says so: the spawn that queued it said "use wait", and a wait
+		// refused here sent a manager to spawn it again, which the pool then refused as busy.
+		return ""
+	}
 	return "Cannot wait: no workers are running and work needs manager action (" + u.summary(holdListCap) + "). " +
 		"Use spawn to start or reuse a worker on an unstarted task of its role; a planning task goes to the role it names (the architect by default). " +
 		"Review submissions with task get and accept or reject them; resolve blocked tasks or fail abandoned work."
+}
+
+// onlyQueuedLeft reports whether every unstarted task of u is one the harness has queued to start (spawnqueue.go), and
+// nothing else (in review, doing, blocked) waits on the manager.
+func (s *Swarm) onlyQueuedLeft(u unfinishedWork) bool {
+	if len(u.review)+len(u.doing)+len(u.blocked) > 0 || len(u.todo)+len(u.gated) == 0 {
+		return false
+	}
+	queued := map[string]bool{}
+	for _, q := range s.queuedTasks() {
+		queued[safeToken(q.req.TaskID, 24)] = true
+	}
+	for _, id := range u.todo {
+		if !queued[id] {
+			return false
+		}
+	}
+	for _, g := range u.gated {
+		id, _, _ := strings.Cut(g, " ")
+		if !queued[id] {
+			return false
+		}
+	}
+	return true
 }
 
 // restartWaitReason refuses the manager's wait while a task that a resume reserved for its recovered worker (ResumedLine) has not

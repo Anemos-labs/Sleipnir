@@ -116,3 +116,30 @@ func (rewriteHooks) AfterTool(context.Context, agent.ToolHookCall, *tools.Result
 func (rewriteHooks) BeforeStop(context.Context, string, string, string, bool) agent.StopOutcome {
 	return agent.StopOutcome{}
 }
+
+// Once its last tool call has returned, an agent's line says it is thinking: the line of its last call used to stay until the next
+// one, and a worker whose model took twenty minutes to answer read on every board as "running a command", which its manager took for
+// a hung command. With calls side by side, the line changes only when the last of them returns.
+func TestAnAgentsLineSaysThinkingOnceItsCallsReturn(t *testing.T) {
+	r := idleCapacityRig(t, 20*time.Minute)
+	m := r.sw.get("mgr")
+	line := func() string {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return m.line
+	}
+	sink := &memberSink{s: r.sw, m: m, Sink: agent.NopSink{}, ev: NewEvidence()}
+	cmd, _ := json.Marshal(map[string]string{"command": "npm test"})
+	file, _ := json.Marshal(map[string]string{"path": "a.go"})
+	a, b := core.ToolUse("1", "bash", cmd), core.ToolUse("2", "read", file)
+	sink.ToolStart("mgr", a)
+	sink.ToolStart("mgr", b)
+	sink.ToolEnd("mgr", b, &tools.Result{Text: "x"}, time.Millisecond)
+	if got := line(); got == "thinking" {
+		t.Fatalf("the line said thinking while a command still ran")
+	}
+	sink.ToolEnd("mgr", a, &tools.Result{Text: "ok"}, time.Millisecond)
+	if got := line(); got != "thinking" {
+		t.Fatalf("after its calls returned the line is %q, want thinking", got)
+	}
+}

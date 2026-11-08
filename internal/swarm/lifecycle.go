@@ -525,6 +525,9 @@ type memberSink struct {
 	s  *Swarm
 	m  *member
 	ev *Evidence
+
+	// tools is how many tool calls of the member are running (a response can start several).
+	tools atomic.Int32
 }
 
 // safely recovers sink panics and records them as sink.panic events instead of unwinding the
@@ -582,6 +585,7 @@ func (k *memberSink) ToolStart(a string, call core.Block) {
 		// notice and sees the input the call runs with.
 		k.safely(func() { k.s.noteCoordination(k.m.id, call.ToolName, jsonString(call.Input, "id")) })
 	}
+	k.tools.Add(1)
 	k.safely(func() { k.m.setState(k.s, "running", activity(call)) })
 	k.safely(func() { k.Sink.ToolStart(a, call) })
 }
@@ -597,8 +601,15 @@ func (k *memberSink) ToolEnd(a string, call core.Block, res *tools.Result, took 
 			k.m.worked.Store(k.m.turns.Load() + 1)
 		}
 	})
-	if call.ToolName == "wait" {
+	// Once its last call has returned the agent is with the model again, and its line says so: the line of the call it made
+	// last stayed until the next call, and a worker whose model took twenty minutes to answer read on every board as "running a
+	// command" for twenty minutes, which its manager took for a hung command.
+	switch left := k.tools.Add(-1); {
+	case call.ToolName == "wait":
 		k.safely(func() { k.m.setState(k.s, "running", "reviewing results") })
+	case left <= 0:
+		k.tools.Store(0)
+		k.safely(func() { k.m.setState(k.s, "running", "thinking") })
 	}
 	k.safely(func() { k.Sink.ToolEnd(a, call, res, took) })
 }
@@ -1305,11 +1316,13 @@ func (s *Swarm) settleStopped(m *member, tasks map[string]uint64, kind stopKind,
 	for _, id := range sortedKeys(tasks) {
 		if task, ok := s.Board.Snapshot().Task(id); ok && task.Pool != nil {
 			if !quiet {
-				line := "Pool leader stopped on " + id + ": " + why + ". Resume this pool with its existing members."
+				// The pool tool has no resume: the line names the spawn that does it (a manager told only "resume" looked for one).
+				resume := "spawn task=" + id + " agent=" + m.id
+				line := "Pool leader stopped on " + id + ": " + why + ". Resume this pool with its existing members (" + resume + ")."
 				if exhausted && len(task.Pool.Members) > 1 {
 					// The harness does not restart the leader on it again: a leader whose model keeps failing holds the pool until the
 					// manager excuses it, and the next member leads.
-					line = fmt.Sprintf("Pool leader stopped on %s: %s. The harness does not restart %s on it again: resume this pool with its existing members, or, if the failure is %s's own (its model or provider), excuse it (pool action=excuse id=%s member=%s text=<why>) and the next member leads.", id, why, m.id, m.id, id, m.id)
+					line = fmt.Sprintf("Pool leader stopped on %s: %s. The harness does not restart %s on it again: resume this pool with its existing members (%s), or, if the failure is %s's own (its model or provider), excuse it (pool action=excuse id=%s member=%s text=<why>) and the next member leads.", id, why, m.id, resume, m.id, id, m.id)
 				}
 				s.notify(s.ManagerID(), "request", line)
 			}

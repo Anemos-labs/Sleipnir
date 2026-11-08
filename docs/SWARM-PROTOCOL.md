@@ -48,13 +48,21 @@ A role works several parents side by side: when the manager assigns a role a par
 while another of its parents is open, the members that one can spare (it is executing
 its plan, and they neither lead it nor hold an open subtask of it) leave its pool,
 without being excused, and form the new parent's pool; its leader is told who left.
-A parent whose pool is still agreeing on its plan needs every member, and one whose
+A parent whose pool is still agreeing on its plan, or reconciling its finished parts (every member votes on the merged
+result), needs every member, and one whose
 members are all busy spares none. A `spawn` of an existing task by the manager is then
 queued: the answer names what holds the members (`be-1 leads T2, be-2 leads T3`), and the
 harness starts the task on the first member of the role that is free, on the supervisor's
 pass, and tells the manager; a queued task that is assigned, revised or closed meanwhile is
 dropped from the queue, and a resumed session starts with none. Any other caller is refused
 with what to do (wait, or have the busy parent's leader take the work as a child).
+The manager's `spawn` of an existing todo task whose dependencies are not done is queued the
+same way (`T3 waits for T2 (doing), so it is queued`): the harness starts it once the last
+of them is done, on the member `agent=` names or the first free member of its role, and a
+dependency that fails drops it with a mail that says so. A `spawn agent=<id>` of an existing
+todo task while that member is in a run it cannot be told of is queued for that member and
+started when its run ends. A queued task is the harness's to start: while only queued tasks are left unstarted,
+the manager's `wait` is not refused for them.
 
 A task goes to a member of its own role. Roles exist to run each kind of work on the model and instructions chosen for it
 (`--role-model frontend=<model>`), so a task whose `role` names a role the team can staff is refused to every agent of
@@ -122,7 +130,9 @@ a single fix). When a small task reaches a pool anyway, the pool's start tells i
 not to divide it: the leader proposes one child it does itself, and the others agree at once. A
 parent whose pool would have one member (the others work alone or are held by pools that
 spare nobody) is given to that member as a solo task instead: a pool of one would only propose
-to itself, agree with itself and make one child repeating its parent.
+to itself, agree with itself and make one child repeating its parent. That holds when the one
+member is spared by an executing pool too: it leaves that pool and takes the task alone, once
+any run it is still ending is over (the spawn queues the task until then).
 
 Planning-pool children inherit their parent’s task kind when `kind` is omitted.
 Planning children and their reconciled parent submit agreements for acceptance
@@ -209,7 +219,10 @@ directory its scope names, or, when that directory has none, of the nearest dire
 directory: `**/*.md` overlaps every directory a task holds or will claim, so a pass scoped so would wait for every code
 task to close and, while it ran, keep every task scoped to a directory from being claimed. A pass that cannot start says
 why in the keeper's state (`pass T12 waiting to start: scope "*.md" overlaps T6 …`). The first pass waits for the first accepted implementation task: an agreement accepted before
-any code exists stays pending (and holds nobody) and is folded into that pass. It never interrupts a running docs worker; the docs worker's own tasks are not changes, and neither is a task whose scope names test files alone (`*_test.go`, `test_*.py`, `*.spec.ts`, a `tests/` directory): it leaves no document stale. The product files the manager edits by itself are a change of their own (`manager`) once it has left them alone for 90 seconds, or at once when it means to finish; its test and Markdown edits are none. The
+any code exists stays pending (and holds nobody) and is folded into that pass. A pass is also held while the team is still
+building: while an implementation task other than docs and the tester's suites is todo, doing, blocked or in review, for at most
+20 minutes after the oldest change it would cover (`pass waiting to start: held while the team is still building (T7 doing)`),
+so it describes the code as it ends up rather than the defects review is still fixing. Once the hold is over the state stops naming it; a pass that then waits for a docs worker busy on another task says so (`pass waiting to start: the docs worker is at work on another task`). It never interrupts a running docs worker; the docs worker's own tasks are not changes, and neither is a task whose scope names test files alone (`*_test.go`, `test_*.py`, `*.spec.ts`, a `tests/` directory): it leaves no document stale. The product files the manager edits by itself are a change of their own (`manager`) once it has left them alone for 90 seconds, or at once when it means to finish; its test and Markdown edits are none. The
 docs worker keeps README, `docs/` and `AGENTS.md` current; `AGENTS.md` is also the team's map of the project. Its brief
 has it read the diff of the changed files and leave testing the code to the reviewer and the verifier. The
 manager's pin says that documentation is automatic, every other worker's pin says to read `AGENTS.md` and to mail facts
@@ -284,7 +297,7 @@ paths outside the project).
 |---|---|---|
 | `task` | create, list, get, claim, update, block, resume, done, accept, reject, reopen, revise, resolve, fail, handover, deliver | Manager: create, accept, reject, reopen, revise, resolve, deliver and scope changes; pool leaders may create and accept the children of the pool they lead while it executes, and set the scope of one nobody has claimed (`update files`) (a refusal names the condition that failed: the leader, the phase or the role). Persistent pools refuse `fail` and fresh-worker `handover`; embedded callers retain them (`fail` needs a typed `reason`). See sections 4 and 6. |
 | `mail` | send | one recipient; typed; section 5 |
-| `note` | propose | a bounded fact in the live view; older proposals can be evicted |
+| `note` | propose, `withdraw=<id>` | a bounded fact in the live view; older notes can be evicted, and an author takes back one of its own with `withdraw`. A field the tool does not have is refused, never dropped |
 | `spawn` | role, task, optional `agent=` to reuse an idle worker, optional `solo=true` to give a top-level task to one member without the role's pool | Manager or pool leader assigning an existing member to its child; section 6 |
 | `pool` | propose, agree, execute, reconcile, inspect, confirm, excuse | Leader or manager coordinates phases; every member acknowledges the current agreement and reconciled result; the manager excuses a member that cannot take part. `pool get` is read as `task get`, and so is a member's `pool inspect` before the pool reconciles (with a line saying nothing is combined yet); another unknown action is refused with the list of actions |
 | `approve` | answer a delegated worker permission question | Manager only; explicit policy denials and escalations still apply |
@@ -331,10 +344,11 @@ free (be-2, be-3, fe-1)`) and asks for what is missing to be split among them.
 ## 3. The board
 
 Tasks: `id`, `kind` (work by default, or plan), `title`, `desc`, `status`, `owner`, `role`, `deps`, `files` (scope), `line` (latest one-line progress),
-`result` (what the worker said, one line), `report` (a read-only worker's whole report, up to 4000 characters and 40
+`result` (what the worker said, one line), `report` (a read-only worker's whole report, which the cut `result` line points to as `(whole report: task get T4, field report)`, up to 4000 characters and 40
 lines, kept while the task is in review or done and shown by `task get` only), `evidence` (what the harness observed),
 `agreement` (a proposed contract),
-`agreements` (accepted prerequisite contracts inherited at assignment), `attempts`, `rev`, `closure` (the typed reason
+`agreements` (accepted prerequisite contracts inherited at assignment; a `task get` by anyone but the task's owner shows
+each as a pointer, its size and the task whose `task get` holds the text), `attempts`, `rev`, `closure` (the typed reason
 a done or failed task closed, below) and `blocked_on` (the task a blocked task waits for, when its owner named one).
 Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side states.
 
@@ -395,8 +409,10 @@ Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side
   task and says to use it (`task get id=…`). The check runs inside the board's critical section, so many identical
   creates issued in parallel in one model response leave one task.
 * Operations are events (`board.op`, section 11), so state can be rebuilt from the log.
-* Notes are *proposals*: eligible for the bounded hot view. Automatic folding into the shared layer is not implemented
-  (section 9); agreements use task dependencies instead.
+* Notes are *proposals*: eligible for the bounded hot view, where each shows its id. Automatic folding into the shared
+  layer is not implemented (section 9), so a note stays until newer notes evict it or its author withdraws it; an
+  author at its limit is told its notes' ids and to withdraw one or fold facts together. Agreements use task
+  dependencies instead.
 * **The board is bounded**, because every agent's prompt carries a rendering of it: 1000 tasks; titles 160 characters,
   descriptions 2000, at most 16 dependencies and 16 scope entries per task; 48 pending notes (8 per author, the oldest
   evicted, 300 characters each); 8 alerts, which expire after 2 minutes and are cleared when the conflict ends.
@@ -408,6 +424,7 @@ create (manager)            todo
 claim / spawn               doing   (owner set, dependencies and scope checked, leases acquired lazily on write)
 worker: done(text)          --> the HARNESS runs the gate:
                                  1. evidence: files the harness saw the agent edit, commands it ran and their exit codes
+                                    (a test piped into another command has no exit status of its own: its output's last line is kept)
                                  2. verifier: the configured command (--verify "go test {dirs}") in the agent's workdir
                               pass  -> review (result = the model's text; evidence = what the harness observed)
                               fail  -> doing (the verifier output is returned to the worker for up to two repair retries)
@@ -459,10 +476,12 @@ run may end (`swarm.Config.HoldManager`, set for every session that is not inter
 While workers are running, or tasks are in review, doing, blocked or todo, a final answer is vetoed with one short
 harness-written reason that lists ids only (`Not finished: running: be-1 (T3), te-1 (T4); in review: T2; not started:
 T5. Use wait, accept or reject submissions, and fail tasks you abandon, then give your final answer.`: sorted,
-deterministic, at most about 400 characters, the lists shrink before the instruction is cut). A worker that is running
+deterministic, at most about 400 characters, the lists shrink before the instruction is cut; a task that waits for an
+unfinished dependency is listed apart, as `waiting for dependencies: T5 (after T3)`). A worker that is running
 but holds nothing on the board (it handed its task in, the manager accepted it, and it is writing its closing message)
 is not unfinished work: the guard waits for it, at most 20 seconds in all, before it decides, instead of spending a veto
-and a manager request on it; a worker that outlasts the wait is an ordinary running worker. The user's own Stop hooks run
+and a manager request on it; a worker that outlasts the wait does not hold the answer either (the manager can do
+nothing about it), and the run's result still names it. The user's own Stop hooks run
 first and either may veto. The agent loop bounds vetoes per run (three), so a manager that will not settle its board is
 released: the run ends, its result is followed by a `[harness] Unfinished when the manager stopped: ...` line, and the
 person gets a notice (`swarm.hold` and `swarm.unfinished` events). A run that was cancelled, whose budget is spent, or
@@ -516,7 +535,8 @@ can time out waiting for a slot. Output received after the deadline is never a v
 is what the harness observed (edited files, the last test command and its exit
 status), never what the worker wrote about itself. A test counts only if the program run is a test runner (`echo "go
 test ok"` is not one), its status is the command's own (a test piped into `tail` or followed by another command is
-reported as masked), and the status comes from the tool's structured result (`Meta.exit_code`), so truncated output
+reported as masked, with the last line its output printed, or the status the line printed for the test itself when it
+echoes it, as in `npm test; echo "exit=$?"` or, for a piped test, `make test | tail; echo "EXIT=${PIPESTATUS[0]}"`, labelled as the line's own and never counted as a pass), and the status comes from the tool's structured result (`Meta.exit_code`), so truncated output
 can never turn a failing test into a passing one. Dependencies are enforced on claim **and** on spawn.
 
 ### Shared agreements before dependent work
@@ -739,7 +759,9 @@ Layered, cheapest first:
    under it), files, and globs (`api/**`, `web/*.tsx`, `src/{a,b}/**`; `**` spans directories, `*` does not), relative to
    the repository root. Overlapping scopes between active *writer* tasks (doing or blocked) are refused at spawn and
    claim, comparing normalised patterns (`src//a`, `./src/a`, `src/../src/a`, absolute paths, case and `\` variants are
-   the same directory; `src/a` and `src/ab` are not); read-only roles neither take part nor are blocked. Two scopes
+   the same directory; `src/a` and `src/ab` are not); read-only roles and reviewers neither take part nor are blocked
+   (a reviewer's scope names the work it reviews, `**` for the merged result; its own writes stay held to that scope
+   and to the per-file leases). Two scopes
    overlap when some path could lie in both, with `**` aligned as in matching: `**/*.md` overlaps `docs/**` and
    `web/*` (`web/README.md`), not `*.md` with `web/**`, nor `**/*.md` with `**/*.go`. Two globs in one segment
    count as overlapping unless both are `*` and a suffix (`*.md`, `*_test.go`) and neither suffix ends the other.
@@ -755,7 +777,8 @@ Layered, cheapest first:
    workspace, is no edit of the project: no scope, ownership or tree check refuses it and it takes no lease; the permission
    engine judges it by the session's mode. An isolated writer without a tree (a read-only role) still writes nothing.
 2. **Write leases** with a TTL and conflict alerts (visible in the hot view of the agents involved; the alert names the
-   agents, never a file name, and goes away when the lease is released or expires).
+   agents and, in a shared tree, the file's path in the project, cut and cleaned as the scope alert's is; it goes away
+   when the lease is released or expires). A manager's lease gives way to a worker's write; a worker's lease holds against everyone.
 3. **Content-hash staleness** on every edit: an edit is accepted only if the file is what the agent last read, whichever
    agent changed it since. Correct even if a lease were stolen. A refused edit of a text file of up to 48 KiB carries the
    file's current content, line-numbered, and counts as the read, so the agent makes the change again against it at once.
@@ -770,9 +793,19 @@ Layered, cheapest first:
 7. **Role-owned paths** (optional; an RL task's `team.owns`, `swarm.Deps.Owners`): a path owned by roles is written only
    by agents of those roles. The lease guard refuses another agent's write, the manager's included, before scope and
    leases are considered, with a message naming the owning role and how to hand the work to it, a fixed-text alert and
-   a `lease` event of action `owner`. The guard sees the file tools only: a shell command's writes to an owned path
-   are not checked in a shared tree. In an isolated run the merge queue also refuses a submission that changed a path
-   another role owns, whichever tool changed it, and the worker is told to revert those files.
+   a `lease` event of action `owner`. In a shared tree the writes a shell command is known to make (a redirection,
+   `cp`/`mv`'s destination, `rm`'s operand, `sed -i`'s file, `tee`) are held to the same ownership and task-scope rules
+   by the permission engine (`Engine.SetWriteCheck`, `Leases.ShellWriteCheck`), in every mode and without a lease; the
+   repository's `.git` directory, the scratch directory and the creation of a directory that leads to the scope
+   (`mkdir -p` of a parent) are not checked. What a program writes by itself (a build, a script, an unlisted
+   program's operand) is not seen: worktree isolation is the mode that holds every write to the scope. In an isolated
+   run the merge queue also refuses a submission that changed a path another role owns, whichever tool changed it,
+   and the worker is told to revert those files.
+   Scopes are relative to the project root (the repository root, or the session's directory when it is in no
+   repository). A refused write names the root and the file's path relative to it, and a `task create` or `spawn`
+   whose scope names a directory missing under the root but present under one of the root's own directories says
+   which scope would hold it. A catch-up pass whose change lies in a project of its own below the root (a directory
+   holding `.git`, `go.mod`, `package.json` or another project marker) is also scoped to that project's `README.md`.
 
 ## 8. The hot view and the governor
 
@@ -913,13 +946,17 @@ same findings; `idle_capacity`, `review_overrun` and `task_overrun` alone also r
 | `orphaned_task` | a doing or blocked task, or a todo task reserved for an agent, is owned by an agent that is not on the team, on two consecutive sweeps (a spawn in progress is not one) | the manager |
 | `blocked_cycle` | blocked tasks' `blocked_on` targets lead back to themselves; one finding per cycle, named by its lowest task id | the manager |
 | `review_starved` | a task has waited in review for `StallTurns` manager turns, or for 5 minutes, without the manager naming it in a task call | the manager |
-| `review_overrun` | a running reviewer's task (not a planning task) has run, since its assignment began, longer than the work it reviews took to build: the longest of the merges no accepted review covers yet (each from the first run that held its task to its submission: the wait for the manager's decision is not build time), and at least 10 minutes. The bound follows the work, so a review of a day's work may take hours and a review of a fix may not | the reviewer (write the report with what it has: findings so far, what was checked and found fine, what was not reached) |
+| `review_overrun` | a running reviewer's task (not a planning task) has run, since its assignment began, longer than the work it reviews took to build: the longest of the merges no accepted review covers yet (each from the first run that held its task to its submission: the wait for the manager's decision is not build time), and at least 10 minutes. A pooled review's parent is not held to it: each part is a review task of its own, held to the bound, and the parent's time is theirs plus the reconcile. The bound follows the work, so a review of a day's work may take hours and a review of a fix may not | the reviewer (write the report with what it has: findings so far, what was checked and found fine, what was not reached) |
 | `task_overrun` | a running worker that is not a reviewer has held its current assignment (a doing task that is not a pool's) for longer than `TaskTimeout` (default 90 minutes), from when the assignment began and not counting the time the task waited blocked (from its block to its resume) nor, across a resume, the time the team was not running (from the previous run's last board op), whatever it does meanwhile: a worker that keeps editing or re-running tests on a task it will not finish is busy by every other measure | the worker (finish with what works and name what is left, hand the task over, or block it on what it waits for) |
-| `idle_capacity` | in a configured team, the manager waits while at least one worker runs, a task is still open, and at least half of the workers, and two or more, have been idle for 15 minutes owning no open task (none reserved, in progress, blocked or in review), and the workers at work are not all read-only roles, on docs tasks, or finishing a turn with no open task (then the team waits for a verdict on finished work, and idle writers are expected); once raised it holds while that is so, whether or not the manager is still waiting | the manager (who is free, once; it decides whether the objective needs more than the open tasks) |
+| `idle_capacity` | in a configured team, the manager waits while at least one worker runs, a task is still open, and at least half of the workers, and two or more, have been idle for 15 minutes owning no open task (none reserved, in progress, blocked or in review), and the workers at work are not all read-only roles, on docs tasks, or finishing a turn with no open task (then the team waits for a verdict on finished work, and idle writers are expected); once raised it holds while that is so, whether the manager is still waiting or not | the manager (who is free, once, and at most once in 30 minutes however often the finding clears and is raised again; it decides whether the objective needs more than the open tasks) |
 
 `StallTurns` is `swarm.Config.StallTurns` (default 12; negative turns the two turn-based kinds off). A finding is
 raised once while its condition holds: a `swarm.stall` event (`action: raise`) and one harness mail ("Stall check: ...",
-ids and counts only) that says what would end it. When the condition no longer holds the finding clears itself
+ids and counts only) that says what would end it. The mail is dropped unread when its finding no longer holds by the time
+its recipient takes it: a sweep cleared it, it was raised again (the new raise has its own mail), or its task was decided
+while the mail waited for the recipient's next turn. A full inbox keeps such mail whole instead of folding it into the
+digest, so it is still checked when it is taken. `idle_capacity` is the exception: the manager gets at most one mail
+about it, first nudge or escalation diagnosis, in 30 minutes, so a raise inside that period is logged without a mail. When the condition no longer holds the finding clears itself
 (`action: clear`); it can be raised again only after that. The sweep recovers nothing on its own: it names the
 condition and the agent that can act (by handing a task over, failing it with a reason, resuming one side of a
 cycle, or reviewing), with one exception below. `Swarm.Stalls` lists the findings that hold, `Swarm.StallCounts` how many of each kind were

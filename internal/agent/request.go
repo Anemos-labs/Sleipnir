@@ -231,7 +231,7 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 		err = stallError()
 	}
 	if err != nil && reps.tripped && ctx.Err() == nil {
-		err = fmt.Errorf("%w (%s, %d times)", ErrRepeatedCalls, reps.name, repeatedCallLimit)
+		err = &repeatedCallsError{tool: reps.name}
 	}
 	if err != nil {
 		a.emit(events.TypeModelError, map[string]any{"req": reqID, "error": err.Error()})
@@ -351,7 +351,7 @@ func (a *Agent) requestOnce(ctx context.Context, opt reqOpt) (*provider.Response
 	if reps.tripped {
 		// The stream ended before the cancellation reached it (a fast endpoint sends the whole response at once): its cost is
 		// counted above, and its calls are dropped as a stopped response's are.
-		err = fmt.Errorf("%w (%s, %d times)", ErrRepeatedCalls, reps.name, repeatedCallLimit)
+		err = &repeatedCallsError{tool: reps.name}
 		a.emit(events.TypeModelError, map[string]any{"req": reqID, "error": err.Error()})
 		return nil, 0, err
 	}

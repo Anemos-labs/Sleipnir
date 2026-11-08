@@ -348,12 +348,12 @@ func (c *ReadCounter) Read(path string, input json.RawMessage) (part, what strin
 	return part, what, c.parts[part]
 }
 
-// cleanSlash is a path as samePath compares it: cleaned, with forward slashes.
+// cleanSlash is a path as the read counter compares it: cleaned, with forward slashes.
 func cleanSlash(p string) string { return path.Clean(filepath.ToSlash(p)) }
 
 // Changed records that path was written: every part of it starts over. The same file is spelled relatively and absolutely by
 // the same model, so an absolute path matches a relative one when it ends with it; two relative paths are one file only when
-// they are equal ("a.go" and "src/a.go" are two). These are the matches of samePath, found by lookup.
+// they are equal ("a.go" and "src/a.go" are two). The matches are found by lookup in the tails index.
 func (c *ReadCounter) Changed(path string) {
 	p := cleanSlash(path)
 	c.reset(p)
@@ -406,21 +406,6 @@ func tailsOf(p string) []string {
 		}
 	}
 	return out
-}
-
-// samePath reports whether two paths a model used name one file: equal after cleaning, or an absolute path and a relative one
-// that is its tail.
-func samePath(a, b string) bool {
-	a, b = path.Clean(filepath.ToSlash(a)), path.Clean(filepath.ToSlash(b))
-	switch aa, ba := isAbsSlash(a), isAbsSlash(b); {
-	case a == b:
-		return true
-	case aa && !ba:
-		return strings.HasSuffix(a, "/"+b)
-	case ba && !aa:
-		return strings.HasSuffix(b, "/"+a)
-	}
-	return false
 }
 
 // isAbsSlash reports whether a slash path is rooted or carries a drive letter.

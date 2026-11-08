@@ -7,6 +7,172 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A tool call under another harness's name for a tool runs as that tool. The
+  same name in another case or separator convention (`Read`, `Bash`,
+  `WebFetch`, `BashOutput`, `apply-patch`) always does; a usual alias
+  (`read_file`, `write_file`, `edit_file`, `MultiEdit`, `run_shell_command`,
+  `fetch_url`, `google_web_search`, `list_directory`, `KillShell`...) does when
+  every argument of the call is one the tool takes, of its type, and the
+  required ones are there. Otherwise the call is still answered as an unknown
+  tool with a suggestion: Codex's `shell` with its command as an array, or
+  Gemini's `replace` with `expected_replacements`, mean something else.
+  Permission rules, hooks and the display see the tool that ran, and the event
+  log's `tool.call` names it (`as`). Before, such a call was refused and cost
+  the model a step; models trained on Claude Code, Gemini CLI or Codex
+  transcripts call these names by habit. Tools may declare argument synonyms
+  (`tools.ArgSynonyms`); `read`, `write` and `edit` declare `file_path`.
+  Prompt bytes: none change.
+
+- A parent that only one member spared by an executing pool can take goes to
+  that member alone, as a solo task, after it leaves that pool: it used to form
+  a pool of one, which planned with nobody and could sit in planning. The
+  manager's line about a stopped pool leader names the spawn that resumes the
+  pool (`spawn task=<id> agent=<leader>`). No prompt bytes change in the system
+  prompt or tool specs.
+
+- A manager's write lease now gives way to a worker's write in every team, as
+  documented: it did only when the session had role-owned paths, and a worker
+  was otherwise refused behind a file the manager had edited once. In a shared
+  tree a lease alert names the file. The `task` tool refuses a field it does not have
+  (`result=` for `text=`), naming the fields it takes, instead of dropping it.
+  A spawn that starts the role's pool says so and points at `solo=true`. A
+  spawn naming a member that has not started yet explains how ids are given.
+  The free-slot line counts only ready tasks a free slot's role can take. The
+  review line names the manager's own edits as such. The refusal of an accept
+  with no file edit says changes made through bash alone are not counted.
+  No prompt bytes change in the system prompt or tool specs.
+
+- The docs keeper's state stops naming a hold once the team is no longer
+  building, and says when a pass waits for a docs worker busy on another task.
+  An agent's line in the live view and in `task list` marks a task the board
+  has already closed (`dc-1 docs running T29 (done)`). A verification that
+  fails at accept in a shared checkout names the other work in progress there,
+  whose unfinished edits it also ran over. The review gate's line names each
+  reviewer slot's model and which model has covered the newest merge. The
+  commit reminder after an accept is left out when the task edited no file.
+  A queued spawn's result says not to spawn the task again, instead of reading
+  as "do not spawn it on reviewer". In a team that keeps its workers
+  (`--team`, or the default team), the `task` tool's description no longer
+  offers `fail`, which such a team refuses, and the refusal names `revise` and
+  `resolve`: the `task` tool spec's bytes change for those teams. No other
+  prompt bytes change.
+
+- A test piped into another command whose line echoes its status through
+  bash's `PIPESTATUS` (`make test | tail; echo "EXIT=${PIPESTATUS[0]}"`) now
+  reports that status as the line's own, as `$?` after an unpiped test does.
+  A pooled review's parent is no longer reported as an overrun review: its
+  parts are each held to the bound. A spawn refused while a pool reconciles
+  its parts says so instead of saying it is agreeing on its plan. A read-only
+  worker's cut result line points at the `report` field of `task get`. No
+  prompt bytes change in the system prompt or tool specs.
+
+- The bash tool no longer runs a command that would signal the harness's own
+  process: a `pkill`, or a `kill` or `xargs kill` fed by `pgrep` or `grep`,
+  whose pattern the harness's command line or name also matches (an agent
+  ending stray `myproj` servers with `ps | grep myproj | xargs kill` when the
+  harness was started with `--cwd .../myproj`), or `kill` of its pid. The
+  result says why and to end processes by their pid. No prompt bytes change in
+  the system prompt or tool specs.
+
+- The manager's `wait` is no longer refused while the only unstarted tasks
+  are ones the harness has queued to start. A masked test whose command line
+  echoes its status (`npm test; echo "exit=$?"`) reports that status as the
+  line's own. Accepting work while a review is open names the review instead
+  of asking for one again. A manager's `task update` of a task nobody holds
+  says so instead of naming an empty owner. A response stopped for repeating
+  a call names the tool and says that distinct calls are fine. Refusing to
+  move a run's branch names how to read it (`git show <branch>:<path>`).
+  `deliver` with nothing left to commit no longer points at push and PR
+  commands. Role names take "an" where they should ("an architect member").
+  No prompt bytes change in the system prompt or tool specs.
+
+- The manager's "Stop reading" line no longer says that the harness built and
+  tested each submission when no verifier is configured: it says that nothing
+  but the worker checked it, and to check what its evidence leaves in doubt.
+  A masked test's evidence (a test piped into `tail`) keeps the last line its
+  output printed. A `task get` by anyone but the task's owner shows inherited
+  agreements as pointers to the tasks that hold them. A stall check that no
+  longer holds when the manager reads its mail (a task it decided meanwhile)
+  is dropped unread, and a long `wait` with no task changes no longer says that
+  waiting again will not change that. No prompt bytes change in the system
+  prompt or tool specs.
+
+- A team manager's `plan` may mark several steps doing, one for each a worker
+  is on; anyone else's plan still has at most one. A heavy command that waits
+  for a slot is told what holds it (`be-2: python -m pytest (running for 40s)`,
+  or another process). Creating a top-level reviewer task with no deps while
+  implementation tasks are open names them and how to make them its deps. No
+  prompt bytes change in the system prompt or tool specs.
+
+- An agent's status line says "thinking" once its last tool call has
+  returned, instead of keeping the line of that call ("running a command")
+  until the next one. Widening a task's scope names the open children that
+  keep their own scopes. A refusal to enter another agent's worktree names
+  that tree (or the directory of every tree) and no longer tells the
+  manager to ask the manager. The stop guard lists a task that waits for an
+  unfinished dependency as `waiting for dependencies: T5 (after T3)`
+  instead of "not started". No prompt bytes change in the system prompt or
+  tool specs; the live board's status lines read "thinking" where they
+  named the last call.
+
+- The manager's stop guard no longer holds the final answer for a worker
+  that holds no task: it still waits up to 20 seconds for such a worker to
+  end its turn, then lets the answer through (a batch run still reports the
+  worker it left running), and a persistent team's manager loop does not
+  send the manager back for such a worker either. No prompt bytes change.
+
+- The `note` tool takes `withdraw=<id>` to take back one of the agent's own
+  notes, and refuses a field it does not have (an `action: "remove"` was
+  taken as a new note) instead of dropping it. An agent at its 8-note limit
+  is told its notes' ids and to withdraw one: the old message said to wait
+  for the notes to be merged, which nothing does. The live board lists
+  notes as "team notes" with their ids. Prompt bytes change: the `note`
+  tool's description and schema, and the board's notes section.
+
+- In a shared tree the manager's `task accept` of an implementation task
+  says to commit the change now, in the git repository that holds it, with
+  the subject its worker gave in `task done commit=` (which was dropped in a
+  shared tree) or one made from the title; nothing changes in an isolated
+  run, where the merge queue commits. A docs catch-up pass waits while the
+  team is still building (an implementation task other than docs and the
+  tester's suites is open), for at most 20 minutes after the oldest change
+  it covers, so it documents the code as it ends up. No prompt bytes change.
+
+- In a shared tree a worker's shell is held to its task's scope and to
+  role-owned paths, as its file tools are: the permission engine refuses a
+  write a command is known to make (a redirection, `cp`/`mv`'s destination,
+  `rm`'s operand, `sed -i`'s file, `tee`) outside them, in every mode. What a
+  program writes by itself is not seen; worktree isolation still checks every
+  change at the merge. The new `perm.Engine.SetWriteCheck` lets an embedder
+  install such a check. A scope refusal names the project root and the
+  file's path relative to it; `task create` and `spawn` say which scope
+  would hold a directory that is missing under the root but present one
+  level down; a docs catch-up pass for a change inside a project of its own
+  below the root (a directory with `.git`, `go.mod`, `package.json`, ...)
+  is also scoped to that project's `README.md`. No prompt bytes change.
+
+- The manager's `spawn` of an existing todo task whose dependencies are not
+  done is queued instead of refused: the harness starts it once they are
+  done, on the member `agent=` names or the first free member of its role,
+  and mails the manager when it does (or when a dependency failed). A `spawn
+  agent=<id>` of an existing todo task while that member is still working is
+  queued for that member instead of refused with "still working". In a
+  shared tree a reviewer's task takes no part in the scope overlap check, as
+  a read-only role's does: a review scoped to `**` starts while
+  implementation tasks are open, and they start while it runs. No prompt
+  bytes change.
+
+- The `note` tool states its 300-character limit in its description and in
+  the schema's `text` description, so a note is written to fit instead of
+  refused after it was written. The `memory` tool's refusal of `scope
+  project` says why this session keeps no project notes (no project, or the
+  project at its root is not trusted, which only the person can change with
+  `sleipnir trust` or `--trust-project`) and to save the note with scope
+  user. The manager is mailed of idle capacity at most once in 30 minutes:
+  the finding is still raised and logged each time it starts to hold, and
+  its mail says that a serial remainder is a reason to keep waiting.
+  Prompt-cache change: the `note` tool's description and schema change bytes.
+
 - A manager that only reads while the team waits is told what to do next, on
   the result of its third read-only call in a row (and every third after): the
   submissions waiting for its decision, with the `task accept` calls to make;

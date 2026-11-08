@@ -70,7 +70,13 @@ type Budget struct {
 	memWait time.Duration
 
 	mu   sync.Mutex
-	held map[int]bool // slots this process holds (the file lock alone does not exclude a second open where locks are not used)
+	held map[int]holder // slots this process holds (the file lock alone does not exclude a second open where locks are not used)
+}
+
+// holder is what holds a slot this process took: who ran the command (AdmitAs) and since when.
+type holder struct {
+	who   string
+	since time.Time
 }
 
 // New returns the budget for settings on this machine. dir is where the slot files live: every process that passes the same
@@ -126,7 +132,7 @@ func newBudget(s Settings, dir string, total int, memory int64, avail func() (in
 		reserve: reserve, memory: memory,
 		low: s.Priority != "normal", dir: dir,
 		avail: avail, poll: 500 * time.Millisecond, memWait: 2 * time.Minute,
-		held: map[int]bool{},
+		held: map[int]holder{},
 	}
 }
 
@@ -276,6 +282,13 @@ func (a *Admission) Release() {
 // slot, as long as ctx allows. waiting, when not nil, is told once for each reason the command waits, with a line for the
 // person watching. The error is ctx's when it ends the wait.
 func (b *Budget) Admit(ctx context.Context, heavy bool, waiting func(string)) (Admission, error) {
+	return b.AdmitAs(ctx, heavy, "", waiting)
+}
+
+// AdmitAs is Admit for a command that who describes ("be-2: go test"): while it holds its slot, a command that waits for
+// one is told who holds the slots and for how long, where Admit's waiting line said only that they were taken. A manager whose
+// 0.05-second command waited 63 seconds behind "1 heavy commands ... already run on this machine" could not tell whose they were.
+func (b *Budget) AdmitAs(ctx context.Context, heavy bool, who string, waiting func(string)) (Admission, error) {
 	if b == nil || !heavy {
 		return Admission{}, nil
 	}
@@ -301,9 +314,7 @@ func (b *Budget) Admit(ctx context.Context, heavy bool, waiting func(string)) (A
 			}
 		}
 	}
-	release, err := b.acquire(ctx, func() {
-		say(fmt.Sprintf("waiting for a free slot: %d heavy commands (builds, tests, installs) already run on this machine, the most it runs at once", b.slots))
-	})
+	release, err := b.acquire(ctx, who, func() { say(b.busyLine()) })
 	if err != nil {
 		return Admission{}, err
 	}
@@ -328,10 +339,10 @@ func (b *Budget) sleep(ctx context.Context) error {
 }
 
 // acquire takes a free slot, waiting until there is one or ctx ends. busy is called once, the first time every slot is taken.
-func (b *Budget) acquire(ctx context.Context, busy func()) (func(), error) {
+func (b *Budget) acquire(ctx context.Context, who string, busy func()) (func(), error) {
 	told := false
 	for {
-		if release := b.tryAcquire(); release != nil {
+		if release := b.tryAcquire(who); release != nil {
 			return release, nil
 		}
 		if !told {
@@ -346,14 +357,14 @@ func (b *Budget) acquire(ctx context.Context, busy func()) (func(), error) {
 
 // tryAcquire takes the first free slot, or returns nil when there is none. A slot file that cannot be opened or locked (a
 // read-only state directory) is counted as free, held within this process alone: a broken lock must not stop the agents.
-func (b *Budget) tryAcquire() func() {
+func (b *Budget) tryAcquire(who string) func() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.dir != "" {
 		_ = os.MkdirAll(b.dir, 0o700)
 	}
 	for i := 0; i < b.slots; i++ {
-		if b.held[i] {
+		if _, ok := b.held[i]; ok {
 			continue
 		}
 		var f *os.File
@@ -372,7 +383,7 @@ func (b *Budget) tryAcquire() func() {
 				}
 			}
 		}
-		b.held[i] = true
+		b.held[i] = holder{who: who, since: time.Now()}
 		return func() {
 			b.mu.Lock()
 			defer b.mu.Unlock()
@@ -384,6 +395,29 @@ func (b *Budget) tryAcquire() func() {
 		}
 	}
 	return nil
+}
+
+// busyLine says why a heavy command waits for a slot: how many the machine runs at once, and what holds them, as far as this
+// process knows (a slot another process holds is named as such).
+func (b *Budget) busyLine() string {
+	b.mu.Lock()
+	var held []string
+	for i := 0; i < b.slots; i++ {
+		h, ok := b.held[i]
+		switch {
+		case !ok:
+			held = append(held, "another process")
+		case h.who == "":
+			held = append(held, fmt.Sprintf("a command running for %s", time.Since(h.since).Round(time.Second)))
+		default:
+			held = append(held, fmt.Sprintf("%s (running for %s)", h.who, time.Since(h.since).Round(time.Second)))
+		}
+	}
+	b.mu.Unlock()
+	if b.slots == 1 {
+		return "waiting for a free slot: this machine runs 1 heavy command (a build, test or install) at a time, and the slot is held by " + held[0]
+	}
+	return fmt.Sprintf("waiting for a free slot: this machine runs %d heavy commands (builds, tests, installs) at once, and the slots are held by %s", b.slots, strings.Join(held, ", "))
 }
 
 // MemoryLow reports whether free memory has fallen below half the reserve, the point where a command that keeps taking memory

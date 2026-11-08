@@ -192,3 +192,31 @@ func TestSummary(t *testing.T) {
 		t.Errorf("summary\n got %q\nwant %q", got, want)
 	}
 }
+
+// A command that waits for a slot is told what holds it: the command this process admitted, and for how long, or another
+// process when the slot is not this one's.
+func TestAWaitingCommandIsToldWhatHoldsTheSlot(t *testing.T) {
+	dir := t.TempDir()
+	a := newBudget(Settings{CPUs: 2, HeavySlots: 1}, dir, 2, 0, nil)
+	a.poll = 5 * time.Millisecond
+	first, err := a.AdmitAs(context.Background(), true, "be-2: pytest tests/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Release()
+	wait := func(b *Budget) string {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+		defer cancel()
+		var told []string
+		_, _ = b.AdmitAs(ctx, true, "mgr: pytest --collect-only", func(s string) { told = append(told, s) })
+		return strings.Join(told, "\n")
+	}
+	if got := wait(a); !strings.Contains(got, "runs 1 heavy command (a build, test or install) at a time, and the slot is held by be-2: pytest tests/ (running for") {
+		t.Fatalf("waiting in the same process was told %q", got)
+	}
+	b := newBudget(Settings{CPUs: 2, HeavySlots: 1}, dir, 2, 0, nil)
+	b.poll = 5 * time.Millisecond
+	if got := wait(b); !strings.Contains(got, "held by another process") {
+		t.Fatalf("waiting in another process was told %q", got)
+	}
+}

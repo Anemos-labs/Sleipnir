@@ -27,7 +27,6 @@ func mkStep(id string, opts ...stepOpt) rl.Step {
 }
 
 func withKind(k string) stepOpt { return func(s *rl.Step) { s.Kind = k } }
-func withRole(r string) stepOpt { return func(s *rl.Step) { s.Role = r } }
 func withSeg(seg, epoch int) stepOpt {
 	return func(s *rl.Step) { s.Segment, s.Epoch = seg, epoch }
 }

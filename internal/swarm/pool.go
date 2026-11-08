@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
@@ -112,6 +113,45 @@ func (b *Board) splitPool(by, id string, order []string, release map[string][]st
 			if err := d.put(i, t); err != nil {
 				return err
 			}
+		}
+		return nil
+	})
+	return released, err
+}
+
+// releaseMembers lets the members of release (parent -> members) leave the pools that spared them, in one change of the board, with
+// the checks of splitPool: one that has meanwhile become its pool's leader or the owner of one of its open subtasks, or left it,
+// stays where it is. released is what each pool let go.
+func (b *Board) releaseMembers(by string, release map[string][]string) (released map[string][]string, err error) {
+	err = b.mutate(by, "assign", func(d *draft) error {
+		released = map[string][]string{}
+		for parent, ids := range release {
+			i := taskIdx(d.Snapshot, parent)
+			if i < 0 {
+				continue
+			}
+			t := d.Tasks[i]
+			if t.Pool == nil || t.Status == StatusDone || t.Status == StatusFailed {
+				continue
+			}
+			var left []string
+			for _, m := range ids {
+				if slices.Contains(t.Pool.Members, m) && t.Owner != m && !ownsOpenChild(d.Snapshot, m, parent) {
+					left = append(left, m)
+				}
+			}
+			if len(left) == 0 {
+				continue
+			}
+			p := *t.Pool
+			p.Members = slices.DeleteFunc(slices.Clone(p.Members), func(m string) bool { return slices.Contains(left, m) })
+			p.Votes = slices.DeleteFunc(slices.Clone(p.Votes), func(m string) bool { return slices.Contains(left, m) })
+			p.Inspected = slices.DeleteFunc(slices.Clone(p.Inspected), func(m string) bool { return slices.Contains(left, m) })
+			t.Pool = &p
+			if err := d.put(i, t); err != nil {
+				return err
+			}
+			released[parent] = left
 		}
 		return nil
 	})
@@ -298,7 +338,10 @@ func (e *noSpareMember) Error() string { return e.msg }
 // onePoolMember is startPool's answer when the only member free for a new pool is id, which no other pool spares: Spawn gives the
 // task to that member alone (solo) instead. Reviews ran as pools of one while the other reviewer worked alone, and each spent a
 // round proposing and agreeing with itself, then made a child task with its parent's scope and worked that.
-type onePoolMember struct{ id string }
+type onePoolMember struct {
+	id      string
+	release map[string][]string // the executing pools that spared it, which it leaves once the task is its own
+}
 
 func (e *onePoolMember) Error() string {
 	return e.id + " is the only free member: it takes the task alone"
@@ -364,8 +407,12 @@ func (s *Swarm) spareMembers(req SpawnReq, all []*member) ([]*member, map[string
 	if len(spare) == 0 {
 		t := busy[0]
 		if t.Pool.Phase != "executing" {
-			return nil, nil, &noSpareMember{role: req.Role, held: t.ID + "'s pool is agreeing on its plan with every member", msg: fmt.Sprintf("the %s pool is still agreeing on %s's plan with every member; once it executes, members without a subtask of it can take another parent. Wait for that (call wait), or have %s's leader %s take this work as a child of %s",
-				req.Role, t.ID, t.ID, t.Owner, t.ID)}
+			doing, next := "agreeing on "+t.ID+"'s plan", "once it executes"
+			if t.Pool.Phase == "reconciling" { // its parts are done, and every member votes on the merged result
+				doing, next = "reconciling "+t.ID+"'s finished parts", "once it has (or goes back to executing)"
+			}
+			return nil, nil, &noSpareMember{role: req.Role, held: t.ID + "'s pool is " + doing + " with every member", msg: fmt.Sprintf("the %s pool is still %s with every member; %s, members without a subtask of it can take another parent. Wait for that (call wait), or have %s's leader %s take this work as a child of %s",
+				req.Role, doing, next, t.ID, t.Owner, t.ID)}
 		}
 		// every member and what holds it: the parent it leads, or the open subtask it owns
 		var leads []string
@@ -517,8 +564,28 @@ func (s *Swarm) startPool(req SpawnReq, files []string) (string, error) {
 		members[0], members[i] = members[i], members[0]
 	}
 	members, release = capPool(members, release, s.cfg.PoolMax)
-	if len(members) == 1 && len(release) == 0 {
+	if len(members) == 1 {
 		if t, ok := s.Board.Snapshot().Task(req.TaskID); !ok || t.Pool == nil {
+			// One member, spared by a pool that executes, would plan with nobody as well: a review pool of one so formed proposed,
+			// went idle in planning and held the review for twenty minutes. It leaves that pool and takes the task alone.
+			if len(release) > 0 && (req.Agent == "" || req.Agent == members[0].id) {
+				one := members[0]
+				one.mu.Lock()
+				idle, on := one.life == lifeIdle, one.task
+				one.mu.Unlock()
+				if !idle {
+					// Still ending the run of its last part: the task waits for it (the spawn tool queues it) rather than forming a
+					// pool around a member that cannot take it alone yet.
+					held := one.id + " is in a run"
+					if on != "" {
+						held = one.id + " works on " + on
+					}
+					return "", &noSpareMember{role: req.Role, held: held,
+						msg: fmt.Sprintf("%s pool is busy (%s); wait and reuse its existing members", req.Role, held)}
+				}
+				// It leaves that pool only once the task is its own (Spawn): a wake that starts it first leaves it where it is.
+				return "", &onePoolMember{id: one.id, release: release}
+			}
 			return "", &onePoolMember{id: members[0].id}
 		}
 	}
@@ -1306,4 +1373,12 @@ func (s *Swarm) poolGateFailed(by string, t Task, vr verifyResult) *tools.Result
 	}
 	s.wakePool(t.ID, fmt.Sprintf("The combined result failed verification (exit %d), so the pool executes again. The leader creates the fix as a child task (task create parent=%s), assigns and accepts it, then reconciles again.", vr.code, t.ID))
 	return &tools.Result{IsError: true, Text: fmt.Sprintf("Not done: the pool result failed verification (exit %d). %s executes again at revision %d so it can be repaired: create the fix as a child task (task create parent=%s), assign it (or task claim it), accept it, then pool reconcile and have every member confirm before task done.\n%s", vr.code, t.ID, rev, t.ID, tail)}
+}
+
+// taskOrTitle names the task a spawn asks for: its id, or its title when it has none yet.
+func taskOrTitle(req SpawnReq) string {
+	if req.TaskID != "" {
+		return req.TaskID
+	}
+	return strconv.Quote(cleanText(req.Title, 60))
 }

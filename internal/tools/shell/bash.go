@@ -117,6 +117,11 @@ func (t *bashTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		return fail(env, "bash: %v", err), nil
 	}
 
+	if what := endsHarness(command, os.Getpid(), selfLine(), selfName()); what != "" {
+		return fail(env, "bash: not run: %s also matches the harness's own process (pid %d), and ending it ends every agent of the "+
+			"session. End the processes you started by their pid (the one a background job reports, or $! after starting one), "+
+			"or with a pattern only they match", what, os.Getpid()), nil
+	}
 	if msg := missingLeadingCd(command, m.startDir(env, base), env.Root); msg != "" {
 		return fail(env, "bash: %s", msg), nil
 	}
@@ -298,7 +303,7 @@ func (m *Manager) runForeground(ctx context.Context, env *tools.Env, sh shellInf
 		case <-wctx.Done():
 		}
 	}()
-	adm, err := m.opts.Machine.Admit(wctx, machine.Heavy(command), func(why string) {
+	adm, err := m.opts.Machine.AdmitAs(wctx, machine.Heavy(command), slotHolder(env.Agent, command), func(why string) {
 		if env.Out != nil {
 			env.Out("stderr", "[sleipnir: "+why+"]\n")
 		}
@@ -447,4 +452,62 @@ func samePosixMeaning(command string) bool {
 		}
 	}
 	return len(f) == 0 || !windowsOwnMeaning[strings.ToLower(f[0])]
+}
+
+// slotHolder is how a heavy command is named to one that waits for its slot: the agent and the command's tool and verb, each
+// only from a fixed list ("be-2: go test", "be-1: npm run build", "be-3: python -m pytest"). The waiting command belongs
+// to another agent, and any word it wrote may be a secret (a flag's value, a header, credentials in a URL, a path or a
+// script's name), so nothing it wrote is copied: a tool or verb not on the list is left out, and a command with neither is
+// "a command". Only the line before its first quote, backslash or "$" is read, and leading KEY=value assignments are skipped.
+func slotHolder(agent, command string) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(command), "\n")
+	if i := strings.IndexAny(line, "\"'`\\$"); i >= 0 {
+		line = line[:i]
+	}
+	fields := strings.Fields(line)
+	for len(fields) > 0 && strings.Contains(fields[0], "=") {
+		fields = fields[1:]
+	}
+	label := "a command"
+	if len(fields) > 0 && (knownTools[fields[0]] || pythonName(fields[0])) {
+		words := []string{fields[0]}
+		switch {
+		case len(fields) > 2 && fields[1] == "-m" && pythonName(fields[0]) && knownTools[fields[2]]: // python -m pytest
+			words = append(words, "-m", fields[2])
+		case len(fields) > 2 && fields[1] == "run" && scriptRunners[fields[0]] && knownVerbs[fields[2]]: // npm run build
+			words = append(words, "run", fields[2])
+		case len(fields) > 1 && knownVerbs[fields[1]]:
+			words = append(words, fields[1])
+		}
+		label = strings.Join(words, " ")
+	}
+	if agent == "" {
+		return label
+	}
+	return agent + ": " + label
+}
+
+// knownTools are the build, test and install programs a slot holder may be named by.
+var knownTools = map[string]bool{
+	"go": true, "cargo": true, "rustc": true, "npm": true, "pnpm": true, "yarn": true, "bun": true, "npx": true, "node": true,
+	"deno": true, "tsc": true, "jest": true, "vitest": true, "pytest": true, "pip": true, "pip3": true, "uv": true, "poetry": true,
+	"tox": true, "mypy": true, "unittest": true, "make": true, "cmake": true, "ninja": true, "bazel": true, "mvn": true,
+	"gradle": true, "dotnet": true, "docker": true, "gcc": true, "clang": true, "swift": true, "mix": true, "bundle": true,
+	"rake": true, "composer": true, "zig": true,
+}
+
+// scriptRunners run a named script from the project's manifest: "npm run build".
+var scriptRunners = map[string]bool{"npm": true, "pnpm": true, "yarn": true, "bun": true}
+
+// knownVerbs are the subcommands and script names a slot holder may be named by besides its tool.
+var knownVerbs = map[string]bool{
+	"build": true, "test": true, "check": true, "vet": true, "install": true, "ci": true, "lint": true, "run": true,
+	"compile": true, "package": true, "verify": true, "bench": true, "clippy": true, "sync": true, "restore": true,
+	"typecheck": true, "e2e": true, "coverage": true,
+}
+
+// pythonName reports whether w names a Python interpreter (python, python3, python3.12), whose -m names the program run.
+func pythonName(w string) bool {
+	rest, ok := strings.CutPrefix(w, "python")
+	return ok && strings.Trim(rest, "0123456789.") == ""
 }

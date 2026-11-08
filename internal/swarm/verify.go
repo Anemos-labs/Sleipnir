@@ -235,7 +235,8 @@ func (s *Swarm) emptyWorkCheck(t Task, note string) TaskCheck {
 // emptyWorkError is the refusal of an accept that emptyWorkCheck holds back: what was seen, and the two ways on.
 func emptyWorkError(id, seen string) error {
 	return fmt.Errorf("%s was not accepted: the harness saw no file change in it (%s). If work is missing, reject it with what to do; "+
-		"if the task needs no change, accept it with text %q followed by why", id, seen, nothingToChange+" ")
+		"if the task needs no change, or changed files only through bash (a deletion, a sed -i), which the harness does not count as an edit, "+
+		"accept it with text %q followed by why", id, seen, nothingToChange+" ")
 }
 
 // checkTaskGate rejects an obsolete result before further merge or retry work.
@@ -271,12 +272,13 @@ func (s *Swarm) submitSettledTask(m *member, checked Task, result, evidence stri
 
 // readOnlyReport splits what a read-only worker submitted into the board's one-line result and the whole report task get shows.
 // A reviewer's findings and a scout's answer are its deliverable: cut to the line, they sent managers to recall the worker's
-// history for the verdict. The line names task get when the report holds more than it.
+// history for the verdict. The line names the report field of task get when the report holds more than it: the line alone is what task get shows as
+// the result, so a pointer to task get alone sent managers back to the same cut line.
 func readOnlyReport(id, text string) (result, report string) {
 	report = strings.TrimSpace(text)
-	result = oneLine(report, 120)
+	result = oneLine(report, 110) // with the pointer, within the board's result cap (maxResultRunes)
 	if result != oneLine(report, 0) {
-		result += " (whole report: task get " + id + ")"
+		result += " (whole report: task get " + id + ", field report)"
 	}
 	return result, report
 }

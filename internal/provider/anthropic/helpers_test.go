@@ -53,15 +53,6 @@ func golden(t *testing.T, dir, name string, got []byte) {
 
 func readFile(path string) ([]byte, error) { return os.ReadFile(path) }
 
-func fixture(t *testing.T, name string) []byte {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join("testdata", name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
-}
-
 // Schemas are canonical (sorted keys, no spaces) like the ones kv.SortTools
 // produces, so Build's verbatim pass-through and a canonical re-encode agree.
 const (

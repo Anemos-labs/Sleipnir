@@ -1286,9 +1286,6 @@ func ok(w http.ResponseWriter, v any) { _ = web.WriteJSON(w, http.StatusOK, v) }
 // okBody is the answer of an action that returns nothing.
 var okBody = map[string]bool{"ok": true}
 
-// sessionErr turns a start or resume error into a short sentence for the page.
-func sessionErr(err error) string { return clip(fmt.Sprint(err), 400) }
-
 // sha256Sum is the SHA-256 of b.
 func sha256Sum(b []byte) []byte {
 	sum := sha256.Sum256(b)

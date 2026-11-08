@@ -27,18 +27,25 @@ func TestAResumedSessionKeepsItsPlans(t *testing.T) {
 		t.Fatal(err)
 	}
 	call("mgr", map[string]any{"step": "api", "status": "done", "effort": 2, "milestone": "M1"}, map[string]any{"step": "ui", "effort": "6h"})
-	call("mgr", map[string]any{"step": "a", "status": "doing"}, map[string]any{"step": "b", "status": "doing"}) // refused: two doing
+	call("mgr", map[string]any{"step": "store", "status": "doing"}, map[string]any{"step": "page", "status": "doing"}) // two workers' steps
+	call("mgr", map[string]any{"step": "api", "status": "done", "effort": 2, "milestone": "M1"}, map[string]any{"step": "ui", "effort": "6h", "status": "doing"}, map[string]any{"step": "ci", "status": "doing"})
+	call("mgr", map[string]any{"step": "a", "status": "doing"}, map[string]any{"step": "b"}, map[string]any{"step": "c", "status": "dancing"}) // refused: no such status
 	call("be-1", map[string]any{"step": "write the store"})
+	call("be-2", map[string]any{"step": "x", "status": "doing"})
+	call("be-2", map[string]any{"step": "a", "status": "doing"}, map[string]any{"step": "b", "status": "doing"}) // refused: a worker's two doing
 	if err := l.Close(); err != nil {
 		t.Fatal(err)
 	}
 	store := plan.NewStore()
 	restorePlans(filepath.Join(dir, "events.jsonl"), store)
-	if got := store.Get("mgr"); len(got) != 2 || got[0].Status != plan.Done || got[1].Effort != 6 || got[0].Milestone != "M1" {
+	if got := store.Get("mgr"); len(got) != 3 || got[0].Status != plan.Done || got[1].Effort != 6 || got[0].Milestone != "M1" || got[2].Status != plan.Doing {
 		t.Errorf("manager: %+v", got)
 	}
 	if got := store.Get("be-1"); len(got) != 1 {
 		t.Errorf("worker: %+v", got)
+	}
+	if got := store.Get("be-2"); len(got) != 1 || got[0].Step != "x" {
+		t.Errorf("a worker's refused plan of two steps doing was restored: %+v", got)
 	}
 	if got := store.Get("main"); len(got) != 0 {
 		t.Errorf("a plan from before the goal: %+v", got)

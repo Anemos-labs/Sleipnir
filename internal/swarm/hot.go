@@ -185,12 +185,12 @@ func RenderHot(s *Snapshot, agent, role string, isManager bool, cfg HotConfig, e
 		if rank[a.ID] < rankOthers || isManager {
 			prio = 4
 		}
-		lines = append(lines, hline{prio: prio, sec: 3, text: agentLine(a), drop: pos[a.ID], agent: a.ID})
+		lines = append(lines, hline{prio: prio, sec: 3, text: agentLine(a, s), drop: pos[a.ID], agent: a.ID})
 	}
 	namesAt := len(lines) // the "not shown" line ends the team section
 	lines = append(lines, hline{prio: 1, sec: 3})
 
-	// 5: notes proposed for shared context but not yet merged: the newest few.
+	// 5: the team's notes on the board: the newest few, each with its id (so its author can withdraw it).
 	var notes []Note
 	for _, n := range s.Notes {
 		if n.Scope == "role" && n.Role != role {
@@ -204,7 +204,7 @@ func RenderHot(s *Snapshot, agent, role string, isManager bool, cfg HotConfig, e
 		notes = notes[len(notes)-maxHotNotes:]
 	}
 	for _, n := range notes {
-		add(5, 4, "- %s (%s)", n.Text, n.From)
+		add(5, 4, "- #%d %s (%s)", n.ID, n.Text, n.From)
 	}
 
 	// Assemble under budget: drop the highest priority numbers first (within one
@@ -439,7 +439,7 @@ func assemble(lines []hline, keep []bool, version uint64, agents, running, idle,
 				}
 				sb.WriteString("):\n")
 			case 4:
-				sb.WriteString("proposed shared notes (not yet merged):\n")
+				sb.WriteString("team notes (unverified facts from teammates):\n")
 			}
 			last = l.sec
 		}
@@ -486,11 +486,16 @@ func taskLine(t Task) string {
 	return s
 }
 
-// agentLine formats an agent's identity, state, optional task, and bounded activity description.
-func agentLine(a AgentInfo) string {
+// agentLine formats an agent's identity, state, optional task, and bounded activity description. A task the board has closed is
+// said to be closed: an agent keeps its task until its run ends, and "dc-1 docs running T29" read as T29 still being worked on
+// minutes after it was accepted.
+func agentLine(a AgentInfo, snap *Snapshot) string {
 	s := fmt.Sprintf("%s %s %s", a.ID, a.Role, a.State)
 	if a.Task != "" {
 		s += " " + a.Task
+		if t, ok := snap.Task(a.Task); ok && (t.Status == StatusDone || t.Status == StatusFailed) {
+			s += " (" + string(t.Status) + ")"
+		}
 	}
 	if a.Line != "" {
 		s += " — " + oneLine(a.Line, 70)

@@ -50,14 +50,6 @@ func rawGit(t testing.TB, dir string, args ...string) string {
 	return strings.TrimRight(string(out), "\n")
 }
 
-func rawGitMayFail(dir string, args ...string) string {
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	cmd.Env = fixtureEnv(os.TempDir())
-	out, _ := cmd.CombinedOutput()
-	return string(out)
-}
-
 func isolateHome(t testing.TB) string {
 	t.Helper()
 	home := t.TempDir()

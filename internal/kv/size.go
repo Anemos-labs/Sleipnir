@@ -85,9 +85,6 @@ func (z Sizer) Turns(turns []core.Turn) int {
 	return n
 }
 
-// Snapshot is the size of a thread snapshot as sent.
-func (z Sizer) Snapshot(s Snapshot) int { return z.Turns(s.Turns) }
-
 // SentBlockTokens sizes a block that is already part of a rendered prompt:
 // whatever Render kept is sent, thinking included (by its wire form).
 func SentBlockTokens(b core.Block, est core.Estimator) int {

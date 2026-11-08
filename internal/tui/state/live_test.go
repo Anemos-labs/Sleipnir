@@ -142,18 +142,6 @@ func toolResults(c *mock.Call) string {
 	return strings.Join(out, "\n")
 }
 
-// toolCalled reports whether the thread holds a call of the tool whose arguments contain sub.
-func toolCalled(c *mock.Call, name, sub string) bool {
-	for _, m := range c.Messages {
-		for _, tc := range m.ToolCalls {
-			if tc.Name == name && strings.Contains(tc.Args, sub) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // jumpClock is the mock endpoint's clock: the real one, plus whatever the script added. Moving it forward ages every entry of the
 // endpoint's cache at once, which is how a session gets a cache that went cold without the harness having waited for it.
 type jumpClock struct {
