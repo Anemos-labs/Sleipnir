@@ -348,6 +348,11 @@ func (d *draft) setTask(t Task) {
 	if t.Pool != nil {
 		d.set("pool", t.Pool)
 	}
+	if t.Solo {
+		// A resumed team rebuilds its board from the log: without it a solo task came back as an ordinary parent, and the
+		// manager's spawn of it after the restart formed a pool of the role.
+		d.set("solo", true)
+	}
 	d.set("status", string(t.Status))
 	d.set("owner", t.Owner)
 	d.set("line", t.Line)

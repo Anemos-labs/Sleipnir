@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A solo task stays solo when a team is resumed: board events record `solo`,
+  and the board a resumed team starts from, rebuilt from the session log,
+  keeps it. A log written before this change has no `solo` operand, so its
+  solo tasks still come back as ordinary parents. Before, a spawn of such a
+  task after a restart formed a pool of the role. No prompt bytes change in
+  the system prompt or tool specs.
+
 - A tool call under another harness's name for a tool runs as that tool. The
   same name in another case or separator convention (`Read`, `Bash`,
   `WebFetch`, `BashOutput`, `apply-patch`) always does; a usual alias

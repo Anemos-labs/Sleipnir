@@ -184,3 +184,33 @@ func TestReadyTasksOfARoleRunSideBySideInsteadOfPooling(t *testing.T) {
 		t.Fatal("a pool was started while other tasks of the role were ready")
 	}
 }
+
+// A solo task stays solo across a resume: the board a resumed team starts from is rebuilt from the log, which did not record
+// it, and the manager's spawn of the task after a restart then formed a pool of the role.
+func TestASoloTaskStaysSoloWhenTheBoardIsReplayed(t *testing.T) {
+	log := events.NewMemLog()
+	b := NewBoard(log)
+	tk, err := b.CreateTask("mgr", TaskSpec{Title: "parser", Role: "backend", Files: []string{"lib/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.assignTask(assignReq{by: "mgr", agent: "be-1", id: tk.ID, solo: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := b.Requeue("be-1", tk.ID, b.Snapshot().Tasks[0].Rev, "the session was resumed", false, 0); !ok {
+		t.Fatal("requeue")
+	}
+	live := b.Snapshot()
+	got, err := ReplayBoard(log.All())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt, _ := got.Task(tk.ID)
+	if !rt.Solo {
+		t.Fatalf("the replayed task lost solo: %+v", rt)
+	}
+	lt, _ := live.Task(tk.ID)
+	if rt.Solo != lt.Solo || rt.Status != lt.Status {
+		t.Errorf("replay %+v, live %+v", rt, lt)
+	}
+}
