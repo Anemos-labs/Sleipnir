@@ -7,6 +7,22 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A tool call under another harness's name for a tool runs as that tool. The
+  same name in another case or separator convention (`Read`, `Bash`,
+  `WebFetch`, `BashOutput`, `apply-patch`) always does; a usual alias
+  (`read_file`, `write_file`, `edit_file`, `MultiEdit`, `run_shell_command`,
+  `fetch_url`, `google_web_search`, `list_directory`, `KillShell`...) does when
+  every argument of the call is one the tool takes, of its type, and the
+  required ones are there. Otherwise the call is still answered as an unknown
+  tool with a suggestion: Codex's `shell` with its command as an array, or
+  Gemini's `replace` with `expected_replacements`, mean something else.
+  Permission rules, hooks and the display see the tool that ran, and the event
+  log's `tool.call` names it (`as`). Before, such a call was refused and cost
+  the model a step; models trained on Claude Code, Gemini CLI or Codex
+  transcripts call these names by habit. Tools may declare argument synonyms
+  (`tools.ArgSynonyms`); `read`, `write` and `edit` declare `file_path`.
+  Prompt bytes: none change.
+
 - A parent that only one member spared by an executing pool can take goes to
   that member alone, as a solo task, after it leaves that pool: it used to form
   a pool of one, which planned with nobody and could sit in planning. The
