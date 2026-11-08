@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A context window guessed from a server that seemed to cut the prompt off
+  is withdrawn when a later prompt is read past it: the window it replaced is
+  back, the agent says so once (an `info` notice and a
+  `truncated_prompt_withdrawn` cache anomaly), and no window is guessed again
+  for that agent. Before, one wobble in a server's token counts kept an agent
+  compacting before nearly every request for the rest of the run. No prompt
+  bytes change in the system prompt or tool specs.
 - A solo task stays solo when a team is resumed: board events record `solo`,
   and the board a resumed team starts from, rebuilt from the session log,
   keeps it. A log written before this change has no `solo` operand, so its

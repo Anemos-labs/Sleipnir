@@ -729,10 +729,27 @@ func backoff(attempt int, retryAfter time.Duration) time.Duration {
 // model's window, 4096 tokens on a small graphics card, without a word). The sign is in the usage it reports: the prompt grew between two
 // requests (by 5% of its bytes or more) and the tokens it reports did not (within 1%), at a size of 512 tokens or more. The window is then
 // that many tokens, rounded up to 256: the agent plans its compactions against it from now on, and says so once.
+//
+// The sign can mislead: a server whose token counts wobble between two requests looks the same. A server that cuts the prompt off never
+// reports more than its window, so a later prompt read past the guessed window proves the guess wrong: it is withdrawn (the window it
+// replaced is back), the agent says so once, and no window is guessed again, so the planner does not keep compacting against a limit the
+// server does not have.
 func (a *Agent) noteTruncation(bytes, totalIn int) {
 	a.mu.Lock()
-	prevBytes, prevIn, done := a.truncBytes, a.truncIn, a.truncated
+	prevBytes, prevIn, done := a.truncBytes, a.truncIn, a.truncated || a.truncWithdrawn
 	a.truncBytes, a.truncIn = bytes, totalIn
+	if a.truncated && !a.truncWithdrawn && a.truncWindow > 0 && totalIn > a.truncWindow {
+		guessed := a.truncWindow
+		a.truncated, a.truncWithdrawn = false, true
+		if a.cfg.Model.ContextTokens == guessed {
+			a.cfg.Model.ContextTokens = a.truncPrior
+		}
+		a.mu.Unlock()
+		a.emit(events.TypeCacheAnomaly, map[string]any{"kind": "truncated_prompt_withdrawn", "reported_tokens": totalIn, "window": guessed})
+		a.cfg.Sink.Notice(a.cfg.ID, "info", fmt.Sprintf("the server has now read %d tokens of one prompt, more than the %d-token window guessed from an earlier one: "+
+			"it does not cut the prompt off at that size, so the guess is withdrawn and the conversation is no longer kept inside it", totalIn, guessed))
+		return
+	}
 	a.mu.Unlock()
 	if done || prevIn == 0 || totalIn < 512 {
 		return
@@ -748,6 +765,7 @@ func (a *Agent) noteTruncation(bytes, totalIn int) {
 	a.mu.Lock()
 	a.truncated = true
 	if a.cfg.Model.ContextTokens == 0 || window < a.cfg.Model.ContextTokens {
+		a.truncWindow, a.truncPrior = window, a.cfg.Model.ContextTokens
 		a.cfg.Model.ContextTokens = window
 	}
 	a.mu.Unlock()
