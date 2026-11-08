@@ -2,6 +2,7 @@ package env
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -25,11 +26,17 @@ var KnownTools = []string{
 // judged here: `rl tasks check` and rollouts skip it instead of reporting an
 // unsound task or an infrastructure failure.
 func (m *Workspaces) MissingTools(t rl.Task) []string {
+	var missing []string
+	if t.Container != nil {
+		// The image brings the task's tools; docker itself runs on the harness's PATH.
+		if _, err := exec.LookPath("docker"); err != nil {
+			missing = append(missing, "docker")
+		}
+	}
 	if len(t.Requires) == 0 {
-		return nil
+		return missing
 	}
 	env := EnvMap(m.commandEnv(m.root, m.root, t.Network, ""))
-	var missing []string
 	for _, name := range t.Requires {
 		if !onPath(name, env["PATH"], env["PATHEXT"], runtime.GOOS) {
 			missing = append(missing, name)

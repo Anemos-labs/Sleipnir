@@ -207,7 +207,46 @@ func validateTask(t rl.Task) []*TaskError {
 		}
 	}
 
+	errs = append(errs, validateContainer(t)...)
 	errs = append(errs, validateVerifier(t)...)
+	return errs
+}
+
+var (
+	// imageRe is an image reference as docker takes it: no leading dash (an option), no whitespace or control characters.
+	imageRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,254}$`)
+	// memoryRe is a docker memory limit: a number with an optional b, k, m or g.
+	memoryRe = regexp.MustCompile(`^[1-9][0-9]*[bkmgBKMG]?$`)
+)
+
+// validateContainer checks container: an image reference docker would not read as an option, an absolute Workdir that is
+// not the root, a PATH without line breaks, and non-negative, finite limits in docker's syntax.
+func validateContainer(t rl.Task) []*TaskError {
+	c := t.Container
+	if c == nil {
+		return nil
+	}
+	var errs []*TaskError
+	add := func(field, format string, args ...any) {
+		errs = append(errs, &TaskError{ID: t.ID, Field: "container." + field, Msg: fmt.Sprintf(format, args...)})
+	}
+	if !imageRe.MatchString(c.Image) {
+		add("image", "%q is not an image reference", c.Image)
+	}
+	if c.Workdir != "" && (!path.IsAbs(c.Workdir) || path.Clean(c.Workdir) != c.Workdir || c.Workdir == "/") {
+		add("workdir", "%q must be a clean absolute path other than /", c.Workdir)
+	} else if c.Workdir != "" && bindable(c.Workdir) != nil {
+		add("workdir", "%q cannot be mounted into a container (no commas, quotes or line breaks)", c.Workdir)
+	}
+	if strings.ContainsAny(c.Path, "\n\r\x00") {
+		add("path", "must not contain line breaks")
+	}
+	if c.CPUs < 0 || math.IsNaN(c.CPUs) || math.IsInf(c.CPUs, 0) {
+		add("cpus", "must be a finite, non-negative number")
+	}
+	if c.Memory != "" && !memoryRe.MatchString(c.Memory) {
+		add("memory", "%q must be a number with an optional b, k, m or g", c.Memory)
+	}
 	return errs
 }
 

@@ -97,6 +97,11 @@ type ExecPolicy struct {
 	// directories the command may use beyond the read-only view: its tree, HOME
 	// and TMPDIR. Nil runs the command unconfined.
 	Mounts *Mounts
+	// Container, when set, runs the command in the task's image through docker
+	// instead of on the host; Mounts then name the directories mounted in. The
+	// container is the isolation: the bubblewrap confinement and the network
+	// namespace are not used.
+	Container *ContainerRun
 
 	env []string // the command's environment, set by Exec for the confinement's PATH and cache binds
 }
@@ -326,7 +331,24 @@ func (s *LocalSandbox) Exec(ctx context.Context, dir string, env []string, cmd s
 	if strings.ContainsRune(cmd, 0) {
 		return ExecResult{ExitCode: -1}, errors.New("command contains a NUL byte")
 	}
-	argv, warns := s.argv(cmd, pol)
+	var argv, warns []string
+	if pol.Container != nil {
+		c := *pol.Container
+		if c.Dir == "" {
+			c.Dir = dir
+		}
+		var mt Mounts
+		if pol.Mounts != nil {
+			mt = *pol.Mounts
+		}
+		pre, err := containerArgv(c, mt, pol.Network, env)
+		if err != nil {
+			return ExecResult{ExitCode: -1}, err
+		}
+		argv = append(pre, "sh", "-c", cmd)
+	} else {
+		argv, warns = s.argv(cmd, pol)
+	}
 	res := ExecResult{ExitCode: -1, Warnings: warns}
 
 	c := exec.Command(argv[0], argv[1:]...)

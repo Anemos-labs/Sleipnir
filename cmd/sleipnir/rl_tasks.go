@@ -335,6 +335,10 @@ func tasksCheck(ctx context.Context, args []string, stdout, stderr io.Writer) er
 				v.Skipped, v.Missing, v.Reason = true, missing, "missing "+strings.Join(missing, ", ")
 				return
 			}
+			if why := ws.ContainerConflict(t); why != "" {
+				v.Skipped, v.Reason = true, why
+				return
+			}
 			var meta struct {
 				GoldBlob  string          `json:"gold_blob"`
 				GoldBlobs json.RawMessage `json:"gold_blobs"`
