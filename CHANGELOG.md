@@ -7,6 +7,10 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The commit of a documentation catch-up that covers the manager's own edits
+  no longer says "manager": its title's label, "(manager)" or "(manager,
+  T10)", is dropped from the subject the way board ids already were, leaving
+  "Docs: catch up". No prompt bytes change in the system prompt or tool specs.
 - A context window guessed from a server that seemed to cut the prompt off
   is withdrawn when a later prompt is read past it: the window it replaced is
   back, the agent says so once (an `info` notice and a
