@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A child of an executing pool that waits in review raises its stall check
+  with the pool's leader, which accepts it, and not with the manager: the
+  nudge says "As the leader of T5, read it (task get T9) and accept it (task
+  accept id=T9), or mail the manager what it lacks". An unanswered finding
+  still escalates to the manager. Before, the manager was told to accept or
+  reject the child, which is the leader's part. The `swarm.stall` event
+  carries the pool's id as `pool`. No prompt bytes change in the system
+  prompt or tool specs.
 - A built-in `shodan` skill looks up, without a Shodan account or key, what
   Shodan's scanners last saw on a public IP or domain (open ports,
   hostnames, CPEs, tags and the CVEs those versions imply, from InternetDB)

@@ -116,6 +116,8 @@ type Stall struct {
 	Notify string `json:"notify,omitempty"`
 	// Detail is one deterministic line saying what was observed.
 	Detail string `json:"detail"`
+	// Pool is the pool whose leader was told, for a child of that pool in review, or "".
+	Pool string `json:"pool,omitempty"`
 }
 
 // key identifies a finding across sweeps; the detail may change without re-raising it.
@@ -525,12 +527,20 @@ func (s *Swarm) stallFindings() []Stall {
 				continue
 			}
 			n, waited := mv.turns-since.turns, now.Sub(since.at)
+			// A child of an executing pool is its leader's to accept, not the manager's: told to decide one, a manager could only
+			// do the leader's part over its head. The leader hears first; escalation still brings an unanswered finding to the manager.
+			decider, pool := mgr, ""
+			if p, ok := snap.Task(t.Parent); ok && t.Parent != "" && p.Pool != nil && p.Owner != "" && p.Owner != mgr {
+				if _, onTeam := views[p.Owner]; onTeam && poolChildAuthority(snap, p.Owner, p.ID, t.Role) == nil {
+					decider, pool = p.Owner, p.ID
+				}
+			}
 			switch {
 			case n >= k:
-				out = append(out, Stall{Kind: StallReviewStarved, Task: t.ID, Agent: mgr, Notify: mgr,
+				out = append(out, Stall{Kind: StallReviewStarved, Task: t.ID, Agent: decider, Notify: decider, Pool: pool,
 					Detail: fmt.Sprintf("%s has waited in review for %d manager turns", t.ID, n)})
 			case waited >= reviewStarvedAfter:
-				out = append(out, Stall{Kind: StallReviewStarved, Task: t.ID, Agent: mgr, Notify: mgr,
+				out = append(out, Stall{Kind: StallReviewStarved, Task: t.ID, Agent: decider, Notify: decider, Pool: pool,
 					Detail: fmt.Sprintf("%s has waited in review for %d minutes", t.ID, int(waited/time.Minute))})
 			}
 		}
@@ -724,6 +734,10 @@ func stallNudge(f Stall, k int64, pools bool) string {
 	case StallBlockedCycle:
 		return "Stall check: tasks are " + f.Detail + ", so none of them can continue. Decide one (resume it with what it needs), or fail one with reason blocked_on."
 	case StallReviewStarved:
+		if f.Pool != "" {
+			return fmt.Sprintf("Stall check: %s. As the leader of %s, read it (task get %s) and accept it (task accept id=%s), or mail the manager what it lacks.",
+				f.Detail, f.Pool, f.Task, f.Task)
+		}
 		return fmt.Sprintf("Stall check: %s. Read it (task get %s), then accept or reject it.", f.Detail, f.Task)
 	case StallIdleCapacity:
 		return "Stall check: " + f.Detail + ". If the objective needs more than the open tasks (a requirement nobody has started, a gap you found), " +
