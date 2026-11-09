@@ -7,6 +7,13 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A worker's `task done` in a run with no verifier is held once when its last
+  test ran with its exit status masked (piped into `tail`, followed by another
+  command) and the line printed no status of its own: the worker is asked to
+  run it again so its status shows. The next `done` at the same revision goes
+  through. Before, such a run reached the manager as evidence quoting only the
+  output's last line, and a broken test invocation could look green. No
+  prompt bytes change in the system prompt or tool specs.
 - The commit of a documentation catch-up that covers the manager's own edits
   no longer says "manager": its title's label, "(manager)" or "(manager,
   T10)", is dropped from the subject the way board ids already were, leaving
