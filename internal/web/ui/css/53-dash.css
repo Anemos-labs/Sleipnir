@@ -139,3 +139,10 @@
 .stalls.dense .stall[data-state="ask"]{box-shadow:0 0 0 1px var(--warm-b)}
 @container card (min-height:620px){.stalls.dense .stall{flex-direction:column;align-items:stretch;padding:5px 7px}.stalls.dense .stall .s-nums{display:flex}.stalls.dense .stall .s-st .sw{display:inline}}
 @container card (max-width:420px){.sgroup{grid-template-columns:minmax(0,1fr)}.sg-m{flex-basis:auto}}
+/* stacked (a phone, a narrow window): the task board grows to its cards, so that every card shows its title and what it waits for
+   instead of a 30 px slice of each column */
+.dash[data-stack="1"] .dcard:has(.kan){height:auto;min-height:0;container-type:inline-size}
+.dash[data-stack="1"] .dcard:has(.kan)>.dc-body{flex:none;height:auto;overflow:visible}
+.dash[data-stack="1"] .dcard:has(.kan) .panel{overflow:visible}
+.dash[data-stack="1"] .kan{grid-template-rows:none;grid-auto-rows:auto;overflow:visible}
+.dash[data-stack="1"] .kan .bcol,.dash[data-stack="1"] .kan .cl{overflow:visible;max-height:none;height:auto}
