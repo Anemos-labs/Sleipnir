@@ -50,11 +50,20 @@ func (s *Swarm) docsScopeFor(b []docsChange) []string {
 	if root == "" {
 		return out
 	}
-	seen := map[string]bool{}
+	seen, seenProject := map[string]bool{}, map[string]bool{}
 	for _, c := range b {
 		for _, f := range c.files {
 			dir := docsDirOf(f)
-			if dir == "" || dir == "." || dir == "docs" || seen[dir] {
+			if dir == "" || dir == "." || dir == "docs" {
+				continue
+			}
+			// The project is found for every entry, before the Markdown search's cache can skip it: a walk up from a nested
+			// project (outer/inner, its own go.mod) marks outer seen, and a later change to outer/ still lies in outer's project.
+			if proj := projectDirOf(root, dir); proj != "" && !seenProject[proj] {
+				seenProject[proj] = true
+				out = append(out, proj+"/README.md")
+			}
+			if seen[dir] {
 				continue
 			}
 			var matches []string
@@ -72,10 +81,6 @@ func (s *Swarm) docsScopeFor(b []docsChange) []string {
 				if rel, err := filepath.Rel(root, m); err == nil && filepath.IsLocal(rel) {
 					out = append(out, filepath.ToSlash(rel))
 				}
-			}
-			if proj := projectDirOf(root, dir); proj != "" && !seen["project:"+proj] {
-				seen["project:"+proj] = true
-				out = append(out, proj+"/README.md")
 			}
 		}
 	}

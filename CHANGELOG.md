@@ -30,9 +30,10 @@ they do not indicate whether a change has been released.
   prompt bytes change in the system prompt or tool specs.
 - A documentation catch-up writes the README of a project that has none, from
   what is merged (what it is, how to install, run and test it). Before, its
-  brief ruled that out, so a goal that asked for a README got a pass that
-  edited nothing, and the manager had to create a task of its own for it. A
-  catch-up still adds no `AGENTS.md`. The catch-up task's description changes
+  brief ruled that out, and a pass in a project with no README edited nothing.
+  A catch-up still adds no `AGENTS.md`. Its scope names the README of every
+  project a change lies in, also when a change to a project nested inside it
+  came first in the same pass. The catch-up task's description changes
   (a tool result the docs worker reads); the system prompt and tool specs do
   not.
 - The commit of a documentation catch-up that covers the manager's own edits
