@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Text shown to agents (task descriptions, notes, mail, the live board,
+  verifier output) keeps its angle brackets unless one could start a tag: only
+  a "<" followed by a letter, "/", "!" or "?" becomes "‹". Before, every "<"
+  and ">" became "‹" and "›", so a version range ">=1.2.3 <2.0.0" or an arrow
+  "->" reached the worker altered, and a worker copied the altered glyphs into
+  a file it wrote. A "<live>", "</my-notes>" or "<system-reminder>" in such
+  text is still defused. Tool results whose text held a ">" or a "<" that
+  starts no tag change their bytes; the system prompt and tool specs do not.
 - The manager role no longer says "Do not verify accepted work with tests of
   your own". It now says not to re-run tests the verifier or a reviewer already
   ran, and that checking what no test covers (an exit code, a message, a file
