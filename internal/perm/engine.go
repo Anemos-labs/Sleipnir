@@ -25,6 +25,10 @@ type Config struct {
 	// steer a later session): what the person trusted, their settings and skills and the record of every session are in it. A write
 	// there asks, in every mode, as a write to ~/.sleipnir does; an unattended session refuses it.
 	StateDir string
+	// ShippedDirs are directories of code the harness itself ships and keeps under StateDir (the built-in skills). Running a script
+	// directly inside one, or reading a file there, is not a write to the state directory and does not ask because of where the
+	// file was unpacked; a write there still does.
+	ShippedDirs []string
 	// RecordDirs are further directories the harness keeps its own record in (a session recorded outside StateDir): a later
 	// resume reads what was approved from them, so a write there asks as one to StateDir does.
 	RecordDirs []string
@@ -335,6 +339,9 @@ func NewEngine(cfg Config) (*Engine, error) {
 		rs.roots = append(rs.roots, rootPair{lex: rs.tmp, real: rs.tmpReal})
 	}
 	rs.addTreeParents(cfg.TreeParents)
+	for _, d := range cfg.ShippedDirs {
+		rs.shipped = append(rs.shipped, realPath(cleanAbs(d)))
+	}
 	e := &Engine{cfg: cfg, rs: rs, mode: mode, roles: map[string]*profile{}, persisted: map[Rule]bool{}}
 	configured := func(action Action) func(string) string {
 		return func(rule string) string {

@@ -730,6 +730,9 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 		v.explicit = !r.blanket
 		return v
 	}
+	if !a.write && ev.rs.isShipped(a) {
+		return allow("a file the harness ships")
+	}
 	switch mode {
 	case ModeBypass, ModeYolo:
 		return allow(string(mode) + " mode")

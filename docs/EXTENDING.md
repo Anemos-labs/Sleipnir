@@ -216,7 +216,7 @@ directory above (a skill of yours with the same name replaces one, with a warnin
 The role prompts say when each role loads which, so a team uses them without being asked: the manager and the
 architect load `spec` (the architect also `codebase-design`), the backend, frontend and tester `tdd` and `diagnose`,
 devops `diagnose`, `vuln-check` and `shodan`, the frontend `prototype` (and `landing-page-design` for a site), the reviewer `code-review` (and `vuln-check` or `shodan` for dependencies, a pinned version or a public host) and docs `plain-writing`; the constitution
-points every agent at `diagnose` for a hard bug. `tools.builtin_skills = false` leaves every built-in skill out (the
+points every agent at `diagnose` for a hard bug. Built-in skills are unpacked under the state directory, and a script of theirs run as an interpreter's first word (`node <skill>/x.mjs`) does not ask because of that location, nor does reading their files; the command still needs its own permission (`--allow 'Bash(node:*)'`), and writes there still ask. `tools.builtin_skills = false` leaves every built-in skill out (the
 role prompts still name them, and the `skill` tool answers such a request with the skills that exist).
 
 Only their one-line descriptions are in the listing; a body is read when the model loads the skill. They are written
