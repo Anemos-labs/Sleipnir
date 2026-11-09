@@ -146,3 +146,6 @@
 .dash[data-stack="1"] .dcard:has(.kan) .panel{overflow:visible}
 .dash[data-stack="1"] .kan{grid-template-rows:none;grid-auto-rows:auto;overflow:visible}
 .dash[data-stack="1"] .kan .bcol,.dash[data-stack="1"] .kan .cl{overflow:visible;max-height:none;height:auto}
+/* stacked: the Workspace's list is as tall as its rows (at most 360 px), so that the diff of the selected file follows it on screen */
+.dash[data-stack="1"] .dcard.dc-ws-left{height:auto;min-height:0;max-height:360px;container-type:inline-size}
+.dash[data-stack="1"] .dcard.dc-ws-left>.dc-body{flex:1 1 auto;height:auto;min-height:0}
