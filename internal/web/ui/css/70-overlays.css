@@ -37,8 +37,11 @@
 .tbl tr.sel td{background:var(--raise)}
 .btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line2);background:var(--panel2);border-radius:2px;padding:4px 10px;font:600 12px var(--f-ui);color:var(--fg2)}
 .btn:hover{border-color:var(--dim);color:var(--bright)}
-.btn.pri{border-color:var(--mgr);color:var(--mgr)}
-.btn.pri:hover{background:var(--mgr-a)}
+/* the primary action of a page or a form is the one filled button on it */
+.btn.pri{border-color:var(--mgr);background:var(--mgr);color:var(--on-accent);font-weight:700}
+.btn.pri:hover{border-color:var(--mgr);color:var(--on-accent);filter:brightness(1.12)}
+/* a row's own action in a table stays outlined: a column of filled buttons would drown the page's one */
+.tbl .btn.pri{background:transparent;color:var(--mgr);font-weight:600}.tbl .btn.pri:hover{background:var(--mgr-a);color:var(--mgr);filter:none}
 .btn.danger{border-color:var(--err);color:var(--err)}
 .btn.danger:hover{background:var(--err-a)}
 .btn[disabled]{opacity:.45;cursor:not-allowed}
