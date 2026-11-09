@@ -426,11 +426,22 @@ func (s *Swarm) integrate(ctx context.Context, m *member, t Task, message string
 			worker := article(owners[0]) + " " + joinWords(owners, "or") + " worker"
 			return integration{bounce: "Not done: the merge queue refused your work: " + reason +
 				". Revert those files in your tree: only " + worker + " may change them (if your task needs the change, ask the manager (mail) to create a task for " +
-				worker + "). Then call task done again."}
+				worker + ")." + howToRevert(res) + " Then call task done again."}
 		}
 		return integration{bounce: "Not done: the merge queue refused your work: " + reason +
-			". Fix that in your tree (revert files outside your scope, or ask the manager to widen it), then call task done again."}
+			". Fix that in your tree (revert files outside your scope, or ask the manager to widen it)." + howToRevert(res) + " Then call task done again."}
 	}
+}
+
+// howToRevert says how to undo a refused file change that is already committed, which a clean git status
+// hides: the queue judges the commits, so the file has to go back to the integration branch's version.
+// Empty when the refusal names no files.
+func howToRevert(res *workspace.Result) string {
+	if len(res.Files) == 0 || res.Before == "" {
+		return ""
+	}
+	return " A change you committed counts even when git status is clean: git checkout " + short(res.Before) +
+		" -- FILE puts a file back as the integration branch has it (a deleted one too), and git rm FILE removes one you added."
 }
 
 // ownedRefusal is the merge queue's check of a submission by an agent of role

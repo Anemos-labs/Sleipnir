@@ -666,7 +666,7 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 		}
 		if s.Refuse != nil {
 			out, why := refused(files, s.Refuse)
-			if out, why, err = changedFromTip(ctx, hist, prev, theirs, out, why); err != nil {
+			if out, why, _, err = changedFromTip(ctx, hist, prev, theirs, out, why); err != nil {
 				return nil, err
 			}
 			if len(out) > 0 {
@@ -676,12 +676,13 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 		}
 		if s.EnforceScope && len(s.Scope) > 0 {
 			out := OutOfScopeForMerge(files, s.Scope)
-			if out, _, err = changedFromTip(ctx, hist, prev, theirs, out, nil); err != nil {
+			var changes []gitx.FileChange
+			if out, _, changes, err = changedFromTip(ctx, hist, prev, theirs, out, nil); err != nil {
 				return nil, err
 			}
 			if len(out) > 0 {
 				res.Files = out
-				return q.reject(res, fmt.Sprintf("changed %d file(s) outside its scope: %s%s", len(out), strings.Join(firstN(out, 8), ", "), moreFiles(out, 8))), nil
+				return q.reject(res, fmt.Sprintf("changed %d file(s) outside its scope: %s%s", len(out), strings.Join(howChanged(firstN(out, 8), changes), ", "), moreFiles(out, 8))), nil
 			}
 		}
 	}
@@ -915,18 +916,19 @@ func (q *Queue) publish(ctx context.Context, after, prev, agent string) error {
 // changedFromTip keeps the files (and their reasons, when why is given) whose content in theirs
 // differs from the tip's. A submission that changed a file only to what the integration branch
 // already holds, as when a formatter rewrote code the tip had already reformatted, changes
-// nothing there when merged, so that file does not count against its scope.
-func changedFromTip(ctx context.Context, hist *gitx.Repo, tip, theirs string, files, why []string) ([]string, []string, error) {
+// nothing there when merged, so that file does not count against its scope. It also returns the
+// changes from the tip to theirs among files (nil when the list was too long to read whole).
+func changedFromTip(ctx context.Context, hist *gitx.Repo, tip, theirs string, files, why []string) ([]string, []string, []gitx.FileChange, error) {
 	if len(files) == 0 {
-		return files, why, nil
+		return files, why, nil, nil
 	}
 	d, err := hist.Diff(ctx, tip, gitx.DiffOptions{To: theirs, Paths: files, NoPatch: true, MaxFiles: 1 << 20})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if d.Truncated {
 		// An incomplete list cannot show a file to be unchanged: keep them all.
-		return files, why, nil
+		return files, why, nil, nil
 	}
 	differ := map[string]bool{}
 	for _, f := range d.Files {
@@ -944,7 +946,27 @@ func changedFromTip(ctx context.Context, hist *gitx.Repo, tip, theirs string, fi
 			}
 		}
 	}
-	return keep, keepWhy, nil
+	return keep, keepWhy, d.Files, nil
+}
+
+// howChanged names each of files with how changes (from the integration tip to the submission) record it:
+// "a.txt (deleted)", "b.txt (added)", and a file changed in place by its path alone. A worker that committed a deletion finds no trace of the file in
+// its tree or in git status, and cannot tell from the bare path what it is asked to put back.
+func howChanged(files []string, changes []gitx.FileChange) []string {
+	how := map[string]string{}
+	for _, c := range changes {
+		switch c.Status {
+		case 'D':
+			how[c.Path] = " (deleted)"
+		case 'A':
+			how[c.Path] = " (added)"
+		}
+	}
+	out := make([]string, len(files))
+	for i, f := range files {
+		out[i] = f + how[f]
+	}
+	return out
 }
 
 // refused asks refuse about each file once and returns, sorted by path, the files it

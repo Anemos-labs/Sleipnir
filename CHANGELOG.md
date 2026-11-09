@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The merge queue's refusal for files outside a task's scope marks each file
+  the submission deleted or added, compared with the integration branch:
+  "changed 1 file(s) outside its scope: .gitignore (deleted)". The worker's
+  bounce also says how to undo a change that is already committed, which a
+  clean git status hides: `git checkout <tip> -- FILE` puts a file back as the
+  integration branch has it, and `git rm FILE` removes one the worker added.
+  A worker that had committed a deletion could not find the file it was asked
+  to revert, and resubmitted the same commit until the manager stepped in.
+
 - A child of an executing pool that waits in review raises its stall check
   with the pool's leader, which accepts it, and not with the manager: the
   nudge says "As the leader of T5, read it (task get T9) and accept it (task
