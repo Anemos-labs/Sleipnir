@@ -985,7 +985,7 @@ func TestQueueLetsRegeneratedLockfilesThroughTheScopeCheck(t *testing.T) {
 	edit(t, stray, "Cargo.lock", "version = 4\n# regenerated\n")
 	edit(t, stray, "src/main.rs", "fn main() {}\n")
 	r := mustSubmit(t, e.q, Submission{Tree: stray, Task: "stray", Scope: scope, EnforceScope: true})
-	if r.Outcome != OutcomeRejected || r.Reason != "changed 1 file(s) outside its scope: src/main.rs" || strings.Join(r.Files, ",") != "src/main.rs" {
+	if r.Outcome != OutcomeRejected || r.Reason != "changed 1 file(s) outside its scope: src/main.rs (added)" || strings.Join(r.Files, ",") != "src/main.rs" {
 		t.Fatalf("an out-of-scope source file beside a lockfile: %+v", r)
 	}
 
@@ -1697,8 +1697,9 @@ func TestAScopeRefusalSaysWhereTheUnlistedFilesAre(t *testing.T) {
 	edit(t, a, "docs/screenshots/b.png", "png\n")
 	edit(t, a, "web/x.ts", "x\n")
 	r := mustSubmit(t, e.q, Submission{Tree: a, Task: "a", Scope: []string{"api/**"}, EnforceScope: true})
-	want := "changed 11 file(s) outside its scope: docs/demo/1.png, docs/demo/2.png, docs/demo/3.png, docs/demo/4.png, " +
-		"docs/demo/5.png, docs/demo/6.png, docs/demo/7.png, docs/demo/8.png; and 3 more: docs/screenshots/ (2), web/ (1)"
+	want := "changed 11 file(s) outside its scope: docs/demo/1.png (added), docs/demo/2.png (added), docs/demo/3.png (added), " +
+		"docs/demo/4.png (added), docs/demo/5.png (added), docs/demo/6.png (added), docs/demo/7.png (added), docs/demo/8.png (added); " +
+		"and 3 more: docs/screenshots/ (2), web/ (1)"
 	if r.Outcome != OutcomeRejected || r.Reason != want {
 		t.Fatalf("refusal = %q, want %q", r.Reason, want)
 	}
@@ -1735,4 +1736,30 @@ func TestQueueReportsTheTrackedFilesAPassingVerifierRewrote(t *testing.T) {
 	if !r.Merged() || r.Verify == nil || len(r.Verify.Wrote) != 0 {
 		t.Fatalf("a verifier that wrote no tracked file reported %+v", r.Verify)
 	}
+}
+
+// A refusal for files outside the scope says which of them the submission deleted or added: a worker whose
+// deletion is committed sees nothing of that file in its tree or in git status, and the bare path does not
+// tell it what to put back.
+func TestQueueScopeRefusalSaysWhichFilesWereDeletedOrAdded(t *testing.T) {
+	e := newQueueEnv(t, QueueOptions{})
+	a := e.agent("a")
+	edit(t, a, ".gitignore", "*.pyc\n")
+	edit(t, a, "notes.md", "draft\n")
+	if r := e.submit(a, "a"); !r.Merged() {
+		t.Fatalf("a: %+v", r)
+	}
+	b := e.agent("b")
+	if err := os.Remove(filepath.Join(b.Path, ".gitignore")); err != nil {
+		t.Fatal(err)
+	}
+	edit(t, b, "notes.md", "edited\n")
+	edit(t, b, "stray.txt", "x\n")
+	edit(t, b, "api/server.py", "pass\n")
+	r := mustSubmit(t, e.q, Submission{Tree: b, Task: "b", Scope: []string{"api/**"}, EnforceScope: true})
+	want := "changed 3 file(s) outside its scope: .gitignore (deleted), notes.md, stray.txt (added)"
+	if r.Outcome != OutcomeRejected || r.Reason != want || strings.Join(r.Files, ",") != ".gitignore,notes.md,stray.txt" {
+		t.Fatalf("got %q, files %v; want %q", r.Reason, r.Files, want)
+	}
+	e.integrationClean()
 }

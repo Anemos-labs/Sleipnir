@@ -177,8 +177,11 @@ func TestOutOfScopeSubmissionIsRejectedBackToTheWorker(t *testing.T) {
 	r.sw.StartManager()
 	r.mustSpawn("backend", "edit a", "a.txt")
 	r.waitStatus("T1", StatusReview)
-	if !r.prov.sawEver("outside its scope: stray.txt") {
-		t.Fatal("the worker was not told which file left its scope")
+	if !r.prov.sawEver("outside its scope: stray.txt (added)") {
+		t.Fatal("the worker was not told which file left its scope, and that it added it")
+	}
+	if !r.prov.sawEver("A change you committed counts even when git status is clean: git checkout ") {
+		t.Fatal("the worker was not told how to undo a committed change")
 	}
 	if st := r.q.Status(); st.Rejected != 1 || st.Merged != 1 {
 		t.Fatalf("queue: %+v", st)
