@@ -96,6 +96,15 @@
   .brand .sub,.hm.budget .gauge,.ringbox .note,.hm.team .govtxt,.goalbtn .lab .el{display:none}
   .sstrip .conn,.sstrip .gbud{display:none}
   .brand{margin-right:auto}
+  /* the phone's header is two lines: the brand, the team's count and the spend, then the goal on one line; the work starts above
+     the fold instead of under 300 px of chrome */
+  #hud{gap:2px 12px;padding:6px 16px}
+  .brand .mark{width:28px;height:28px}.brand>span{display:none}
+  .hm .lab,.goalbtn .lab{display:none}
+  .hm.team{order:1}.hm.budget{order:2}
+  .hm.team b,.hm.budget b{font-size:13px}
+  .goalbtn .goal-t{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
+  .vhead .vh-t p{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .sstrip{padding:0 8px}
   .banner{font-size:12px;padding:5px 16px}
   .qbanner{display:flex;align-items:center;gap:10px;margin:8px 16px 0;padding:7px 10px;border:1px solid var(--warm);background:var(--warm-a);text-align:left;font-size:13px;color:var(--bright);flex:none;box-shadow:0 0 18px var(--warm-a)}
