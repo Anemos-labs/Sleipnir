@@ -277,8 +277,12 @@ func TestADocsOnlyMergeLeavesACodePoolsReconciliationCurrent(t *testing.T) {
 			r.sw.review.mu.Unlock()
 			p, _ := r.sw.Board.Snapshot().Task(parent.ID)
 			res := pool(other, map[string]any{"action": "confirm", "revision": p.Pool.Revision})
-			if got := res.IsError && strings.Contains(res.Text, "combined result changed"); got != tc.superseded {
-				t.Fatalf("superseded = %v, want %v: %q", got, tc.superseded, res.Text)
+			if tc.superseded {
+				if !res.IsError || !strings.Contains(res.Text, "combined result changed") {
+					t.Fatalf("a docs merge left the documentation pool's reconciliation current: %q", res.Text)
+				}
+			} else if res.IsError {
+				t.Fatalf("the code pool could not confirm after a docs-only merge: %s", res.Text)
 			}
 		})
 	}
