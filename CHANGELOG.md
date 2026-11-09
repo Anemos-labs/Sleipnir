@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A `spawn` that names the member already working on that very task (after a
+  `task revise` or `reopen`, which hand the change to that worker) answers
+  that the member is on it and nothing is to be started. Before, it answered
+  "be-1 works on T2: give the task to a free backend member", which read as
+  a refusal to hand the task back. No prompt bytes change in the system
+  prompt or tool specs.
 - Text shown to agents (task descriptions, notes, mail, the live board,
   verifier output) keeps its angle brackets unless one could start a tag: only
   a "<" followed by a letter, "/", "!" or "?" becomes "‹". Before, every "<"
