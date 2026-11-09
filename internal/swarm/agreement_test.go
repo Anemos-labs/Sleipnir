@@ -99,7 +99,7 @@ func TestAgreementRejectsTruncationAndWrongOwnerWithoutChangingState(t *testing.
 		t.Fatal(err)
 	}
 	before := b.Snapshot()
-	for _, text := range []string{strings.Repeat("a", maxAgreementBytes+1), strings.Repeat("line\n", maxAgreementLines) + "last", strings.Repeat("<", 6000)} {
+	for _, text := range []string{strings.Repeat("a", maxAgreementBytes+1), strings.Repeat("line\n", maxAgreementLines) + "last", strings.Repeat("<a", 5500)} {
 		if err := b.submitAgreementAt("sc-1", plan.ID, 0, "done", "", text); err == nil {
 			t.Fatal("oversized agreement was silently cut")
 		}

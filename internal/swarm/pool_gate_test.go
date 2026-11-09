@@ -110,3 +110,30 @@ func TestAPoolGateFailureOnAnOlderRevisionKeepsTheNewerOne(t *testing.T) {
 		t.Fatalf("the newer revision was reset: %+v", *after.Pool)
 	}
 }
+
+// A pool's submission says it was verified only when a verifier ran: with none configured its evidence read "pool reconciled and
+// verified" all the same, and a manager accepted it as tested.
+func TestAPoolResultSaysVerifiedOnlyWhenAVerifierRan(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		verifier bool
+		want     string
+	}{
+		{"with a verifier", true, "pool reconciled and verified"},
+		{"without one", false, "pool reconciled; no verifier configured, so each child's own evidence is the only test record"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, parent, call := poolGateRig(t, "fixed\n")
+			if !tc.verifier {
+				r.sw.cfg.VerifyCmd = ""
+			}
+			if res := call(parent.Owner, "task", map[string]any{"action": "done", "id": parent.ID, "text": "combined"}); res.IsError {
+				t.Fatal(res.Text)
+			}
+			after, _ := r.sw.Board.Snapshot().Task(parent.ID)
+			if after.Evidence != tc.want {
+				t.Fatalf("evidence = %q, want %q", after.Evidence, tc.want)
+			}
+		})
+	}
+}

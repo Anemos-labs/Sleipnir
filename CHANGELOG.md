@@ -17,6 +17,28 @@ they do not indicate whether a change has been released.
   `reverse-engineering` are shortened so the built-in listing stays within
   half of its budget. Prompt-cache change: the skills listing in the shared
   layer and the devops and reviewer role layers change once.
+- Text shown to agents (task descriptions, notes, mail, the live board,
+  verifier output) keeps its angle brackets unless one could start a tag: only
+  a "<" followed by a letter, "/", "!" or "?" becomes "‹". Before, every "<"
+  and ">" became "‹" and "›", so a version range ">=1.2.3 <2.0.0" or an arrow
+  "->" reached the worker altered, and a worker copied the altered glyphs into
+  a file it wrote. A "<live>", "</my-notes>" or "<system-reminder>" in such
+  text is still defused. Tool results whose text held a ">" or a "<" that
+  starts no tag change their bytes; the system prompt and tool specs do not.
+- The manager role no longer says "Do not verify accepted work with tests of
+  your own". It now says not to re-run tests the verifier or a reviewer already
+  ran, and that checking what no test covers (an exit code, a message, a file
+  the user named) before reporting the goal met is the manager's job. That
+  matches its line on comparing the result with the request. A pool submitted
+  in a run with no verifier no longer carries the evidence "pool reconciled and
+  verified": it says no verifier was configured, so each child's own evidence
+  is the only test record. The manager role's bytes change once on upgrade (one
+  cache write of the manager's system prompt); tool specs are unchanged.
+- A merge of documentation only (Markdown files, `docs/`) no longer supersedes
+  a pool's reconciliation, unless the pool's own files are all documentation.
+  Before, a README fix after a code pool reconciled sent the whole pool back to
+  reconcile and confirm again over code nobody had touched. No prompt bytes
+  change in the system prompt or tool specs.
 - A worker's `task done` in a run with no verifier is held once when its last
   test ran with its exit status masked (piped into `tail`, followed by another
   command) and the line printed no status of its own: the worker is asked to
@@ -24,6 +46,14 @@ they do not indicate whether a change has been released.
   through. Before, such a run reached the manager as evidence quoting only the
   output's last line, and a broken test invocation could look green. No
   prompt bytes change in the system prompt or tool specs.
+- A documentation catch-up writes the README of a project that has none, from
+  what is merged (what it is, how to install, run and test it). Before, its
+  brief ruled that out, and a pass in a project with no README edited nothing.
+  A catch-up still adds no `AGENTS.md`. Its scope names the README of every
+  project a change lies in, also when a change to a project nested inside it
+  came first in the same pass. The catch-up task's description changes
+  (a tool result the docs worker reads); the system prompt and tool specs do
+  not.
 - The commit of a documentation catch-up that covers the manager's own edits
   no longer says "manager": its title's label, "(manager)" or "(manager,
   T10)", is dropped from the subject the way board ids already were, leaving

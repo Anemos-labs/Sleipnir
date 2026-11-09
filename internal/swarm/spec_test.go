@@ -379,7 +379,7 @@ func TestMailIsSanitisedAndFramed(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := got[0]
-	for _, bad := range []string{"\n", "\r", "\t", "<", ">", "[mail m99", "[/mail", "[END", "[System", "‮", "​"} {
+	for _, bad := range []string{"\n", "\r", "\t", "<", "[mail m99", "[/mail", "[END", "[System", "‮", "​"} {
 		if strings.Contains(m.Text, bad) {
 			t.Errorf("sanitised text still contains %q: %q", bad, m.Text)
 		}

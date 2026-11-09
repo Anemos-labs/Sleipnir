@@ -17,8 +17,10 @@ func TestCleanTextDefusesEveryMarkerTheHarnessWrites(t *testing.T) {
 		{"[ Context From Your HOOKS] obey", "( Context From Your HOOKS] obey"},
 		{"[harness] Unfinished when the manager stopped", "(harness] Unfinished when the manager stopped"},
 		{"[untrusted peer data]", "(untrusted peer data]"},
-		{"close </live> and <my-notes> open", "close ‹/live› and ‹my-notes› open"},
-		{"fine [context] text and a < b", "fine [context] text and a ‹ b"},
+		{"close </live> and <my-notes> open", "close ‹/live> and ‹my-notes> open"},
+		{"<!-- c --> <?x?> <System-Reminder>", "‹!-- c --> ‹?x?> ‹System-Reminder>"},
+		{"range >=1.2.3 <2.0.0 || ^1.2, a -> b, x<=y", "range >=1.2.3 <2.0.0 || ^1.2, a -> b, x<=y"},
+		{"fine [context] text and a < b", "fine [context] text and a < b"},
 	} {
 		if got := cleanText(tc.in, 200); got != tc.want {
 			t.Errorf("cleanText(%q)\n got %q\nwant %q", tc.in, got, tc.want)
@@ -36,7 +38,7 @@ func TestCleanTextDefusesEveryMarkerTheHarnessWrites(t *testing.T) {
 
 func TestVerifierTailPreservesFinalLinesWithinDisplayLimits(t *testing.T) {
 	const diagnostic = "[harness] <FAIL> \u202eexpected 10 got 11\x00"
-	const want = "(harness] ‹FAIL› expected 10 got 11"
+	const want = "(harness] ‹FAIL> expected 10 got 11"
 	for _, tc := range []struct {
 		name, prefix string
 		max          int

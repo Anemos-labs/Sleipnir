@@ -18,14 +18,33 @@ import (
 // neutralise defuses harness-looking markers and tag delimiters. What counts as a
 // harness marker ("[mail m1", "[stop hook]", "[harness]", the label of a hook's
 // context) is decided in one place, kv.EscapeMarkup, which the layers use too: "[mail
-// m1" becomes "(mail m1". On top of that every "<" and ">" becomes a single-quote
-// angle mark, so no text at all can open or close a <live>, <my-notes> or similar tag.
+// m1" becomes "(mail m1". On top of that every "<" that could start a tag (one
+// followed by a letter, "/", "!" or "?") becomes a single-quote angle mark, so no
+// text at all can open or close a <live>, <my-notes>, <system-reminder> or similar
+// tag. Other angle brackets are ordinary text and stay as they are: a version range
+// ">=1.2.3 <2.0.0", an arrow "->" or "a < b" reaches the reader as written, which a
+// worker copies into a file or a command.
 func neutralise(s string) string {
 	s = kv.EscapeMarkup(s)
-	if strings.ContainsAny(s, "<>") {
-		s = strings.NewReplacer("<", "‹", ">", "›").Replace(s)
+	if strings.IndexByte(s, '<') < 0 {
+		return s
 	}
-	return s
+	var b strings.Builder
+	b.Grow(len(s) + 4)
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c == '<' && i+1 < len(s) && tagStart(s[i+1]) {
+			b.WriteString("‹")
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+// tagStart reports whether c, after a "<", makes the pair the start of a tag, a closing tag, a comment or a processing
+// instruction.
+func tagStart(c byte) bool {
+	return c == '/' || c == '!' || c == '?' || (c|0x20 >= 'a' && c|0x20 <= 'z')
 }
 
 // printable maps whitespace to a plain space and drops control, zero-width and

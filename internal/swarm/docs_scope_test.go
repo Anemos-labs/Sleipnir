@@ -379,3 +379,25 @@ func TestDocsCatchUpScopeNamesTheSubprojectReadme(t *testing.T) {
 		t.Fatalf("scope = %q, want %q", got, want)
 	}
 }
+
+// A change to a project that holds a nested project of its own still names the outer project's README when a change to the
+// nested one came first: the walk up from outer/inner/src marks outer searched, and the outer change must not skip the project
+// check with it.
+func TestDocsScopeNamesTheOuterProjectsReadmeAfterANestedOne(t *testing.T) {
+	cfg := Config{MaxWorkers: 8, AutoDocs: true, Team: []string{"backend", "docs"}}
+	r := newRVRigWith(t, cfg, func(context.Context, *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	root := r.sw.deps.Root
+	for _, f := range []string{"outer/go.mod", "outer/inner/go.mod"} {
+		if err := os.MkdirAll(filepath.Join(root, "outer", "inner", "src"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, f), []byte("module x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	batch := []docsChange{{task: "T1", files: []string{"outer/inner/src/a.go"}}, {task: "T2", files: []string{"outer/main.go"}}}
+	got := strings.Join(r.sw.docsScopeFor(batch), " ")
+	if want := "*.md docs/** outer/inner/README.md outer/README.md"; got != want {
+		t.Fatalf("scope = %q, want %q", got, want)
+	}
+}
