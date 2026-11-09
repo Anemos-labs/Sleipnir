@@ -604,6 +604,12 @@ func (t *Tab) wasAnswered(qid string) bool {
 func (rt *router) pages() {
 	srv := rt.srv
 	rt.get("/api/cli", func(*http.Request) (any, error) { return CLISpec(), nil })
+	for _, pre := range []string{"/api/memory", "/api/sessions/{id}/memory"} {
+		rt.get(pre, func(*http.Request) (any, error) { return Memory(), nil })
+	}
+	for _, pre := range []string{"/api/plugins", "/api/sessions/{id}/plugins"} {
+		rt.get(pre, func(*http.Request) (any, error) { return Plugins(), nil })
+	}
 	rt.get("/api/recorded", func(*http.Request) (any, error) {
 		return map[string]any{"recorded": Recorded(), "mb": 1.7}, nil
 	})
