@@ -76,3 +76,15 @@ section.tg+section.tg{margin-top:var(--gap)}
   .reclist .tbl tbody td:nth-child(5)::before{content:"agents "}.reclist .tbl tbody td:nth-child(7)::after{content:" MB"}
   .reclist .tbl tbody td:nth-child(9){margin-left:auto;white-space:normal;text-align:right}
 }
+/* the Schedule's jobs on a phone: each job is a card (id and cron, the goal, where, the last and next run, then its actions) instead of
+   a seven-column table that runs off the screen and hides the actions */
+@container main (max-width:620px){
+  .jobs .tbl,.jobs .tbl tbody{display:block}.jobs .tbl thead{display:none}
+  .jobs .tbl tr{display:flex;flex-wrap:wrap;gap:4px 10px;padding:10px 0;border-top:1px solid var(--line)}
+  .jobs .tbl td{display:block;padding:0;border:0;max-width:none}
+  .jobs .tbl td.jg{flex:1 1 100%;order:1;font-size:14px}
+  .jobs .tbl td:nth-child(1),.jobs .tbl td:nth-child(2){order:0}
+  .jobs .tbl td:nth-child(4){flex:1 1 100%;order:2}
+  .jobs .tbl td:nth-child(5),.jobs .tbl td:nth-child(6){order:3}
+  .jobs .tbl td:nth-child(n+7){order:4;flex:1 1 100%;display:flex;flex-wrap:wrap;gap:6px}
+}
