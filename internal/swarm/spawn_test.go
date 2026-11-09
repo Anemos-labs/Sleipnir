@@ -36,3 +36,33 @@ func TestASpawnOfANamedMemberSaysWhatHoldsIt(t *testing.T) {
 		}
 	}
 }
+
+// A spawn that names the member already working on that very task says so and that nothing is to be started: after a task
+// revise or reopen the member retries the task itself, and a manager told "be-1 works on T2: give the task to a free backend
+// member" took it for a refusal to hand the reopened task back.
+func TestASpawnOfTheMemberAlreadyOnTheTaskSaysItIsOnIt(t *testing.T) {
+	hold := make(chan struct{})
+	defer close(hold)
+	r := newRVRigWith(t, Config{PersistentPools: true, MaxWorkers: 8, Team: []string{"backend", "backend"}},
+		func(ctx context.Context, c *rvCall) rvReply {
+			if c.Role == "backend" {
+				rvBlock(ctx, hold)
+			}
+			return rvReply{Text: "noted"}
+		}, nil)
+	task, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "parser", Role: "backend", Files: []string{"parser/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Agent: "be-1", TaskID: task.ID, Solo: true, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, "be-1 on the task", func() bool { return !r.idle("be-1") })
+	res := r.callTool(context.Background(), "spawn", "mgr", "manager", map[string]any{"agent": "be-1", "task": task.ID, "solo": true})
+	if !res.IsError {
+		t.Fatalf("a second spawn of be-1 on its own task went through: %s", res.Text)
+	}
+	if want := "be-1 already works on " + task.ID; !strings.Contains(res.Text, want) || strings.Contains(res.Text, "give the task to a free") {
+		t.Errorf("the answer %q does not say %q, or sends the task elsewhere", res.Text, want)
+	}
+}
