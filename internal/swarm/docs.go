@@ -50,11 +50,20 @@ func (s *Swarm) docsScopeFor(b []docsChange) []string {
 	if root == "" {
 		return out
 	}
-	seen := map[string]bool{}
+	seen, seenProject := map[string]bool{}, map[string]bool{}
 	for _, c := range b {
 		for _, f := range c.files {
 			dir := docsDirOf(f)
-			if dir == "" || dir == "." || dir == "docs" || seen[dir] {
+			if dir == "" || dir == "." || dir == "docs" {
+				continue
+			}
+			// The project is found for every entry, before the Markdown search's cache can skip it: a walk up from a nested
+			// project (outer/inner, its own go.mod) marks outer seen, and a later change to outer/ still lies in outer's project.
+			if proj := projectDirOf(root, dir); proj != "" && !seenProject[proj] {
+				seenProject[proj] = true
+				out = append(out, proj+"/README.md")
+			}
+			if seen[dir] {
 				continue
 			}
 			var matches []string
@@ -72,10 +81,6 @@ func (s *Swarm) docsScopeFor(b []docsChange) []string {
 				if rel, err := filepath.Rel(root, m); err == nil && filepath.IsLocal(rel) {
 					out = append(out, filepath.ToSlash(rel))
 				}
-			}
-			if proj := projectDirOf(root, dir); proj != "" && !seen["project:"+proj] {
-				seen["project:"+proj] = true
-				out = append(out, proj+"/README.md")
 			}
 		}
 	}
@@ -510,7 +515,7 @@ func docsBrief(b []docsChange) string {
 		}
 		sb.WriteString("\n")
 	}
-	sb.WriteString("Keep three readers current: people (README, docs/), agents of later sessions (AGENTS.md: commands, layout, conventions, decisions), and this team (AGENTS.md is also its map, with a Capabilities section: one line per existing system, what it does, where it lives, its doc as path#heading). Change only what these changes made wrong or missing, in the documents that exist (your scope names the Markdown beside the changed code); a catch-up adds no README or AGENTS.md to a project that has none, which is a task of its own for the manager to create. Keep the pass short: read the diff of the files above (git diff -- <files>, or git log -p when they are committed) rather than whole sources, fix the lines it made wrong, and finish with task done and a one-line summary of what you changed. Do not test or probe the code: the reviewer and the verifier do; run a documented command only when the change altered it.")
+	sb.WriteString("Keep three readers current: people (README, docs/), agents of later sessions (AGENTS.md: commands, layout, conventions, decisions), and this team (AGENTS.md is also its map, with a Capabilities section: one line per existing system, what it does, where it lives, its doc as path#heading). Change only what these changes made wrong or missing, in the documents that exist (your scope names the Markdown beside the changed code). A project with no README gets one in this pass, from what is merged: what it is, how to install, run and test it, with the commands it really uses; a catch-up adds no AGENTS.md to a project that has none, which is a task of its own for the manager to create. Keep the pass short: read the diff of the files above (git diff -- <files>, or git log -p when they are committed) rather than whole sources, fix the lines it made wrong, and finish with task done and a one-line summary of what you changed. Do not test or probe the code: the reviewer and the verifier do; run a documented command only when the change altered it.")
 	return sb.String()
 }
 
