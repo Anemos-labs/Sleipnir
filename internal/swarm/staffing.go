@@ -223,17 +223,23 @@ func (g *reviewGate) landLocked(id string, scopes []string, took time.Duration) 
 }
 
 // touchedSince returns the first merge after generation that may have touched a file of scopes, or 0 when none did. A count
-// below generation (a team restored with a fresh count) is a change too.
+// below generation (a team restored with a fresh count) is a change too. A merge of documentation only (Markdown, docs/) does
+// not count against scopes that hold more than documentation: it cannot change the code a pool reconciled, and a README fix
+// after a reconciliation sent a whole pool back to reconcile and vote again over code nobody had touched.
 func (g *reviewGate) touchedSince(generation int, scopes []string) int {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.merges < generation {
 		return generation
 	}
+	docsScope := len(scopes) > 0 && allDocs(scopes)
 	for n := generation + 1; n <= g.merges; n++ {
 		landed := g.landed[n]
 		if len(landed) == 0 || len(scopes) == 0 {
 			return n
+		}
+		if !docsScope && allDocs(landed) {
+			continue
 		}
 		for _, a := range landed {
 			for _, b := range scopes {
@@ -427,6 +433,16 @@ func (s *Swarm) sharedRepo() *gitx.Repo {
 		return nil
 	}
 	return repo
+}
+
+// allDocs reports whether every path or glob of paths is documentation (docsFile).
+func allDocs(paths []string) bool {
+	for _, p := range paths {
+		if !docsFile(p) {
+			return false
+		}
+	}
+	return true
 }
 
 // docsFile reports whether a path is documentation the docs worker keeps (docsScope): a Markdown file, or a file under docs/.

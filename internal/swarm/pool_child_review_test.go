@@ -242,3 +242,44 @@ func TestOnlyAMergeInThePoolsFilesSupersedesItsReconciliation(t *testing.T) {
 // idleModel never answers until the member is stopped: these tests drive the board through the tools, and a woken member whose turn
 // ended would take its child to review before the test does (a race a slow runner lost).
 func idleModel(ctx context.Context, _ *rvCall) rvReply { <-ctx.Done(); return rvReply{Text: "stopped"} }
+
+// A merge of documentation only leaves a code pool's reconciliation current even when the pool's scope holds the README: a
+// manager's README fix after a reconciliation sent a whole pool back to reconcile and vote again over code nobody had touched.
+// A pool whose own work is documentation is still superseded by it.
+func TestADocsOnlyMergeLeavesACodePoolsReconciliationCurrent(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		files      []string
+		superseded bool
+	}{
+		{"a code pool whose scope holds the README", []string{"src/**", "README.md"}, false},
+		{"a documentation pool", []string{"README.md", "docs/**"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}}, idleModel)
+			if _, err := r.sw.Spawn(SpawnReq{Role: "frontend", Title: "work", Files: tc.files, By: "mgr"}); err != nil {
+				t.Fatal(err)
+			}
+			parent := r.sw.Board.Snapshot().Tasks[0]
+			lead, other := parent.Pool.Members[0], parent.Pool.Members[1]
+			if err := r.sw.Board.poolUpdate("mgr", parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
+				t.Fatal(err)
+			}
+			pool := func(as string, args map[string]any) *tools.Result {
+				args["id"] = parent.ID
+				return r.callTool(context.Background(), "pool", as, "frontend", args)
+			}
+			if res := pool(lead, map[string]any{"action": "reconcile", "text": "combined"}); res.IsError {
+				t.Fatal(res.Text)
+			}
+			r.sw.review.mu.Lock()
+			r.sw.review.landLocked("manager changes", []string{"README.md", "docs/usage.md"}, 0)
+			r.sw.review.mu.Unlock()
+			p, _ := r.sw.Board.Snapshot().Task(parent.ID)
+			res := pool(other, map[string]any{"action": "confirm", "revision": p.Pool.Revision})
+			if got := res.IsError && strings.Contains(res.Text, "combined result changed"); got != tc.superseded {
+				t.Fatalf("superseded = %v, want %v: %q", got, tc.superseded, res.Text)
+			}
+		})
+	}
+}
