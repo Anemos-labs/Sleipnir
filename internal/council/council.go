@@ -46,10 +46,12 @@ var DefaultCategories = []string{"hierarchy", "typography", "color and contrast"
 
 // Limits of one council request.
 const (
-	MaxImages        = 24 // screenshots in one request, every subject's together
-	MaxCategories    = 16
-	MaxFindings      = 12 // findings kept per member
-	maxTokens        = 6000
+	MaxImages     = 24 // screenshots in one request, every subject's together
+	MaxCategories = 16
+	MaxFindings   = 12 // findings kept per member
+	// maxTokens leaves a reasoning model room to think and still write the whole sheet: at 6000, replies scoring two
+	// products with findings were cut off mid-JSON and could not be read.
+	maxTokens        = 20000
 	maxAttempts      = 3 // requests per member when the answer cannot be read
 	CandidateSubject = "candidate"
 )
