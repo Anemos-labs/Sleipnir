@@ -1,7 +1,7 @@
 /* Memory: the agent's notes, the instruction files and the lessons (98e-ui-memory.js) */
 .mem-about{margin:0;padding:10px 12px 4px;font:400 12.5px/1.5 var(--f-ui);color:var(--fg2)}
 .mem-pad{padding:10px 12px;margin:0}
-.mem-foot{margin:0;padding:6px 12px 10px;font:500 12px var(--f-num)}
+.mem-foot{margin:0;padding:6px 12px 10px;font:500 11px var(--f-num)}
 .chip.mem-on{color:var(--ok);border-color:var(--ok-b)}
 .chip.mem-off{color:var(--dim)}
 .chip.mem-warn{color:var(--warm);border-color:var(--warm-b)}
@@ -14,7 +14,7 @@
 .mem-note:first-child{border-top:0}
 .mem-note .mem-btns{opacity:.55;transition:opacity .12s}
 .mem-note:hover .mem-btns,.mem-note:focus-within .mem-btns{opacity:1}
-.mem-n{flex:none;min-width:18px;font:600 12px/1.9 var(--f-num);color:var(--faint);text-align:right}
+.mem-n{flex:none;min-width:18px;font:600 11px/1.9 var(--f-num);color:var(--faint);text-align:right}
 .mem-nf{flex:1 1 auto;display:flex;flex-direction:column;gap:6px;min-width:0}
 .mem-nf textarea,.mem-ff textarea,.mem-add input{width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--line2);padding:6px 8px;color:var(--bright);border-radius:2px}
 .mem-nf textarea,.mem-add input{font:400 13px/1.45 var(--f-ui);resize:vertical}
@@ -34,7 +34,7 @@
 .mem-fh{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
 .mem-p{font-size:12.5px;color:var(--bright);overflow-wrap:anywhere;min-width:0}
 .mem-chips{display:flex;gap:4px;flex-wrap:wrap}
-.mem-sz{font:500 12px var(--f-num)}
+.mem-sz{font:500 11px var(--f-num)}
 .mem-fh .mem-btns{margin-left:auto}
 .mem-why{margin:0;font-size:12px}
 .mem-pre{margin:0;max-height:420px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
@@ -46,7 +46,7 @@
 .mem-lh{display:flex;gap:8px;align-items:flex-start}
 .mem-lh .chip{flex:none;margin-top:1px}
 .mem-lm{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;font-size:11.5px}
-.mem-lm .mono{font-size:12px}
+.mem-lm .mono{font-size:11px}
 .mem-u{display:inline-block;width:64px;height:4px;border-radius:2px;background:var(--line2);overflow:hidden}
 .mem-u i{display:block;height:100%;background:var(--ok)}
 @media (max-width:900px){.mem-note .mem-btns{opacity:1}.mem-fh .mem-btns{margin-left:0}}

@@ -12,7 +12,7 @@
 .plg-row input[type=search]{flex:1 1 260px;min-width:160px;background:var(--bg);border:1px solid var(--line2);padding:6px 9px;font:500 12.5px var(--f-num);color:var(--bright);border-radius:2px}
 .plg-row input:focus,.plg-row select:focus{border-color:var(--c-mgr)}
 .plg-ctl{display:inline-flex;align-items:center;gap:8px;flex:none}
-.plg-ctl .lab{font:600 12px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.plg-ctl .lab{font:600 11px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
 .plg-ctl select{background:var(--bg);border:1px solid var(--line2);padding:5px 9px;font:500 12.5px var(--f-num);color:var(--bright);border-radius:2px}
 .plg-pd{flex:1 1 200px;min-width:0;font:400 12.5px/1.4 var(--f-ui);color:var(--fg2)}
 .plg-groups{display:flex;flex-direction:column;gap:var(--gap)}
@@ -25,7 +25,7 @@
 .plg-c{padding-top:1px}
 .plg-h{display:flex;flex-wrap:wrap;align-items:center;gap:3px 8px}
 .plg-h b{font:600 14px/1.2 var(--f-ui);color:var(--bright)}
-.plg-h .pid{font:500 12px var(--f-num);color:var(--faint)}
+.plg-h .pid{font:500 11px var(--f-num);color:var(--faint)}
 .plg-h .tag{margin:0}
 .plg.off .plg-h b{color:var(--fg2)}
 .plg-d{margin:3px 0 0;font:400 13px/1.4 var(--f-ui);color:var(--fg2)}
@@ -54,7 +54,7 @@
 }
 /* "Programs it uses" under a plugin: each need found (where) or missing (Locate, Install), and an install's output */
 .plg-needs{margin:6px 0 0;padding:6px 10px;border:1px solid var(--line);background:var(--panel2);border-radius:2px}
-.plg-nh{margin:0 0 2px;font:600 12px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.plg-nh{margin:0 0 2px;font:600 11px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
 .plg-needs ul{list-style:none;margin:0;padding:0}
 .plg-need{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:start;padding:6px 0;border-top:1px solid var(--line)}
 .plg-need:first-child{border-top:0}

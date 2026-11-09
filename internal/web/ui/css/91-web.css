@@ -4,10 +4,10 @@
 /* ---------- the Radio rail: the manager's chat, then Team activity ---------- */
 .feedwrap{flex:0 40 176px;min-height:30px;display:flex;flex-direction:column;border-top:1px solid var(--line);min-width:0}
 .feedwrap.shut{flex:none}
-.feedh{display:flex;align-items:center;gap:8px;width:100%;padding:6px 12px 5px;text-align:left;font:700 12px var(--f-lab);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);flex:none}
+.feedh{display:flex;align-items:center;gap:8px;width:100%;padding:6px 12px 5px;text-align:left;font:700 11px var(--f-lab);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);flex:none}
 .feedh:hover{color:var(--fg)}
-.feedh .fq{margin-left:auto;font:500 11.5px var(--f-num);letter-spacing:0;text-transform:none;color:var(--dim)}
-.feedh .fc{font-size:12px;line-height:1;transition:transform .12s}
+.feedh .fq{margin-left:auto;font:500 10.5px var(--f-num);letter-spacing:0;text-transform:none;color:var(--dim)}
+.feedh .fc{font-size:11px;line-height:1;transition:transform .12s}
 .feedwrap.shut .fc{transform:rotate(-90deg)}
 .feed{flex:1 1 auto;min-height:0;padding:1px 12px 6px;gap:3px}
 .feed .msg{flex-shrink:0;font-size:11.5px;line-height:1.3}
@@ -39,7 +39,7 @@
 .dstate b{font:700 11.5px var(--f-num);color:var(--fg2);white-space:nowrap}
 .dstate b.st-ask{color:var(--warm)}.dstate b.st-done{color:var(--ok)}.dstate b.st-stuck{color:var(--err)}
 .dr-b>*{flex:none}.dr-b .tsteps{margin:0 0 12px;flex:none}
-.dr-h .r3{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font:500 12px var(--f-num);color:var(--dim)}
+.dr-h .r3{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font:500 11px var(--f-num);color:var(--dim)}
 .lnk{font:600 11.5px var(--f-num);color:var(--fe);text-decoration:underline;text-underline-offset:2px;padding:0 2px}
 .lnk:hover{color:var(--bright)}
 .chhead .mst{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;font:500 11.5px var(--f-num);color:var(--fg2)}
@@ -58,7 +58,7 @@
 .nswarn{margin-top:6px;padding:7px 10px;border:1px solid var(--err);background:var(--err-a);color:var(--err);font:600 12px/1.35 var(--f-ui)}
 .nswarn[hidden]{display:none}
 .cli-danger{color:var(--err);font-weight:700}
-.stab .dgm{flex:none;margin-left:3px;font-size:12px;line-height:1;color:var(--err)}
+.stab .dgm{flex:none;margin-left:3px;font-size:11px;line-height:1;color:var(--err)}
 @media (max-width:560px){.nsmode{grid-template-columns:1fr;gap:1px}}
 
 /* ---------- the permission mode: a dropdown, not a button that cycles ---------- */
@@ -116,11 +116,11 @@ body.cq .anom .a b{color:var(--warm)}
 .dirlist[hidden]{display:none}
 .dirlist li.dir{display:flex;gap:8px;align-items:baseline;padding:4px 8px;cursor:pointer;font:500 12.5px var(--f-num);color:var(--fg)}
 .dirlist li.dir.on,.dirlist li.dir:hover{background:var(--raise);color:var(--bright)}
-.dirlist .dn{flex:none}.dirlist .dp{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--dim)}
-.dirmore{padding:4px 8px;font:italic 12px var(--f-ui);color:var(--dim)}
+.dirlist .dn{flex:none}.dirlist .dp{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--dim)}
+.dirmore{padding:4px 8px;font:italic 11px var(--f-ui);color:var(--dim)}
 .dirstate{flex-basis:100%;display:flex;flex-direction:column;gap:2px;margin-top:5px;font:500 12px/1.4 var(--f-ui);color:var(--fg2)}.dirstate:empty{display:none}
 .dirstate.ok .dirlead{color:var(--ok)}.dirstate.new .dirlead{color:var(--fe)}.dirstate.bad .dirlead{color:var(--err)}
-.dirabs{font-size:12px;color:var(--dim);word-break:break-all}.dirnote{font:400 11.5px/1.35 var(--f-ui);color:var(--dim)}
+.dirabs{font-size:11px;color:var(--dim);word-break:break-all}.dirnote{font:400 11.5px/1.35 var(--f-ui);color:var(--dim)}
 .nsgit,.nsopt{display:flex;align-items:center;flex-basis:100%;margin:3px 0}
 .nsgit[hidden]{display:none}.nsgit .chk,.nsopt .chk{margin:0;white-space:nowrap}
 /* a phone: a long option wraps instead of running off the sheet */
@@ -143,18 +143,18 @@ body.cq .anom .a b{color:var(--warm)}
 .nscv output{flex:1 1 auto;min-width:0}.nscv .btn{flex:none}.nscv .btn[hidden]{display:none}
 
 /* ---------- help dots: a ? that explains, on hover, on focus and on a tap ---------- */
-.qh{display:inline-grid;place-items:center;flex:none;width:16px;height:16px;margin:0 0 0 6px;padding:0;border:1px solid var(--line2);border-radius:50%;background:transparent;color:var(--dim);font:700 11px/1 var(--f-num);cursor:help;vertical-align:middle}
+.qh{display:inline-grid;place-items:center;flex:none;width:16px;height:16px;margin:0 0 0 6px;padding:0;border:1px solid var(--line2);border-radius:50%;background:transparent;color:var(--dim);font:700 10px/1 var(--f-num);cursor:help;vertical-align:middle}
 .qh:hover,.qh:focus-visible,.qh[data-popup-open]{border-color:var(--fe);color:var(--bright)}
 .helptip{position:fixed;z-index:70;max-width:340px;padding:8px 11px;background:var(--panel);border:1px solid var(--fe);box-shadow:0 12px 30px var(--shade);font:400 12px/1.45 var(--f-ui);color:var(--fg);pointer-events:none}
-.helptip[hidden]{display:none}.helptip b{color:var(--bright)}.helptip kbd{font:600 11.5px var(--f-num)}
-.fld>.fl{display:flex;align-items:flex-start;gap:0;min-width:0}.fld>.fl>label{font:600 12px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);padding-top:7px}.fld>.fl .qh{margin-top:6px}
+.helptip[hidden]{display:none}.helptip b{color:var(--bright)}.helptip kbd{font:600 10.5px var(--f-num)}
+.fld>.fl{display:flex;align-items:flex-start;gap:0;min-width:0}.fld>.fl>label{font:600 11px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);padding-top:7px}.fld>.fl .qh{margin-top:6px}
 [data-help].nschip{cursor:help}
 /* the team rows of New session: a role, its ?, a stepper and the model its workers run on */
 .nsteamrows{display:flex;flex-direction:column;gap:3px;margin-top:6px;flex-basis:100%}.nsteamrows[hidden]{display:none}
 .nstrow{display:grid;grid-template-columns:minmax(70px,auto) auto auto minmax(0,1fr);align-items:center;gap:6px}
 .nststep .nstdisc{display:inline-block;width:18px;height:22px;margin-left:-2px;color:var(--fe);font:600 12px/1 var(--f-num);border-radius:2px}.nststep .nstdisc:hover{background:var(--panel2)}
 .nstslots{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px 8px;margin:2px 0 6px 12px;padding:6px 8px;border-left:2px solid var(--line2);background:var(--panel2-a)}
-.nstslot{display:flex;align-items:center;gap:6px;min-width:0}.nstslot select{min-width:0;flex:1}.nstslot .mono{font-size:12px;flex:none}
+.nstslot{display:flex;align-items:center;gap:6px;min-width:0}.nstslot select{min-width:0;flex:1}.nstslot .mono{font-size:11px;flex:none}
 .nstrow.zero .nstname{opacity:.55}.nstname{font:700 12px var(--f-num)}
 .nststep{display:inline-flex;align-items:center;gap:4px}.nstn{min-width:1.6em;text-align:center;color:var(--bright)}
 .nstrow select{min-width:0;width:100%}
@@ -162,23 +162,23 @@ body.cq .anom .a b{color:var(--warm)}
 /* ---------- Needs you: loud on every view (the session strip and the left rail), with how long the oldest question has waited ---------- */
 .sstrip .sact.inbox.has{background:var(--warm);color:var(--on-accent);font-weight:700;gap:6px;padding:0 10px 0 8px;animation:needpulse 2s ease-in-out infinite}
 .sstrip .sact.inbox.has:hover{background:var(--warm);color:var(--on-accent);filter:brightness(1.08)}
-.sstrip .sact.inbox.has b{background:var(--on-accent);color:var(--warm);border-color:transparent;font-size:12px}
+.sstrip .sact.inbox.has b{background:var(--on-accent);color:var(--warm);border-color:transparent;font-size:11px}
 .sact.inbox .nyq{font:800 13px/1 var(--f-num);font-style:normal}
-.sact.inbox .nyage{font:600 12px var(--f-num)}
+.sact.inbox .nyage{font:600 11px var(--f-num)}
 .sstrip .sact.inboxall{padding:0 7px;border-left:1px solid var(--warm-b);color:var(--warm);background:var(--warm-a)}
 .stab .nb{background:var(--warm);color:var(--on-accent);border-color:var(--warm);font-weight:800}
 .nvi.nvneed{color:var(--warm);background:var(--warm-a);border-left-color:var(--warm);animation:needpulse 2s ease-in-out infinite}
 .nvi.nvneed:hover{color:var(--bright);background:var(--warm-b)}
 .nvi.nvneed .nyq{font:800 17px/20px var(--f-num);width:20px;height:20px;text-align:center}
-.nvi.nvneed .nyage{font:600 10.5px/1 var(--f-num);color:var(--warm)}
-#app[data-navmode="wide"] .nvi.nvneed .nyage{margin-left:auto;font-size:11.5px}
+.nvi.nvneed .nyage{font:600 9.5px/1 var(--f-num);color:var(--warm)}
+#app[data-navmode="wide"] .nvi.nvneed .nyage{margin-left:auto;font-size:10.5px}
 @keyframes needpulse{50%{box-shadow:inset 0 0 0 1px var(--warm),0 0 14px var(--warm-b)}}
 @media (prefers-reduced-motion:reduce){.sstrip .sact.inbox.has,.nvi.nvneed{animation:none}}
 
 /* ---------- a question while the view is a replay: answering is paused, said over the card with the way back ---------- */
 .qstrip .qreplay{display:flex;align-items:center;gap:8px;margin:-9px -10px 8px;padding:7px 10px;background:var(--err-a);border-bottom:1px solid var(--err-b);color:var(--bright);font:600 12.5px/1.2 var(--f-ui)}
 .qstrip .qreplay[hidden]{display:none}
-.qstrip .qreplay b{color:var(--err);font:700 12px var(--f-lab);letter-spacing:.14em;text-transform:uppercase}
+.qstrip .qreplay b{color:var(--err);font:700 11px var(--f-lab);letter-spacing:.14em;text-transform:uppercase}
 .qstrip .qreplay .btn{margin-left:auto}
 .qstrip.replay .qopts{opacity:.55}
 .qstrip:focus{outline:none}.qstrip:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
@@ -193,13 +193,13 @@ body.cq .anom .a b{color:var(--warm)}
 .qmgr-t .dx{margin-left:auto;color:var(--dim)}
 .qmgr-l{list-style:none;margin:0;padding:4px 10px 8px 28px;display:flex;flex-direction:column;gap:3px;max-height:min(30vh,220px);overflow-y:auto;font-size:11.5px;line-height:1.3}
 .qmgr-l[hidden]{display:none}
-.qmgr-l li{overflow-wrap:anywhere;display:flex;flex-wrap:wrap;align-items:baseline;gap:0 6px}.qmgr-l .mono{color:var(--fg);font-size:12px}
+.qmgr-l li{overflow-wrap:anywhere;display:flex;flex-wrap:wrap;align-items:baseline;gap:0 6px}.qmgr-l .mono{color:var(--fg);font-size:11px}
 
 /* ---------- the Start confirmation: every reason in view, a long list of rules one line with a disclosure ---------- */
 .cf-rules .cf-tog{display:inline;text-align:left;color:var(--fg);font:inherit;padding:0}
-.cf-rules .cf-tog .dx{color:var(--fe);font:600 12px var(--f-num);white-space:nowrap}
+.cf-rules .cf-tog .dx{color:var(--fe);font:600 11px var(--f-num);white-space:nowrap}
 .cf-rules .cf-tog:hover .dx{text-decoration:underline}
-.cf-rl{list-style:none;margin:4px 0 2px;padding:6px 8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:2px 12px;background:var(--well);border:1px solid var(--line);font-size:12px}
+.cf-rl{list-style:none;margin:4px 0 2px;padding:6px 8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:2px 12px;background:var(--well);border:1px solid var(--line);font-size:11px}
 .cf-rl[hidden]{display:none}
 
 /* ---------- Settings › Appearance: the notification's seconds ---------- */
@@ -208,8 +208,8 @@ body.cq .anom .a b{color:var(--warm)}
 /* ---------- the New session team builder: the model of a role keeps room for its name ---------- */
 .nstrow{grid-template-columns:minmax(70px,auto) auto auto minmax(132px,1fr)}
 /* the team library (87c-ui-teams.js) */
-.teamlib .tl-tbl td{vertical-align:top}.teamlib .tl-desc{font-size:12px;margin-top:2px}.teamlib .tl-models{font-size:12px;margin-top:3px;overflow-wrap:anywhere}
-.teamlib .tl-role{font:700 12px var(--f-num);white-space:nowrap}.teamlib .tl-empty{margin:4px 0 10px}
+.teamlib .tl-tbl td{vertical-align:top}.teamlib .tl-desc{font-size:11px;margin-top:2px}.teamlib .tl-models{font-size:11px;margin-top:3px;overflow-wrap:anywhere}
+.teamlib .tl-role{font:700 11px var(--f-num);white-space:nowrap}.teamlib .tl-empty{margin:4px 0 10px}
 .teamlib .tl-forms{margin-top:14px;gap:18px}.teamlib .tl-forms section{min-width:0}.teamlib .tl-forms input[type=text],.teamlib textarea{width:100%;min-width:0}
 .teamlib .tl-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}.teamlib .tl-row input[type=text]{flex:1 1 140px;width:auto}
 .teamlib .tl-cur{margin:0 0 6px}.teamlib .tl-imp{margin-top:8px}.teamlib .tl-imp p{margin:0 0 4px}.teamlib .tl-file{cursor:pointer}
@@ -222,5 +222,5 @@ body.cq .anom .a b{color:var(--warm)}
 #statusLine .jobchip.stray{color:var(--warm)}#statusLine .jobchip.idle{color:var(--dim)}
 .jobsb .lab.jh{margin:4px 0 6px}.jobsb .lab.jh .dim{font-weight:400;text-transform:none;letter-spacing:0;margin-left:6px}
 .jobsb .tbl.jobs+.lab.jh{margin-top:16px}.tbl.jobs td.nowrap{white-space:nowrap}
-.tbl.jobs .jproc{color:var(--fg2);overflow-wrap:anywhere;font-size:12px}
+.tbl.jobs .jproc{color:var(--fg2);overflow-wrap:anywhere;font-size:11px}
 .joblog{margin-top:14px}.joblog .tdl{display:flex;align-items:center;gap:8px;margin:0 0 4px}.joblog .tdl .lab{margin:0;flex:1 1 auto}

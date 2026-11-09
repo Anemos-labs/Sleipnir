@@ -16,7 +16,7 @@
 .mgr-card .s-role{flex:none}
 .mgr-card .s-doing{grid-area:doing;min-height:0;-webkit-line-clamp:2;font-size:13px}
 .mgr-card .rc-meta{grid-area:meta;display:flex;gap:8px;align-items:center;min-width:0}
-.mgr-card .rc-note{font:400 12px var(--f-ui);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mgr-card .rc-note{font:400 11px var(--f-ui);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mgr-card .s-nums{grid-area:nums;flex-direction:column;gap:3px;margin:0;align-items:flex-end}
 .mgr-card .s-spark{grid-area:spark;height:34px;margin:0;width:100%}
 .mgr-card .s-st{margin-left:auto}
@@ -32,6 +32,6 @@
 .sololog b{color:var(--fe);font-family:var(--f-num);letter-spacing:0;text-transform:none}
 .s-spark{flex:1;min-height:20px;max-height:42px;margin-top:auto}
 .stall .s-top{flex:none}
-.plus{font:700 11px var(--f-num);fill:var(--warm)}
+.plus{font:700 10px var(--f-num);fill:var(--warm)}
 .arcs{position:absolute;inset:0;width:100%;height:100%;pointer-events:none!important;overflow:visible}
 .sololog .tdrow{cursor:pointer;border-radius:3px}.sololog .tdrow:hover{background:var(--panel2)}
