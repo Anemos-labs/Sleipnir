@@ -7,6 +7,16 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A built-in skill's own script can run in a run with nobody to ask. Built-in
+  skills are unpacked under the state directory, whose write rule asks in every
+  mode, and `node <skill>/vulns.mjs` counted as a possible write to that
+  directory, so every such script was refused even with `Bash(node:*)` allowed.
+  An interpreter's first word now counts as run and read when it resolves
+  inside the built-in skills, and the file tools and read-only commands can read
+  files there. The command still needs its own permission, every other word of
+  it is judged as before, and writes under the state directory still ask. No
+  prompt bytes change.
+
 - The merge queue's refusal for files outside a task's scope marks each file
   the submission deleted or added, compared with the integration branch:
   "changed 1 file(s) outside its scope: .gitignore (deleted)". The worker's

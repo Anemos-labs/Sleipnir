@@ -33,6 +33,8 @@ type extensions struct {
 	roles    swarm.Roles
 	profiles map[string]perm.RoleProfile
 	warnings []string
+	// shipped are the directories of code the harness itself ships (the built-in skills), for the permission engine.
+	shipped []string
 }
 
 // skillListingTokens bounds the always-present listing of skills in the shared
@@ -65,7 +67,10 @@ func (s *Session) loadExtensions() {
 	// nothing to load.
 	var extra []skills.Extra
 	if s.pluginOn(plugin.BuiltinSkills) {
-		extra = append(extra, builtinSkills(o.Home, true, &ext.warnings)...)
+		for _, e := range builtinSkills(o.Home, true, &ext.warnings) {
+			extra = append(extra, e)
+			ext.shipped = append(ext.shipped, e.Dir)
+		}
 	}
 	for _, d := range s.externalDirs("skills") {
 		extra = append(extra, d)

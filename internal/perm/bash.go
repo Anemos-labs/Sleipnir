@@ -1121,6 +1121,7 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 			u.why = unlisted
 		}
 		uses = unknownUses(withoutInlineCode(u.name, s.Args))
+		markInterpreterScript(uses, u.name, s.Args)
 		if u.name == "git" {
 			if g, ok := gitRepoUses(s.Args); ok {
 				uses = g // writes only into the repository: its operands are read
@@ -1176,7 +1177,15 @@ func (ev *evaluator) buildUnit(s shellparse.Simple, cw *cwdSet) *unit {
 		if chdir != "" && i > 0 {
 			c = ev.cdTo(cw, chdir)
 		}
-		u.accesses = append(u.accesses, ev.resolve(use, c)...)
+		resolved := ev.resolve(use, c)
+		if use.script {
+			for j := range resolved {
+				if ev.rs.isShipped(resolved[j]) {
+					resolved[j].write, resolved[j].tree, resolved[j].guess = false, false, false
+				}
+			}
+		}
+		u.accesses = append(u.accesses, resolved...)
 	}
 	if u.name == "for" {
 		// A loop's word list is data as often as files ("for i in $ITEMS"); the
