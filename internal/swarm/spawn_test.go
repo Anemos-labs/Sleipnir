@@ -66,3 +66,28 @@ func TestASpawnOfTheMemberAlreadyOnTheTaskSaysItIsOnIt(t *testing.T) {
 		t.Errorf("the answer %q does not say %q, or sends the task elsewhere", res.Text, want)
 	}
 }
+
+// The same answer holds for a role of one member, whose spawn takes the reuse path and not the solo-member choice.
+func TestASpawnOfTheOnlyMemberAlreadyOnTheTaskSaysItIsOnIt(t *testing.T) {
+	hold := make(chan struct{})
+	defer close(hold)
+	r := newRVRigWith(t, Config{PersistentPools: true, MaxWorkers: 8, Team: []string{"backend"}},
+		func(ctx context.Context, c *rvCall) rvReply {
+			if c.Role == "backend" {
+				rvBlock(ctx, hold)
+			}
+			return rvReply{Text: "noted"}
+		}, nil)
+	task, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "parser", Role: "backend", Files: []string{"parser/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", TaskID: task.ID, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, "be-1 on the task", func() bool { return !r.idle("be-1") })
+	res := r.callTool(context.Background(), "spawn", "mgr", "manager", map[string]any{"agent": "be-1", "task": task.ID})
+	if want := "be-1 already works on " + task.ID; !res.IsError || !strings.Contains(res.Text, want) {
+		t.Errorf("the answer %q (error %v) does not say %q", res.Text, res.IsError, want)
+	}
+}

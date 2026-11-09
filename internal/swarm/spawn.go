@@ -305,10 +305,8 @@ func (s *Swarm) soloMember(req *SpawnReq) error {
 	for _, m := range members {
 		why := busy(m)
 		switch {
-		case req.Agent != "" && m.id == req.Agent && why != "" && req.TaskID != "" && m.on(req.TaskID):
-			// The member is already on this very task (a revise or reopen hands the change to the worker that has it): nothing is
-			// to be started, and "give it to a free member" read as a refusal to hand the task back.
-			return fmt.Errorf("%s already works on %s and takes up a revision of it itself: nothing to start. Wait for its result (wait), or mail it", m.id, req.TaskID)
+		case req.Agent != "" && m.id == req.Agent && m.busyOn(req.TaskID):
+			return alreadyOn(m.id, req.TaskID)
 		case req.Agent != "" && m.id == req.Agent && why != "":
 			return fmt.Errorf("%s: give the task to a free %s member, or leave out agent= so it starts on the first free one", why, req.Role)
 		case req.Agent != "" && m.id == req.Agent:
@@ -405,6 +403,9 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (SpawnResult, error) {
 	}
 	if m.manager {
 		return SpawnResult{}, errors.New("the manager cannot be given a worker's task")
+	}
+	if m.busyOn(req.TaskID) {
+		return SpawnResult{}, alreadyOn(m.id, req.TaskID)
 	}
 	role := s.roles[m.role]
 	transfer := false
@@ -935,9 +936,18 @@ func (s *Swarm) leaveSparingPools(req SpawnReq, release map[string][]string) {
 	}
 }
 
-// on reports whether the member's current run is on task id.
-func (m *member) on(id string) bool {
+// busyOn reports whether the member is in a run on task id ("" is no task).
+func (m *member) busyOn(id string) bool {
+	if id == "" {
+		return false
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.task == id
+	return m.life != lifeIdle && m.task == id
+}
+
+// alreadyOn is a spawn's answer when the member it names is already in a run on that very task: nothing is to be started.
+// "give the task to a free member" read as a refusal to hand back a task the member had and was retrying after a reopen.
+func alreadyOn(agent, task string) error {
+	return fmt.Errorf("%s already works on %s: nothing to start. Wait for its result (wait), or mail it what changed", agent, task)
 }
