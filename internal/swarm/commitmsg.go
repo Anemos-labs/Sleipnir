@@ -21,8 +21,9 @@ var leadingTaskID = regexp.MustCompile(`^\s*(?:\[T\d+\]\s*|T\d+\s*[:\-–—]\s*
 
 // boardIDList matches a list of board ids in parentheses or brackets that a title carries as a label, as the harness's
 // own tasks do ("docs: catch up (T1, T4 and 2 more)"): without it the title is a subject, where the whole title used to
-// give way to "Update project files" on every documentation pass.
-var boardIDList = regexp.MustCompile(`\s*[(\[]\s*T\d+(?:\s*(?:,|and)\s*(?:T\d+|\d+ more))*\s*[)\]]`)
+// give way to "Update project files" on every documentation pass. The manager's own edits are listed there as "manager"
+// ("docs: catch up (manager, T10)"), which a commit subject must not carry either: it names how the work was organised.
+var boardIDList = regexp.MustCompile(`\s*[(\[]\s*(?:T\d+|` + managerEdits + `)(?:\s*(?:,|and)\s*(?:T\d+|` + managerEdits + `|\d+ more))*\s*[)\]]`)
 
 // commitSubject is title as a commit subject: one line, without a leading board id,
 // starting with a capital letter.
@@ -53,10 +54,7 @@ func taskCommitMessage(t Task, summary, commit string, ids []string) string {
 			return subject + "\n\n" + trailer
 		}
 	}
-	subject := commitSubject(t.Title)
-	if subject == "" || mentionsRun(subject, ids) {
-		subject = commitSubject(boardIDList.ReplaceAllString(t.Title, ""))
-	}
+	subject := commitSubject(boardIDList.ReplaceAllString(t.Title, ""))
 	if subject == "" || mentionsRun(subject, ids) {
 		subject = "Update project files"
 	}

@@ -95,7 +95,8 @@ func TestEveryMemberKeepsRetiredIDs(t *testing.T) {
 }
 
 func TestTaskCommitMessageDropsABoardIDLabel(t *testing.T) {
-	for _, title := range []string{DocsTaskTitle + " (T1)", DocsTaskTitle + " (T1, T4, T7 and 2 more)", DocsTaskTitle + " [T3]"} {
+	for _, title := range []string{DocsTaskTitle + " (T1)", DocsTaskTitle + " (T1, T4, T7 and 2 more)", DocsTaskTitle + " [T3]",
+		DocsTaskTitle + " (manager)", DocsTaskTitle + " (manager, T10)", DocsTaskTitle + " (T2, manager and 3 more)"} {
 		if got := taskCommitMessage(Task{ID: "T9", Title: title}, "", "", []string{"dc-1"}); !strings.HasPrefix(got, "Docs: catch up\n") {
 			t.Fatalf("%q: the title without its label is the subject, got %q", title, got)
 		}
