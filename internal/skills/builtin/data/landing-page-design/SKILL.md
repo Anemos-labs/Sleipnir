@@ -1,6 +1,6 @@
 ---
 name: landing-page-design
-description: A landing page or project website: one primary action, page structure, real copy, a default visual system, every state, a ship checklist.
+description: A landing page or project website: one primary action, structure, real copy, a visual system, every state, a ship checklist.
 license: MIT
 author: Adapted from the landing-page-design skill of AI Design Skills by Elaya (github.com/elayadesign/ai-design-skills), which credits taste-skill by Leon Lin (github.com/Leonxlnx/taste-skill), both MIT licence
 ---

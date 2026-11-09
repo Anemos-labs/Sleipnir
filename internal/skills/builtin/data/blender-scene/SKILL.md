@@ -1,6 +1,6 @@
 ---
 name: blender-scene
-description: Compose, light, texture and animate a Blender scene so the result looks intentional. Use after the blender skill when building a scene, product shot, environment, level blockout or animation.
+description: Compose, light, texture and animate a Blender scene so it looks intentional. Use after blender for a scene, product shot, level blockout or animation.
 license: MIT (adapted from the guides of ahujasid/mcp-for-blender, Copyright (c) 2025 Siddharth Ahuja)
 ---
 # Scene design in Blender

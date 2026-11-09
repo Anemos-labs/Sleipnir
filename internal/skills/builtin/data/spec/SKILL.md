@@ -1,6 +1,6 @@
 ---
 name: spec
-description: Goal to specification, vertical slices and milestones a judge can check. Load when planning a product or large feature, writing an agreement, or splitting work into tasks.
+description: Goal to specification, vertical slices and milestones a judge can check. Load when planning a product or large feature or splitting work into tasks.
 license: MIT
 author: Adapted from Matt Pocock's grilling, to-spec and to-tickets skills (github.com/mattpocock/skills), MIT licence
 ---

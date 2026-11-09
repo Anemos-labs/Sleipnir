@@ -1,6 +1,6 @@
 ---
 name: reverse-engineering-ui
-description: Tear down a live site or web UI into an evidence-backed spec (layout, tokens, components, states, network) and rebuild it as original code. Use to clone or match one.
+description: Tear down a live site or web UI into an evidence-backed spec (layout, tokens, components, states, network) for an original rebuild. Use to clone or match one.
 license: MIT
 author: Sleipnir; the measured capture and comparison follow the website checks of Craft Anything (github.com/storytold/craft-anything, MIT OR Apache-2.0); no code is copied
 ---

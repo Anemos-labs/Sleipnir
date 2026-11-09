@@ -1,6 +1,6 @@
 ---
 name: diagnose
-description: Feedback-loop-first diagnosis of hard bugs, flaky tests and performance regressions. Load before changing code when something fails and the cause is not obvious.
+description: Feedback-loop-first diagnosis of hard bugs, flaky tests and performance regressions. Load before changing code when the cause is not obvious.
 license: MIT
 author: Adapted from Matt Pocock's diagnosing-bugs skill (github.com/mattpocock/skills) and pstack principles by Lauren Tan (github.com/cursor/plugins), MIT licence
 ---

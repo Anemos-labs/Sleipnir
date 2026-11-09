@@ -210,10 +210,12 @@ directory above (a skill of yours with the same name replaces one, with a warnin
 | `sleipnir-plugin` | writing, checking, installing and reloading a Sleipnir plugin of the agent's own ([PLUGINS.md](PLUGINS.md#plugins-the-agents-write)) |
 | `landing-page-design` | a landing page or project website: one primary action, page structure, real copy, a default visual system, a ship checklist |
 | `plain-writing` | documentation and messages without filler or machine-generated tells |
+| `shodan` | keyless Shodan lookups: the open ports, hostnames and likely CVEs of a public IP or domain (InternetDB), and CVE, KEV and EPSS data for a product version (CVEDB), with a dependency-free `shodan.mjs` |
+| `vuln-check` | keyless known-vulnerability checks: scan npm, Yarn, pnpm, pip, Poetry, uv, Pipenv, Cargo, Go, Bundler and Composer lockfiles against OSV.dev, look up a package version, a CVE or GHSA id (OSV, NVD) or CISA's exploited list, ranked by KEV and EPSS, with a dependency-free `vulns.mjs` |
 
 The role prompts say when each role loads which, so a team uses them without being asked: the manager and the
 architect load `spec` (the architect also `codebase-design`), the backend, frontend and tester `tdd` and `diagnose`,
-devops `diagnose`, the frontend `prototype` (and `landing-page-design` for a site), the reviewer `code-review` and docs `plain-writing`; the constitution
+devops `diagnose`, `vuln-check` and `shodan`, the frontend `prototype` (and `landing-page-design` for a site), the reviewer `code-review` (and `vuln-check` or `shodan` for dependencies, a pinned version or a public host) and docs `plain-writing`; the constitution
 points every agent at `diagnose` for a hard bug. `tools.builtin_skills = false` leaves every built-in skill out (the
 role prompts still name them, and the `skill` tool answers such a request with the skills that exist).
 
@@ -221,7 +223,7 @@ Only their one-line descriptions are in the listing; a body is read when the mod
 once per release under `<state>/cache/skills/<digest>/builtin/` (`<state>` is `$SLEIPNIR_HOME` or `~/.sleipnir`) and
 shown as `builtin/<name>/SKILL.md`; a file there that differs from the release, or one added beside them, is replaced
 when the next session starts. Text adapted from MIT-licensed projects is credited in
-`internal/skills/builtin/data/NOTICE.md`. The Blender and reverse-engineering skills name optional MCP servers
+`internal/skills/builtin/data/NOTICE.md`. The `shodan` skill calls Shodan's free InternetDB and CVEDB services, which need no account or key and are free for non-commercial use. The `vuln-check` skill calls OSV.dev, the NVD (`NVD_API_KEY` optional, for a higher rate limit), CISA's KEV feed and FIRST's EPSS API, all free and keyless. The Blender and reverse-engineering skills name optional MCP servers
 ([MCP for Blender](https://github.com/ahujasid/mcp-for-blender), [REA](https://github.com/morluto/rea)) and work
 without them.
 
