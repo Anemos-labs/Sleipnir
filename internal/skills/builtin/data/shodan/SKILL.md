@@ -1,6 +1,6 @@
 ---
 name: shodan
-description: Keyless Shodan: open ports and likely CVEs of a public IP or domain; CVE, KEV and EPSS data for a product version.
+description: Keyless Shodan: open ports and likely CVEs of a public IP or domain, and CVEs of a product version.
 license: MIT
 author: Sleipnir; uses Shodan's free InternetDB and CVEDB services (internetdb.shodan.io, cvedb.shodan.io); no code is copied
 ---
@@ -27,6 +27,9 @@ non-commercial use; a product that sells their data needs a Shodan enterprise li
 - You triage a CVE list (a scanner's report, `npm audit`, an advisory): rank by KEV, then EPSS, then CVSS.
 - You build a feature that enriches IPs or CVEs (a dashboard, an alerting rule): read the real response shapes here
   before you write types for them.
+
+For a project's own dependencies (lockfiles, package versions) and full NVD records, load the `vuln-check`
+skill: OSV.dev knows package advisories that CPE names miss.
 
 It cannot run Shodan search queries (`product:nginx country:DE`), facets, banners, history or scans: those need a
 paid key at `api.shodan.io`. When the user has given one (`SHODAN_API_KEY`), use that API for them. Do not scrape

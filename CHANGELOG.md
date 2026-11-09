@@ -17,6 +17,17 @@ they do not indicate whether a change has been released.
   `reverse-engineering` are shortened so the built-in listing stays within
   half of its budget. Prompt-cache change: the skills listing in the shared
   layer and the devops and reviewer role layers change once.
+- A built-in `vuln-check` skill checks for known vulnerabilities without a
+  key: `vulns.mjs deps` scans npm, Yarn, pnpm, pip, Poetry, uv, Pipenv,
+  Cargo, Go, Bundler and Composer lockfiles against OSV.dev in one batch
+  and ranks findings by CISA KEV, then EPSS, then severity, with the fixed
+  version of each, exiting 3 when it finds one; `pkg`, `id`, `nvd` and
+  `kev` look up a package version, a CVE or GHSA id (OSV.dev and the NVD,
+  with `NVD_API_KEY` optional), an NVD search by CPE or keyword, and
+  CISA's exploited list. The devops and reviewer role prompts name it next
+  to `shodan`. Eight built-in descriptions are shortened so the listing
+  stays within half of its budget. Prompt-cache change: the skills listing
+  and the devops and reviewer role layers change once more.
 - A `spawn` that names the member already working on that very task (after a
   `task revise` or `reopen`, which hand the change to that worker) answers
   that the member is on it and nothing is to be started. Before, it answered

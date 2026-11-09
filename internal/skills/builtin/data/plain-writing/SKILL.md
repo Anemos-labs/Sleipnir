@@ -1,6 +1,6 @@
 ---
 name: plain-writing
-description: Clear technical writing without machine-generated tells. Load before writing a README, docs, site copy, release notes, a commit or PR message, or a report.
+description: Clear technical writing without machine-generated tells. Load before writing a README, docs, site copy, release notes, a commit or PR message.
 license: MIT
 author: Adapted from pstack's unslop and technical-writing skills by Lauren Tan (github.com/cursor/plugins), MIT licence
 ---

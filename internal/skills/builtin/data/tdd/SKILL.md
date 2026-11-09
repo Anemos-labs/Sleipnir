@@ -1,6 +1,6 @@
 ---
 name: tdd
-description: Test-first development with tests worth keeping: seams, red before green, behaviour over internals. Load when adding behaviour or writing or judging tests.
+description: Test-first work with tests worth keeping: seams, red before green, behaviour over internals. Load when adding behaviour or writing or judging tests.
 license: MIT
 author: Adapted from Matt Pocock's tdd skill (github.com/mattpocock/skills) and pstack's test-behavior-not-implementation principle by Lauren Tan (github.com/cursor/plugins), MIT licence
 ---

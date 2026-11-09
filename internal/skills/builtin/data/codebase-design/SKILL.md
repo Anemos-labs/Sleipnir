@@ -1,6 +1,6 @@
 ---
 name: codebase-design
-description: Deep modules, interfaces and seams: vocabulary and principles. Load when designing or restructuring modules or deciding where an interface goes.
+description: Deep modules, interfaces and seams. Load when designing or restructuring modules or deciding where an interface goes.
 license: MIT
 author: Adapted from Matt Pocock's codebase-design skill (github.com/mattpocock/skills) and pstack principles by Lauren Tan (github.com/cursor/plugins), MIT licence
 ---
