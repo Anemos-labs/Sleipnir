@@ -207,3 +207,28 @@ func (s *Swarm) everyMember() []string {
 	sort.Strings(ids)
 	return ids
 }
+
+// maskedTestNotice returns what to tell a worker whose task has no verifier and whose last test ran with its exit status
+// masked (piped into tail, followed by another command): the harness never saw whether it passed, and the evidence the manager
+// reads could only quote the output's last line. A broken test run looked green that way. It is said once per task revision,
+// so a worker that cannot run the test any other way is never held; "" when there is nothing to say.
+func (s *Swarm) maskedTestNotice(t Task, ev *Evidence) string {
+	if ev == nil {
+		return ""
+	}
+	c, ok := ev.LastTestFor(t.ID)
+	if !ok || !c.Masked || c.Echoed != "" {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if warned, ok := s.maskedWarned[t.ID]; ok && warned == t.Rev {
+		return ""
+	}
+	if s.maskedWarned == nil {
+		s.maskedWarned = map[string]uint64{}
+	}
+	s.maskedWarned[t.ID] = t.Rev
+	return fmt.Sprintf("Not done yet: your last test `%s` ran with its exit status hidden (it was piped or followed by another command), "+
+		"so nobody can tell whether it passed. Run it once more on its own line, or with `set -o pipefail`, so its exit status shows, then call done again.", c.Cmd)
+}

@@ -601,8 +601,14 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		return &tools.Result{IsError: true, Text: fmt.Sprintf("Not done: verification `%s` failed (exit %d). Fix the failures and call done again.%s\n%s",
 			cmd, vr.code, s.isolatedVerifyHint(m), tail)}
 	}
-	result, report := oneLine(in.Text, 120), ""
 	readOnly := s.roles[c.Env.Role].Reports()
+	if s.cfg.VerifyCmd == "" && !readOnly {
+		if notice := s.maskedTestNotice(task, ev); notice != "" {
+			return &tools.Result{IsError: true, Text: notice}
+		}
+	}
+	result, report := oneLine(in.Text, 120), ""
+
 	if readOnly {
 		result, report = readOnlyReport(task.ID, in.Text)
 	}

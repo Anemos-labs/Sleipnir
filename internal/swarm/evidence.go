@@ -398,6 +398,21 @@ func (e *Evidence) LastTest() (CmdRecord, bool) {
 	return e.cur.lastTest()
 }
 
+// LastTestFor returns the most recent test-like command recorded for task (the current record when task is the current one or
+// the agent has had no task yet).
+func (e *Evidence) LastTestFor(task string) (CmdRecord, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	r, ok := e.tasks[task]
+	if !ok {
+		if task != e.task && e.task != "" {
+			return CmdRecord{}, false
+		}
+		r = e.cur
+	}
+	return r.lastTest()
+}
+
 // Summary renders the evidence of the current task as one line for the board and the manager.
 func (e *Evidence) Summary() string {
 	e.mu.Lock()
