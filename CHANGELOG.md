@@ -7,6 +7,15 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The manager role no longer says "Do not verify accepted work with tests of
+  your own". It now says not to re-run tests the verifier or a reviewer already
+  ran, and that checking what no test covers (an exit code, a message, a file
+  the user named) before reporting the goal met is the manager's job. That
+  matches its line on comparing the result with the request. A pool submitted
+  in a run with no verifier no longer carries the evidence "pool reconciled and
+  verified": it says no verifier was configured, so each child's own evidence
+  is the only test record. The manager role's bytes change once on upgrade (one
+  cache write of the manager's system prompt); tool specs are unchanged.
 - A merge of documentation only (Markdown files, `docs/`) no longer supersedes
   a pool's reconciliation, unless the pool's own files are all documentation.
   Before, a README fix after a code pool reconciled sent the whole pool back to

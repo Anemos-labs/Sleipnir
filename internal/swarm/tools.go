@@ -554,7 +554,10 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		return tools.Errorf("%v", err)
 	}
 	if task.Pool != nil {
-		evidence := "pool reconciled and verified"
+		evidence := "pool reconciled; no verifier configured, so each child's own evidence is the only test record"
+		if s.cfg.VerifyCmd != "" {
+			evidence = "pool reconciled and verified"
+		}
 		if task.Kind == TaskKindPlan {
 			evidence = "pool reconciled; read-only planning; manager reviews the agreement"
 		} else if vr := s.verifyFor(ctx, task, s.deps.Workdir, task.Files); !vr.ok {
