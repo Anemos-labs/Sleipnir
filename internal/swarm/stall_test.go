@@ -918,3 +918,48 @@ func TestStallClaimedNoProgressSparesAReview(t *testing.T) {
 		rvWait(t, "the reviewer to stop", func() bool { return r.idle(id) })
 	})
 }
+
+// A child of an executing pool that waits in review is its leader's to accept: the leader is told, with how, and not the
+// manager, which could only do the leader's part over its head. In a team run the manager was told "T9 has waited in review for
+// 5 minutes. Read it, then accept or reject it" for a pool child, and mailed the leader to do it.
+func TestAPoolChildWaitingInReviewIsTheLeadersToDecide(t *testing.T) {
+	cfg := stallCfg()
+	cfg.PersistentPools, cfg.MaxWorkers, cfg.Team = true, 2, []string{"backend", "backend"}
+	r := newRVRig(t, cfg, func(context.Context, *rvCall) rvReply { return rvReply{Text: "waiting"} })
+	if _, err := r.sw.StartManager(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "backend", Files: []string{"app/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	parent := r.sw.Board.Snapshot().Tasks[0]
+	lead, other := parent.Pool.Members[0], parent.Pool.Members[1]
+	if err := r.sw.Board.poolUpdate("mgr", parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, "the pool's members to be idle", func() bool { return r.idle(lead) && r.idle(other) })
+	child := newChild(t, r, parent, lead, "app/a.go")
+	submitChild(t, r, lead, other, child)
+	r.sw.sweepStalls() // the review clock starts
+	cur, _ := r.sw.Board.Snapshot().Task(child.ID)
+	key := child.ID + "#" + strconv.FormatUint(cur.Rev, 10)
+	r.sw.stalls.mu.Lock()
+	c := r.sw.stalls.review[key]
+	c.at = r.sw.deps.Now().Add(-6 * time.Minute)
+	r.sw.stalls.review[key] = c
+	r.sw.stalls.mu.Unlock()
+	r.sw.sweepStalls()
+	f, ok := active(r, StallReviewStarved)
+	if !ok || f.Task != child.ID || f.Notify != lead || f.Pool != parent.ID {
+		t.Fatalf("finding = %+v, %v; want %s's review told to its leader %s", f, ok, child.ID, lead)
+	}
+	if nudged(r, "mgr") {
+		t.Error("the manager was told to decide a pool child")
+	}
+	if !nudged(r, lead) {
+		t.Fatal("the leader was not told")
+	}
+	if got := stallNudge(f, 3, true); !strings.Contains(got, "As the leader of "+parent.ID) || !strings.Contains(got, "task accept id="+child.ID) {
+		t.Errorf("the leader's nudge %q does not say how to accept it", got)
+	}
+}
