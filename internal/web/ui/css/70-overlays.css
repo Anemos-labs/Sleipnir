@@ -5,7 +5,7 @@
 #statusLine .dot{color:var(--c,var(--mgr))}
 #statusLine kbd{margin-left:2px}
 #foot .sp{flex:1}
-.mockchip{border:1px dashed var(--warm);color:var(--warm);padding:2px 7px;border-radius:2px;font:600 10.5px var(--f-num);letter-spacing:.04em}
+.mockchip{border:1px dashed var(--warm);color:var(--warm);padding:2px 7px;border-radius:2px;font:600 11.5px var(--f-num);letter-spacing:.04em}
 
 /* overlays */
 .scrim{position:fixed;inset:0;background:var(--scrim);z-index:40;display:flex;align-items:flex-start;justify-content:center;padding:7vh 16px 16px}
@@ -16,7 +16,7 @@
 .sh-h h2{margin:0;font:700 17px/1 var(--f-lab);letter-spacing:.14em;text-transform:uppercase;color:var(--bright)}
 .sh-h .k{font:500 12px var(--f-num);color:var(--mgr)}
 .sh-h .d{font-size:12.5px;color:var(--dim);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sh-h .x{margin-left:auto;border:1px solid var(--line2);padding:3px 8px;border-radius:2px;font:500 11px var(--f-num);color:var(--fg2)}
+.sh-h .x{margin-left:auto;border:1px solid var(--line2);padding:3px 8px;border-radius:2px;font:500 12px var(--f-num);color:var(--fg2)}
 .sh-h .x:hover{border-color:var(--dim);color:var(--bright)}
 .sh-b{padding:14px 16px 16px;overflow:auto;min-height:0;scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
 .sheet.pal{width:min(640px,100%);max-height:76vh}
@@ -25,12 +25,12 @@
 .pal #palIn{width:100%;background:var(--bg);border:0;border-bottom:1px solid var(--line2);padding:13px 16px;font:500 15px var(--f-num);color:var(--bright);outline:none}
 .pal input::placeholder{color:var(--dim)}
 #palList{overflow:auto;flex:1;min-height:0}
-.pal .pf{border-top:1px solid var(--line);padding:6px 14px;font:500 11px var(--f-num);color:var(--dim);display:flex;gap:12px;flex:none}
+.pal .pf{border-top:1px solid var(--line);padding:6px 14px;font:500 12px var(--f-num);color:var(--dim);display:flex;gap:12px;flex:none}
 .pre{margin:0;background:var(--well);border:1px solid var(--line);padding:10px 12px;font:400 12px/1.45 var(--f-num);color:var(--fg2);white-space:pre-wrap;overflow:auto;max-height:46vh}
 .stubnote{font-size:12.5px;color:var(--dim);margin:0 0 10px}
 .tbl{width:100%;border-collapse:collapse;font:500 12px var(--f-num)}
 .pinmk{color:var(--c-mgr);display:inline-flex;vertical-align:-1px}
-.tbl th{font:700 10.5px var(--f-lab);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);text-align:left;padding:5px 8px;border-bottom:1px solid var(--line2);white-space:nowrap}
+.tbl th{font:700 11.5px var(--f-lab);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);text-align:left;padding:5px 8px;border-bottom:1px solid var(--line2);white-space:nowrap}
 .tbl td{padding:6px 8px;border-bottom:1px solid var(--line);color:var(--fg2);vertical-align:middle}
 .tbl td.r,.tbl th.r{text-align:right}
 .tbl tr:hover td{background:var(--panel2)}
@@ -51,9 +51,9 @@
 .seg button[aria-pressed="true"]{background:var(--raise);color:var(--bright)}
 .seg button.danger[aria-pressed="true"]{background:var(--err-a);color:var(--err)}
 .kv{display:grid;grid-template-columns:max-content 1fr;gap:5px 14px;font-size:12.5px}
-.kv dt{color:var(--dim);font:600 10.5px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;padding-top:2px}
+.kv dt{color:var(--dim);font:600 11.5px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;padding-top:2px}
 .kv dd{margin:0;color:var(--fg);font-family:var(--f-num);font-size:12px;word-break:break-word}
-.tag{display:inline-block;font:600 10px var(--f-num);padding:2px 5px;border:1px solid var(--line2);border-radius:2px;color:var(--dim);margin-right:4px}
+.tag{display:inline-block;font:600 11px var(--f-num);padding:2px 5px;border:1px solid var(--line2);border-radius:2px;color:var(--dim);margin-right:4px}
 .tag.ok{color:var(--ok);border-color:var(--ok-b)}.tag.warm{color:var(--warm);border-color:var(--warm-b)}.tag.err{color:var(--err);border-color:var(--err-b)}.tag.fe{color:var(--fe);border-color:var(--info-b)}
 
 /* drawer */
@@ -65,11 +65,11 @@
 .dr-h .r1{display:flex;align-items:baseline;gap:9px}
 .dr-h .did{font:700 24px/1 var(--f-num);color:var(--c);letter-spacing:-.03em}
 .dr-h .drole{font:700 12px var(--f-lab);letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
-.dr-h .stopag{margin-left:auto;border:1px solid var(--err);padding:3px 8px;border-radius:2px;font:600 11px var(--f-num);color:var(--err);background:transparent;cursor:pointer}
+.dr-h .stopag{margin-left:auto;border:1px solid var(--err);padding:3px 8px;border-radius:2px;font:600 12px var(--f-num);color:var(--err);background:transparent;cursor:pointer}
 .dr-h .stopag:hover,.dr-h .stopag:focus-visible{background:var(--err);color:var(--bg)}
 .dr-h .stopag + .x{margin-left:0}
-.dr-h .x{margin-left:auto;border:1px solid var(--line2);padding:3px 8px;border-radius:2px;font:500 11px var(--f-num);color:var(--fg2)}
-.dr-h .r2{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px;font:500 11px var(--f-num);color:var(--fg2)}
+.dr-h .x{margin-left:auto;border:1px solid var(--line2);padding:3px 8px;border-radius:2px;font:500 12px var(--f-num);color:var(--fg2)}
+.dr-h .r2{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px;font:500 12px var(--f-num);color:var(--fg2)}
 .dr-tabs{display:flex;border-bottom:1px solid var(--line);padding:0 8px}
 .dr-tabs button{padding:8px 10px;font:700 12px var(--f-lab);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);position:relative}
 .dr-tabs button[aria-selected="true"]{color:var(--bright)}
@@ -82,7 +82,7 @@
 /* diff */
 .diff{font:400 12px/1.5 var(--f-num);background:var(--well);border:1px solid var(--line);overflow:auto}
 .diff .ln{display:flex;white-space:pre;min-width:max-content}
-.diff .ln b.who{flex:none;width:46px;font:600 10px var(--f-num);color:var(--ag,var(--dim));text-align:right;padding-right:7px;opacity:.9;overflow:hidden;text-overflow:ellipsis}
+.diff .ln b.who{flex:none;width:46px;font:600 11px var(--f-num);color:var(--ag,var(--dim));text-align:right;padding-right:7px;opacity:.9;overflow:hidden;text-overflow:ellipsis}
 .diff .ln i{flex:none;width:30px;text-align:right;padding-right:8px;color:var(--faint);font-style:normal;user-select:none}
 .diff .ln s{flex:none;width:14px;text-decoration:none;color:var(--dim);user-select:none}
 .diff .ln.add{background:var(--ag-a,var(--ok-a))}.diff .ln.add s{color:var(--ag,var(--ok))}

@@ -12,12 +12,12 @@
 select{appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--dim) 50%),linear-gradient(135deg,var(--dim) 50%,transparent 50%);background-position:calc(100% - 14px) 55%,calc(100% - 9px) 55%;background-size:5px 5px;background-repeat:no-repeat;padding-right:24px!important}
 textarea{font:500 13px/1.4 var(--f-ui);resize:vertical}
 .fld{display:grid;grid-template-columns:150px minmax(0,1fr);gap:4px 12px;align-items:start;margin:9px 0}
-.fld>label{font:600 11px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);padding-top:7px}
+.fld>label{font:600 12px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);padding-top:7px}
 .fld .fc{display:flex;flex-wrap:wrap;gap:8px;align-items:center;min-width:0}
 .fld .fc input[type=text],.fld .fc input[type=number],.fld .fc select,.fld .fc textarea{flex:1;min-width:0}
 .fld .hint,.hint{flex-basis:100%;font:400 11.5px/1.35 var(--f-ui);color:var(--dim)}
 .fgroup{border:1px solid var(--line);padding:2px 12px 8px;margin:10px 0;min-width:0}
-.fgroup>legend{font:700 11px var(--f-lab);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);padding:0 6px}
+.fgroup>legend{font:700 12px var(--f-lab);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);padding:0 6px}
 .chk{display:inline-flex;gap:6px;align-items:center;font:500 12px var(--f-num);color:var(--fg2);cursor:pointer;margin-right:12px}
 .chk input{accent-color:var(--c-mgr);width:15px;height:15px}
 .stepper{display:inline-flex;gap:4px;align-items:center}.stepper input{width:60px;text-align:center;flex:none!important}
@@ -34,9 +34,9 @@ textarea{font:500 13px/1.4 var(--f-ui);resize:vertical}
 .gauge.wide{width:100%}
 /* a figure at the API list price that a subscription plan covers: the "plan" tag beside it, and a dashed budget gauge, which only the
    billed part of a session's spend fills */
-.plantag{display:inline-block;margin-left:5px;padding:0 4px;font:600 10px/1.45 var(--f-num);font-style:normal;letter-spacing:.02em;color:var(--fe);border:1px solid var(--info-b);border-radius:2px;vertical-align:1px;cursor:help}
+.plantag{display:inline-block;margin-left:5px;padding:0 4px;font:600 11px/1.45 var(--f-num);font-style:normal;letter-spacing:.02em;color:var(--fe);border:1px solid var(--info-b);border-radius:2px;vertical-align:1px;cursor:help}
 .gauge.plan{border-style:dashed}
-.hm b em.plantag{font:600 10px/1.45 var(--f-num);color:var(--fe)}
+.hm b em.plantag{font:600 11px/1.45 var(--f-num);color:var(--fe)}
 .lrows{display:flex;flex-direction:column;gap:1px}
 [data-tip]{position:relative}
 [data-tip]:hover::after,[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;left:0;top:calc(100% + 6px);z-index:50;background:var(--raise);border:1px solid var(--line2);color:var(--bright);padding:5px 9px;font:400 12px/1.35 var(--f-ui);white-space:normal;width:max-content;max-width:260px;box-shadow:0 8px 24px var(--shade);pointer-events:none}
@@ -53,7 +53,7 @@ textarea{font:500 13px/1.4 var(--f-ui);resize:vertical}
 /* a row of a field (an input or selects and Add) wraps inside its column instead of widening it */
 .fld .fc>.field-row{flex:1 1 100%;min-width:0}.fld .fc .field-row select{flex:1 1 110px;min-width:0;max-width:100%}.fld .fc .field-row input{flex:1 1 140px}
 .kv.keys2{grid-template-columns:minmax(120px,max-content) 1fr}
-.kv.keys2 dt{text-transform:none;font:500 11px var(--f-num);letter-spacing:0;color:var(--fg2)}
+.kv.keys2 dt{text-transform:none;font:500 12px var(--f-num);letter-spacing:0;color:var(--fg2)}
 .kv.keys2 dd{font-family:var(--f-ui);font-size:12.5px}
 .boxed{border:1px solid var(--line);padding:8px 10px;margin-bottom:10px}
 .goal-big{font-size:15px;line-height:1.45;margin:0 0 12px;color:var(--bright);white-space:pre-wrap;overflow-wrap:anywhere;max-height:44vh;overflow:auto}
@@ -68,7 +68,7 @@ textarea{font:500 13px/1.4 var(--f-ui);resize:vertical}
 .star{font-size:15px;color:var(--dim);padding:1px 4px}.star.on{color:var(--warm)}
 tbody tr[data-i]{cursor:pointer}
 .dgrid{display:grid;grid-template-columns:240px minmax(0,1fr);gap:12px}.dfiles{display:flex;flex-direction:column;gap:3px}
-.dfile{flex-direction:column;align-items:stretch;gap:2px;padding:6px 9px}.dfile[aria-pressed=true]{background:var(--raise)}.dfile .sub{font-weight:400;font-size:11px;color:var(--dim)}
+.dfile{flex-direction:column;align-items:stretch;gap:2px;padding:6px 9px}.dfile[aria-pressed=true]{background:var(--raise)}.dfile .sub{font-weight:400;font-size:12px;color:var(--dim)}
 .dtl{display:flex;gap:10px;align-items:center}.dtl .scrub{flex:1}
 .cf-t{font-size:13.5px;line-height:1.45;margin:0 0 8px;color:var(--fg)}.cf-d{font:400 12px var(--f-num);color:var(--dim);margin-bottom:6px;white-space:pre-wrap}
 .res{color:var(--c-mgr);font-weight:700}
@@ -79,7 +79,7 @@ tbody tr[data-i]{cursor:pointer}
 .popover.ibxpop{position:absolute;width:min(480px,calc(100% - 16px));max-height:min(70vh,560px);overflow:auto;padding:0}
 .ibx-h{display:flex;gap:10px;align-items:baseline;padding:10px 12px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel2);z-index:1}.ibx-h .dim{flex:1;font-size:11.5px}
 .ibx{padding:10px 12px;border-bottom:1px solid var(--line)}.ibx-t{display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap}.ibx-t .btn{margin-left:auto}
-.ibx .qcmd{margin:4px 0}.ibx .qwhy{font-size:12px;color:var(--fg2);margin-bottom:6px}.ibx .qwhy b{color:var(--warm);font:600 10.5px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;margin-right:4px}
+.ibx .qcmd{margin:4px 0}.ibx .qwhy{font-size:12px;color:var(--fg2);margin-bottom:6px}.ibx .qwhy b{color:var(--warm);font:600 11.5px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;margin-right:4px}
 .ibx-f{font:400 11.5px var(--f-ui);color:var(--dim);padding:8px 12px;margin:0}
 .nrow{padding:7px 12px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:12.5px}.nrow .btn{margin-left:auto}
 @keyframes askpulse{50%{box-shadow:0 0 0 1px var(--warm),0 0 26px var(--warm-b)}}
