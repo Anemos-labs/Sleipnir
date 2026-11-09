@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A merge of documentation only (Markdown files, `docs/`) no longer supersedes
+  a pool's reconciliation, unless the pool's own files are all documentation.
+  Before, a README fix after a code pool reconciled sent the whole pool back to
+  reconcile and confirm again over code nobody had touched. No prompt bytes
+  change in the system prompt or tool specs.
 - A worker's `task done` in a run with no verifier is held once when its last
   test ran with its exit status masked (piped into `tail`, followed by another
   command) and the line printed no status of its own: the worker is asked to

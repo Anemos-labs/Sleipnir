@@ -152,7 +152,9 @@ It is sent again only after a child, the pool's assignment or its revision chang
 not for each idle turn. A newer change that may touch the pool's files invalidates
 reconciliation: an accepted task or a revised one whose scope overlaps the pool's, a
 direct manager edit of one of its files, or a change whose files are not known. A
-change elsewhere in the tree leaves it current. A restored team reconciles again.
+change elsewhere in the tree leaves it current, and so does a change of documentation
+only (Markdown, `docs/`) unless the pool's own files are documentation. A restored
+team reconciles again.
 Objections go through typed mail; the manager settles disagreements and can revise
 the existing task. A member that cannot take part (its model keeps failing or does
 not answer) is excused by the manager with `pool excuse` (`member`, `text` = why):
