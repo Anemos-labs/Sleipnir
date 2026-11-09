@@ -7,6 +7,16 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A built-in `shodan` skill looks up, without a Shodan account or key, what
+  Shodan's scanners last saw on a public IP or domain (open ports,
+  hostnames, CPEs, tags and the CVEs those versions imply, from InternetDB)
+  and CVE, CPE, KEV and EPSS data for a product version (CVEDB), through a
+  dependency-free `shodan.mjs` or `curl`. Private and other non-public
+  addresses are never sent. The devops and reviewer role prompts name it;
+  the descriptions of `blender`, `blender-scene`, `blender-web-assets` and
+  `reverse-engineering` are shortened so the built-in listing stays within
+  half of its budget. Prompt-cache change: the skills listing in the shared
+  layer and the devops and reviewer role layers change once.
 - A worker's `task done` in a run with no verifier is held once when its last
   test ran with its exit status masked (piped into `tail`, followed by another
   command) and the line printed no status of its own: the worker is asked to

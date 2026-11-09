@@ -1,6 +1,6 @@
 ---
 name: blender
-description: Drive Blender from code to make 3D models, scenes, renders and animations. Use when a task needs 3D content or a rendered image and Blender is installed or a Blender MCP server is connected.
+description: Drive Blender from code: 3D models, scenes, renders, animations. Use when a task needs 3D content or a render and Blender or a Blender MCP server is available.
 license: MIT (portions adapted from ahujasid/mcp-for-blender, Copyright (c) 2025 Siddharth Ahuja)
 ---
 # Blender
