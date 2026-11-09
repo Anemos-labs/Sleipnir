@@ -54,34 +54,23 @@ export function parseArgs(argv) {
 // shared, documentation or multicast address describes some other network's host, never the one you mean.
 export function isPublicIP(ip) {
   const v = net.isIP(ip);
-  if (v === 4) {
-    const [a, b] = ip.split(".").map(Number);
-    return !(
-      a === 0 || a === 10 || a === 127 || a >= 224 ||
-      (a === 100 && b >= 64 && b <= 127) ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 192 && b === 0) ||
-      (a === 198 && (b === 18 || b === 19 || b === 51)) ||
-      (a === 203 && b === 0)
-    );
-  }
-  if (v === 6) {
-    const s = ip.toLowerCase();
-    if (s === "::" || s === "::1") return false;
-    const m = s.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-    if (m) return isPublicIP(m[1]);
-    const head = parseInt(s.split(":")[0] || "0", 16);
-    return !(
-      (head & 0xfe00) === 0xfc00 || // unique local
-      (head & 0xffc0) === 0xfe80 || // link-local
-      (head & 0xff00) === 0xff00 || // multicast
-      s.startsWith("2001:db8:") || s.startsWith("2001:0db8:") // documentation
-    );
-  }
-  return false;
+  return v !== 0 && !NON_PUBLIC.check(ip, v === 4 ? "ipv4" : "ipv6");
 }
+
+// NON_PUBLIC holds every special-purpose range (RFC 6890 and its updates) whose Shodan record would describe some other
+// network. A BlockList matches every spelling of an address (expanded, compressed, IPv4-mapped in hex or dotted form)
+// and checks an IPv4-mapped IPv6 address against the IPv4 ranges. NAT64 and 6to4 addresses embed an IPv4 address
+// that may be private, so they are left out whole.
+const NON_PUBLIC = new net.BlockList();
+for (const [addr, bits] of [
+  ["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12],
+  ["192.0.0.0", 24], ["192.0.2.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15], ["198.51.100.0", 24],
+  ["203.0.113.0", 24], ["224.0.0.0", 3],
+]) NON_PUBLIC.addSubnet(addr, bits, "ipv4");
+for (const [addr, bits] of [
+  ["::", 127], ["64:ff9b::", 96], ["64:ff9b:1::", 48], ["100::", 64], ["2001:db8::", 32], ["2002::", 16],
+  ["fc00::", 7], ["fe80::", 10], ["ff00::", 8],
+]) NON_PUBLIC.addSubnet(addr, bits, "ipv6");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -191,6 +180,7 @@ export function formatHost(r) {
   if (!d.vulns.length) lines.push("  vulns     none listed");
   else if (!r.cves) lines.push(`  vulns     ${d.vulns.length}: ${short(d.vulns.join(", "), 400)}  (add --cves for scores)`);
   else {
+    if (r.cvesError) lines.push(`  scoring   unavailable for some products: CVEDB did not answer after three tries`);
     lines.push(`  vulns     ${d.vulns.length}; the most urgent (inferred from software versions, not confirmed):`);
     for (const c of r.cves) lines.push(`    ${formatCVE(c)}`);
     const rest = r.unscored || [];
@@ -275,13 +265,15 @@ export async function run(argv, { out = (s) => console.log(s), err = (s) => cons
               const r = await get(`${CVEDB}/cves?${new URLSearchParams({ cpe23: cpe, sort_by_epss: "true", limit: String(Math.max(top, 1) * 4) })}`);
               byCPE.set(cpe, r.status === 200 && r.body ? r.body.cves || [] : []);
             } catch {
-              byCPE.set(cpe, []);
+              failed = true;
+              byCPE.set(cpe, null); // scoring unavailable, as distinct from no CVE matched
             }
           });
           for (const r of results) {
             if (!r.data) continue;
             const listed = new Set(r.data.vulns);
             const seen = new Map();
+            r.cvesError = r.data.cpes.map(toCPE23).some((cpe) => cpe && byCPE.get(cpe) === null);
             for (const cpe of r.data.cpes.map(toCPE23).filter(Boolean)) {
               for (const c of byCPE.get(cpe) || []) if (listed.has(c.cve_id) && !seen.has(c.cve_id)) seen.set(c.cve_id, c);
             }

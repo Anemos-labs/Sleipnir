@@ -52,8 +52,8 @@ node ${SLEIPNIR_SKILL_DIR}/shodan.mjs cves --product log4j --since 2025-01-01
 
 `--json` prints the raw records for a script to read. `cves` returns 20 by default (`--limit`, `--skip` page; CVEDB's
 own default is 1000). The exit status is 0 when every lookup answered, 1 for a usage error and 2 when the service failed
-after three tries. Private, loopback, link-local and documentation addresses, and hostnames that resolve to them, are
-skipped and never sent: Shodan's record for `10.0.0.1` describes someone else's network.
+after three tries. Private, loopback, link-local, shared, documentation, multicast, NAT64 and 6to4 addresses, in any
+spelling, and hostnames that resolve to them, are skipped and never sent: Shodan's record for `10.0.0.1` describes someone else's network.
 
 Without Node, `curl` does the same:
 

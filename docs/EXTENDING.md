@@ -211,7 +211,7 @@ directory above (a skill of yours with the same name replaces one, with a warnin
 | `landing-page-design` | a landing page or project website: one primary action, page structure, real copy, a default visual system, a ship checklist |
 | `plain-writing` | documentation and messages without filler or machine-generated tells |
 | `shodan` | keyless Shodan lookups: the open ports, hostnames and likely CVEs of a public IP or domain (InternetDB), and CVE, KEV and EPSS data for a product version (CVEDB), with a dependency-free `shodan.mjs` |
-| `vuln-check` | keyless known-vulnerability checks: scan lockfiles of every major ecosystem against OSV.dev, look up a package version, a CVE or GHSA id (OSV, NVD) or CISA's exploited list, ranked by KEV and EPSS, with a dependency-free `vulns.mjs` |
+| `vuln-check` | keyless known-vulnerability checks: scan npm, Yarn, pnpm, pip, Poetry, uv, Pipenv, Cargo, Go, Bundler and Composer lockfiles against OSV.dev, look up a package version, a CVE or GHSA id (OSV, NVD) or CISA's exploited list, ranked by KEV and EPSS, with a dependency-free `vulns.mjs` |
 
 The role prompts say when each role loads which, so a team uses them without being asked: the manager and the
 architect load `spec` (the architect also `codebase-design`), the backend, frontend and tester `tdd` and `diagnose`,

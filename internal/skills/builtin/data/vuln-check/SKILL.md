@@ -10,7 +10,7 @@ Four free public databases answer "is this dependency, version or CVE a known pr
 
 | Source | What it knows | Limit without a key |
 |---|---|---|
-| **OSV.dev** (`api.osv.dev`) | advisories for open-source packages: npm, PyPI, Go, crates.io, RubyGems, Packagist, Maven, NuGet, Pub, Hex and more, merged from GitHub's advisory database, PyPA, the Go and RustSec databases and others, with the exact fixed versions | none published; batch requests |
+| **OSV.dev** (`api.osv.dev`) | advisories for open-source packages in npm, PyPI, Go, crates.io, RubyGems, Packagist, Maven, NuGet, Pub, Hex and more (`pkg` takes any of them; `deps` reads the lockfiles listed below), merged from GitHub's advisory database, PyPA, the Go and RustSec databases and others, with the exact fixed versions | none published; batch requests |
 | **NVD** (`services.nvd.nist.gov`) | NIST's record of every CVE: CVSS score and vector, CWE weakness, affected CPEs, references, CISA KEV dates | 5 requests per 30 s; `NVD_API_KEY` raises it to 50 |
 | **CISA KEV** | the CVEs attackers are known to exploit, with ransomware use and CISA's required action | one JSON file |
 | **FIRST EPSS** | the probability each CVE is exploited in the next 30 days | 100 CVEs per request |
@@ -45,11 +45,13 @@ node ${SLEIPNIR_SKILL_DIR}/vulns.mjs kev --vendor microsoft --since 2026-01-01
 
 `deps` reads `package-lock.json`, `npm-shrinkwrap.json`, `yarn.lock`, `pnpm-lock.yaml`, `requirements*.txt` (pinned
 `==` lines), `poetry.lock`, `uv.lock`, `Pipfile.lock`, `Cargo.lock`, `go.mod`, `Gemfile.lock` and `composer.lock`,
-three folders deep, skipping `node_modules`, `vendor`, `target`, virtual environments and build output. It prints the
+three folders deep, skipping `node_modules`, `vendor`, `target`, virtual environments and build output. Maven, Gradle, NuGet,
+Pub and Hex lockfiles are not read: check those packages with `pkg`. It prints the
 40 most urgent findings (`--all` for every one, `--json` for the records) with the fixed version of each.
 
 Exit status: 0 when nothing known was found, **3 when `deps` or `pkg` found a known vulnerability** (so a CI step or a
-script can gate on it), 1 for a usage error and 2 when a service failed after three tries.
+script can gate on it), 1 for a usage error, and 2 when a service failed after three tries or a lockfile could not be
+read (it was not scanned, so the run never counts as clean).
 
 Without Node, `curl` does the same:
 

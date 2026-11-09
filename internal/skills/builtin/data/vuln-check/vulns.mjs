@@ -10,7 +10,8 @@
 //   node vulns.mjs kev [--vendor NAME] [--product NAME] [--since YYYY-MM-DD] [--limit N] [--json]
 //
 // Exit status: 0 when nothing vulnerable was found, 3 when `deps` or `pkg` found a known vulnerability, 1 on a usage
-// error, 2 when a lookup failed (network, timeout, rate limit after retries, or an unexpected status).
+// error, 2 when a lookup failed (network, timeout, rate limit after retries, or an unexpected status) or `deps` could
+// not read a lockfile it found.
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -450,12 +451,14 @@ export async function run(argv, { out = (s) => console.log(s), err = (s) => cons
         if (!files.length) throw new UsageError(`no lockfile found under ${targets.join(", ")}`);
         const pkgs = [];
         const seen = new Set();
+        const unreadable = [];
         for (const f of files) {
           let list;
           try {
             list = lockfileParser(f)(fs.readFileSync(f, "utf8"));
           } catch (e) {
             err(`${f}: could not be read as a lockfile: ${e.message}`);
+            unreadable.push(path.relative(cwd, f) || f);
             continue;
           }
           for (const p of list) {
@@ -479,7 +482,9 @@ export async function run(argv, { out = (s) => console.log(s), err = (s) => cons
           if (shown.length < findings.length) out(`\n${findings.length - shown.length} more: --all lists them, --json gives every record`);
           out("\nsource: OSV.dev (GitHub, PyPI, Go, RustSec and other advisory databases), CISA KEV, FIRST EPSS");
         }
-        return findings.length ? 3 : 0;
+        if (unreadable.length) err(`not scanned: ${unreadable.join(", ")}`);
+        // a lockfile that could not be read was not scanned: never report it clean
+        return findings.length ? 3 : unreadable.length ? 2 : 0;
       }
       case "pkg": {
         const [ecosystem, name, version] = a.words;
@@ -501,6 +506,7 @@ export async function run(argv, { out = (s) => console.log(s), err = (s) => cons
         const bad = a.words.find((w) => !/^[A-Z][A-Z0-9]*-[A-Za-z0-9.:_-]+$/i.test(w));
         if (bad) throw new UsageError(`${bad} is not a vulnerability id`);
         const results = [];
+        let nvdAsked = false; // every NVD request counts against its limit, an answer without a record too
         for (const w of a.words) {
           const id = /^cve-/i.test(w) ? w.toUpperCase() : w;
           const osv = await request(`${OSV}/vulns/${encodeURIComponent(id)}`, deps);
@@ -508,7 +514,8 @@ export async function run(argv, { out = (s) => console.log(s), err = (s) => cons
           if (rec.osv) rec.packages = (osv.body.affected || []).map((x) => `${x.package?.name} (${x.package?.ecosystem})`).filter((x) => !x.startsWith("undefined"));
           const cve = /^CVE-/.test(id) ? id : rec.osv?.cves[0];
           if (cve) {
-            if (results.some((x) => x.nvd)) await (deps.wait || sleep)(env.NVD_API_KEY ? 700 : 6500); // the NVD's keyless limit: 5 requests in 30 s
+            if (nvdAsked) await (deps.wait || sleep)(env.NVD_API_KEY ? 700 : 6500); // the NVD's keyless limit: 5 requests in 30 s
+            nvdAsked = true;
             const n = await request(`${NVD}?cveId=${cve}`, { ...deps, headers: nvdHeaders });
             const c = n.body?.vulnerabilities?.[0]?.cve;
             rec.nvd = c ? nvdSummary(c) : null;

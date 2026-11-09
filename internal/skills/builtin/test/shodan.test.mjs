@@ -24,10 +24,10 @@ async function capture(argv, deps) {
 }
 
 test("private, loopback, shared, link-local and documentation addresses are not public", () => {
-  for (const ip of ["10.1.2.3", "127.0.0.1", "172.20.0.1", "192.168.1.1", "100.64.0.1", "169.254.1.1", "192.0.2.1", "198.51.100.2", "203.0.113.9", "0.0.0.0", "224.0.0.1", "::1", "fd00::1", "fe80::1", "2001:db8::1", "::ffff:10.0.0.1"]) {
+  for (const ip of ["10.1.2.3", "127.0.0.1", "172.20.0.1", "192.168.1.1", "100.64.0.1", "169.254.1.1", "192.0.2.1", "198.51.100.2", "203.0.113.9", "0.0.0.0", "224.0.0.1", "::1", "fd00::1", "fe80::1", "2001:db8::1", "::ffff:10.0.0.1", "0:0:0:0:0:0:0:1", "::ffff:a00:1", "64:ff9b::a00:1", "2002:a00:1::1", "198.18.0.1", "198.19.255.255"]) {
     assert.equal(isPublicIP(ip), false, ip);
   }
-  for (const ip of ["1.1.1.1", "8.8.8.8", "172.32.0.1", "100.128.0.1", "2606:4700:4700::1111", "::ffff:1.1.1.1"]) {
+  for (const ip of ["1.1.1.1", "8.8.8.8", "172.32.0.1", "100.128.0.1", "2606:4700:4700::1111", "::ffff:1.1.1.1", "198.51.101.1", "203.0.114.1", "192.0.64.1", "198.20.0.1", "100.63.255.255"]) {
     assert.equal(isPublicIP(ip), true, ip);
   }
   assert.equal(isPublicIP("example.com"), false);
@@ -112,4 +112,12 @@ test("CPE names convert only when they carry a version", () => {
 test("ranking puts records without scores last", () => {
   const list = [{ cve_id: "a" }, { cve_id: "b", epss: 0.5 }, { cve_id: "c", kev: true, epss: 0.01 }];
   assert.deepEqual(list.sort(cveRank).map((c) => c.cve_id), ["c", "b", "a"]);
+});
+
+test("a CVEDB failure is reported as unavailable scoring and exits 2, never as a host without urgent CVEs", async () => {
+  const host = { ip: "1.2.3.4", ports: [80], hostnames: [], tags: [], cpes: ["cpe:/a:apache:http_server:2.4.7"], vulns: ["CVE-1"] };
+  const { fetch } = fakeFetch({ [`${INTERNETDB}/`]: json(200, host), [`${CVEDB}/cves?`]: json(503, {}) });
+  const r = await capture(["host", "1.2.3.4", "--cves"], { fetch });
+  assert.equal(r.code, 2);
+  assert.match(r.out, /scoring\s+unavailable/);
 });

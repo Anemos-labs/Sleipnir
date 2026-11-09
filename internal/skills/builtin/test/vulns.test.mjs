@@ -134,3 +134,26 @@ test("an advisory's fixed versions are those of the package it was found in", ()
   const list = [{ severity: "CRITICAL" }, { severity: "LOW", epss: 0.2 }, { severity: "LOW", kev: true }];
   assert.deepEqual(list.sort(rank).map((f) => f.severity + (f.kev ? "+kev" : "")), ["LOW+kev", "LOW", "CRITICAL"]);
 });
+
+test("a lockfile that cannot be read is never reported clean", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vulns-"));
+  fs.writeFileSync(path.join(dir, "package-lock.json"), "{ not json");
+  const r = await capture(["deps"], { fetch: fakeFetch({ [`${OSV}/querybatch`]: json(200, { results: [] }) }).fetch, cwd: dir });
+  assert.equal(r.code, 2);
+  assert.match(r.err, /not scanned: package-lock\.json/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("the NVD wait also follows a CVE the NVD has no record of", async () => {
+  const events = [];
+  const { fetch } = fakeFetch({
+    [NVD]: (url) => {
+      events.push(`nvd ${new URL(url).searchParams.get("cveId")}`);
+      return json(200, { vulnerabilities: [] });
+    },
+  });
+  const r = await capture(["id", "CVE-2024-0001", "CVE-2024-0002"], { fetch, wait: async (ms) => events.push(`wait ${ms}`) });
+  assert.equal(r.code, 0);
+  const second = events.indexOf("nvd CVE-2024-0002");
+  assert.ok(second > 0 && events.slice(0, second).some((e) => e.startsWith("wait ") && Number(e.slice(5)) >= 6000), events.join(", "));
+});
