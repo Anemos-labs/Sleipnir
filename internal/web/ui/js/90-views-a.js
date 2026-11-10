@@ -129,7 +129,7 @@
    *  flowLayoutAt: where the drawing puts its nodes and labels at a given width: {ids, W, H, dx, xs, fs (the ids' font size), rows (1 or 2), rot (upright ids), each
    *  (a role under every node), groups [{role, id, i1, i2, x1, x2, cx, word}], idBottom (where the ids end, below the line)}. */
   function flowLayout(m, base) {
-    const cw = base >= 300 && base < FLOW.W ? base : 0, L = flowLayoutAt(m, cw || FLOW.W);
+    const cw = base > 0 && base < FLOW.W ? base : 0, L = flowLayoutAt(m, cw || FLOW.W);   /* any measured width narrower than the wide drawing, however narrow */
     if (!cw) return L;
     if (L.rot || L.rows === 2) { const F = flowLayoutAt(m, FLOW.W); F.W0 = cw; return F; }   /* a team too large for a narrow page draws wide and scrolls, as before */
     return L;

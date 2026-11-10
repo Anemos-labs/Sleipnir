@@ -216,3 +216,36 @@ func TestACannedProjectIsAFolderThatExists(t *testing.T) {
 		t.Errorf("the canned project folder %s: %+v", Cwd, s)
 	}
 }
+
+// TestWorkspaceDiffReadsBackwards checks the comparisons that run against time: a file compared from a point where it exists to
+// the start is all removed, the second turn read backwards removes its two lines and adds the one back, and the text of a file
+// at a point where it does not exist is empty with no line blamed.
+func TestWorkspaceDiffReadsBackwards(t *testing.T) {
+	n := len(wsLines(wsText(itemsPath, "live")))
+	if d := WsDiff(itemsPath, "live", "base"); d.Removed != n || d.Added != 0 || len(d.Hunks) != 1 || d.Hunks[0].OldLines != n || d.Hunks[0].NewLines != 0 {
+		t.Errorf("live to base: +%d -%d in %d hunks, want -%d in one", d.Added, d.Removed, len(d.Hunks), n)
+	}
+	fw, bw := WsDiff(itemsPath, "c01", "live"), WsDiff(itemsPath, "live", "c01")
+	if bw.Added != fw.Removed || bw.Removed != fw.Added || len(bw.Hunks) != 1 {
+		t.Fatalf("live to c01: +%d -%d, want the forward diff (+%d -%d) turned round", bw.Added, bw.Removed, fw.Added, fw.Removed)
+	}
+	f, b := fw.Hunks[0], bw.Hunks[0]
+	if b.OldLines != f.NewLines || b.NewLines != f.OldLines {
+		t.Errorf("live to c01: the hunk spans %d old and %d new lines, want %d and %d", b.OldLines, b.NewLines, f.NewLines, f.OldLines)
+	}
+	var add, del int
+	for _, l := range b.Lines {
+		switch l.T {
+		case "+":
+			add++
+		case "-":
+			del++
+		}
+	}
+	if add != bw.Added || del != bw.Removed {
+		t.Errorf("live to c01: the hunk has +%d -%d lines, its counts say +%d -%d", add, del, bw.Added, bw.Removed)
+	}
+	if c := WsContent(itemsPath, "base"); c.Exists || c.Text != "" || len(c.Blame) != 0 {
+		t.Errorf("items.go at the start: exists %v, %d bytes, %d blame runs; want a file that is not there", c.Exists, len(c.Text), len(c.Blame))
+	}
+}

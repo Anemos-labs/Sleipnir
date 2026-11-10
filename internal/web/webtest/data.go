@@ -329,6 +329,9 @@ func WsContent(path, at string) wire.WsContent {
 	}
 	text := wsText(path, firstNonEmpty(at, "live"))
 	n := len(wsLines(text))
+	if n == 0 { // the file is not there at this point: no text, and no line to blame
+		return wire.WsContent{Path: path, At: firstNonEmpty(at, "live"), Blame: []wire.BlameRun{}}
+	}
 	blame := []wire.BlameRun{{Line: 1, Count: n, Ag: "fe-1", ID: "c01", Task: "T3"}}
 	if path == itemsPath {
 		at1 := len(wsLines(strings.SplitN(itemsC01, itemsOld, 2)[0]))
@@ -341,8 +344,8 @@ func WsContent(path, at string) wire.WsContent {
 	return wire.WsContent{Path: path, At: firstNonEmpty(at, "live"), Exists: true, Text: text, Size: int64(len(text)), Exact: true, Blame: blame}
 }
 
-// WsDiff is the diff of a file between two points: the whole file when it did not exist at the first, the page-size hunk when
-// items.go is compared across its second turn, and no hunk when the two texts are the same.
+// WsDiff is the diff of a file between two points: the whole file when it did not exist at one of them, the page-size hunk
+// when items.go is compared across its second turn in either direction, and no hunk when the two texts are the same.
 func WsDiff(path, from, to string) wire.WsDiff {
 	if path != cartPath {
 		path = itemsPath
@@ -350,24 +353,47 @@ func WsDiff(path, from, to string) wire.WsDiff {
 	from, to = firstNonEmpty(from, "base"), firstNonEmpty(to, "live")
 	a, b := wsLines(wsText(path, from)), wsLines(wsText(path, to))
 	d := wire.WsDiff{Path: path, From: from, To: to, Hunks: []wire.Hunk{}}
+	whole := func(lines []string, t string) wire.Hunk {
+		h := wire.Hunk{}
+		for _, l := range lines {
+			h.Lines = append(h.Lines, wire.HunkLine{T: t, S: l})
+		}
+		return h
+	}
 	switch {
 	case len(a) == 0 && len(b) > 0:
-		h := wire.Hunk{NewStart: 1, NewLines: len(b)}
-		for _, l := range b {
-			h.Lines = append(h.Lines, wire.HunkLine{T: "+", S: l})
-		}
+		h := whole(b, "+")
+		h.NewStart, h.NewLines = 1, len(b)
 		d.Added, d.Hunks = len(b), []wire.Hunk{h}
+	case len(b) == 0 && len(a) > 0:
+		h := whole(a, "-")
+		h.OldStart, h.OldLines = 1, len(a)
+		d.Removed, d.Hunks = len(a), []wire.Hunk{h}
 	case len(a) != len(b):
+		old, cur, back := a, b, len(a) > len(b) // the turn added a line: the longer text is the later one
+		if back {
+			old, cur = b, a
+		}
 		at := len(wsLines(strings.SplitN(itemsC01, itemsOld, 2)[0])) // the lines above the changed one
 		h := wire.Hunk{OldStart: at - 2, OldLines: 7, NewStart: at - 2, NewLines: 8, Section: "type Page struct {"}
-		for _, l := range a[at-3 : at] {
+		minus, plus := "-", "+"
+		if back {
+			h.OldLines, h.NewLines, minus, plus = 8, 7, "+", "-"
+		}
+		for _, l := range old[at-3 : at] {
 			h.Lines = append(h.Lines, wire.HunkLine{T: " ", S: l})
 		}
-		h.Lines = append(h.Lines, wire.HunkLine{T: "-", S: a[at]}, wire.HunkLine{T: "+", S: b[at]}, wire.HunkLine{T: "+", S: b[at+1]})
-		for _, l := range a[at+1 : at+4] {
+		if back {
+			h.Lines = append(h.Lines, wire.HunkLine{T: plus, S: cur[at]}, wire.HunkLine{T: plus, S: cur[at+1]}, wire.HunkLine{T: minus, S: old[at]})
+			d.Added, d.Removed = 1, 2
+		} else {
+			h.Lines = append(h.Lines, wire.HunkLine{T: minus, S: old[at]}, wire.HunkLine{T: plus, S: cur[at]}, wire.HunkLine{T: plus, S: cur[at+1]})
+			d.Added, d.Removed = 2, 1
+		}
+		for _, l := range old[at+1 : at+4] {
 			h.Lines = append(h.Lines, wire.HunkLine{T: " ", S: l})
 		}
-		d.Added, d.Removed, d.Hunks = 2, 1, []wire.Hunk{h}
+		d.Hunks = []wire.Hunk{h}
 	}
 	return d
 }

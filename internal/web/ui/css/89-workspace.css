@@ -154,7 +154,7 @@
 .wcalls{padding:10px 12px 0}.wcalls .lab{margin:0 0 8px}
 .ws-sb{flex-wrap:nowrap}
 .wq{flex:1 1 210px;min-width:210px;overflow:hidden}
-.wtks{flex:2 1 260px;max-height:58px;overflow:hidden;justify-content:flex-end}
+.wtks{flex:2 1 260px;max-height:58px;overflow-y:auto;scrollbar-width:thin;justify-content:flex-end}   /* more chips than two rows hold scroll, none is cut off */
 /* narrow: the verify / merge strip has a row of its own under the file (sharing the file's row, it covered it), and its queue line and
  * every task chip wrap instead of being cut (these follow the rules above, which keep the strip on one line where it is wide) */
 @container main (max-width:620px){

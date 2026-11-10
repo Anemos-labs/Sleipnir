@@ -63,7 +63,7 @@
     ['cache.sum', 'The whole session', 'the session\'s hit ratio, savings, spend, compactions and anomalies', 0, 24, 12, 2, 3, 2],
   ]);
   page('mail', { title: 'Mail', view: 'mail', wrap: 'mailv' }, [
-    ['mail.flow', 'Who writes to whom', 'an arc per mail between the agents of the team', 0, 0, 12, 4, 4, 3, 'fill'],
+    ['mail.flow', 'Who writes to whom', 'an arc per mail between the agents of the team', 0, 0, 12, 4, 4, 3],
     ['mail.list', 'Envelopes', 'every mail, newest first', 0, 4, 5, 14, 3, 3, 'fill list'],
     ['mail.msg', 'Message', 'the selected mail, its thread and its delivery', 5, 4, 7, 14, 3, 3, 'fill'],
   ]);
