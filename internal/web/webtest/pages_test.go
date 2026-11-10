@@ -136,3 +136,38 @@ func TestModelsHaveSavedDefaults(t *testing.T) {
 		t.Errorf("the canned catalogue has no saved defaults, so the page says the configuration does not load: %+v", m.Saved)
 	}
 }
+
+// TestWorkspaceCountsAgree checks that the Workspace's numbers are one story: a file's lines in the tree, in its diff since the
+// start and in its text are the same number, and a checkpoint's counts are those of its files' diffs across it.
+func TestWorkspaceCountsAgree(t *testing.T) {
+	idx := WsIndex()
+	for _, f := range idx.Tree {
+		if f.Status == "unchanged" {
+			continue
+		}
+		d, lines := WsDiff(f.Path, "base", "live"), len(wsLines(WsContent(f.Path, "live").Text))
+		if f.Add != d.Added || f.Del != d.Removed || d.Added != lines {
+			t.Errorf("%s: tree +%d -%d, diff since the start +%d -%d, %d lines of text", f.Path, f.Add, f.Del, d.Added, d.Removed, lines)
+		}
+	}
+	prev := "base"
+	for _, cp := range idx.Cps {
+		add, del := 0, 0
+		for _, ch := range cp.Changes {
+			d := WsDiff(ch.Path, prev, cp.ID)
+			if ch.Added != d.Added || ch.Removed != d.Removed {
+				t.Errorf("%s in %s: the index says +%d -%d, the diff +%d -%d", ch.Path, cp.ID, ch.Added, ch.Removed, d.Added, d.Removed)
+			}
+			add, del = add+ch.Added, del+ch.Removed
+		}
+		if cp.Added != add || cp.Removed != del {
+			t.Errorf("%s: +%d -%d, its files sum to +%d -%d", cp.ID, cp.Added, cp.Removed, add, del)
+		}
+		if !cp.Skipped {
+			prev = cp.ID
+		}
+	}
+	if d := WsDiff("web/cart/Cart.tsx", "c01", "live"); d.Added != 0 || len(d.Hunks) != 0 {
+		t.Errorf("Cart.tsx did not change after c01, the diff says +%d with %d hunks", d.Added, len(d.Hunks))
+	}
+}

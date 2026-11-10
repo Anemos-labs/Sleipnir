@@ -10,9 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/web"
 	"github.com/anemos-labs/sleipnir/internal/web/dirs"
 	"github.com/anemos-labs/sleipnir/internal/web/seam"
@@ -156,7 +158,9 @@ func (rt *router) live() {
 			return nil, werr(400, "bad_path", err.Error())
 		}
 		for _, p := range h.Projects(r.Context()) {
-			l.State.Known = l.State.Known || p.Dir == l.State.Path
+			if p.Dir == l.State.Path { // a canned project is a folder that exists, though this disk has no such path
+				l.State.Known, l.State.Exists, l.State.Dir, l.State.Readable, l.State.ParentOK = true, true, true, true, true
+			}
 		}
 		return l, nil
 	})
@@ -638,7 +642,23 @@ func (rt *router) pages() {
 		if !web.DecodeJSON(w, r, &body) {
 			return
 		}
-		list := Recorded()[1:]
+		// The plan follows the request as the real route does: older than the age, past the newest Keep.
+		older := strings.TrimSpace(body.OlderThan)
+		if older == "" {
+			older = "30d"
+		}
+		age, err := session.ParseAge(older)
+		if err != nil {
+			web.Error(w, http.StatusBadRequest, "bad_age", "bad --older-than: "+strconv.Quote(older)+" is not an age (try 30d, 36h or 2w)")
+			return
+		}
+		list, mb := []wire.RecordedSession{}, 0.0
+		for i, s := range Recorded() {
+			if i >= body.Keep && float64(s.AgeS) > age.Seconds() {
+				list = append(list, s)
+				mb += s.MB
+			}
+		}
 		if body.Apply {
 			ids := []string{}
 			for _, s := range list {
@@ -649,7 +669,7 @@ func (rt *router) pages() {
 				return
 			}
 		}
-		ok(w, wire.PrunePlan{List: list, MB: 0.5, Applied: body.Apply})
+		ok(w, wire.PrunePlan{List: list, MB: mb, Applied: body.Apply})
 	}, web.RouteOpts{})
 	rt.get("/api/models", func(*http.Request) (any, error) { return Models(), nil })
 	srv.HandleFunc("POST /api/models/fav", func(w http.ResponseWriter, r *http.Request) {

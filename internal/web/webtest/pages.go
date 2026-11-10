@@ -35,8 +35,8 @@ func Memory() wire.MemoryView {
 			{Path: "web/AGENTS.md", Scope: "dir", Exists: false, Loaded: false, Editable: true, Why: "not written yet: a session reads it once it is"},
 		},
 		Lessons: wire.MemoryLessons{Path: "~/.sleipnir/lessons.json", On: true, Lessons: []wire.MemoryLesson{
-			{ID: "a1b2c3d4e5f6", Kind: "strategy", Text: "Split a full-stack goal by directory so that no two workers edit the same file.", Task: "build", Uses: 6, Wins: 5, Losses: 1, Utility: 0.71, Created: "2026-10-02T09:12:00Z", Last: "2026-10-09T22:15:00Z"},
-			{ID: "0f9e8d7c6b5a", Kind: "pitfall", Text: "A test that needs a network port must pick a free one; port 8080 is often taken.", Task: "test", Uses: 3, Wins: 2, Losses: 1, Utility: 0.42, Created: "2026-10-05T14:40:00Z", Last: "2026-10-08T11:03:00Z"},
+			{ID: "a1b2c3d4e5f6", Kind: "strategy", Text: "Split a full-stack goal by directory so that no two workers edit the same file.", Task: "build", Uses: 6, Wins: 5, Losses: 1, Utility: 0.75, Created: "2026-10-02T09:12:00Z", Last: "2026-10-09T22:15:00Z"},
+			{ID: "0f9e8d7c6b5a", Kind: "pitfall", Text: "A test that needs a network port must pick a free one; port 8080 is often taken.", Task: "test", Uses: 3, Wins: 2, Losses: 1, Utility: 0.6, Created: "2026-10-05T14:40:00Z", Last: "2026-10-08T11:03:00Z"},
 		}},
 		Root:    Cwd,
 		Trusted: true,

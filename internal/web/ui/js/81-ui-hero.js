@@ -47,7 +47,7 @@
     const legs = roleLegs(S).map(L => Object.assign(L, { phase: (L.i * .37) % 1, speed: 0, amp: 0, lift: 0, op: .16, raise: 0, st: 'free' }));
     const HS = .6, HTX = -82, HTY = 58, BAR_Y = 26, BAR_H = 17, X0 = 10, W = 352;
     const el = (n, a, p, t) => sv(n, a, p || svg, t);
-    const title = el('text', { x: 2, y: 11, class: 'hh' }, null, Math.max(workers.length, S.meta.swarm || 0) ? 'Manager + ' + Math.max(workers.length, S.meta.swarm || 0) + ' workers' : 'One agent, no workers');
+    const title = el('text', { x: 2, y: 11, class: 'hh' }, null, Math.max(workers.length, S.meta.swarm || 0) ? 'Manager + ' + (workers.length && workers.length < (S.meta.swarm || 0) ? workers.length + ' of ' : '') + Math.max(workers.length, S.meta.swarm || 0) + ' workers' : 'One agent, no workers');
     const pre = el('g', { class: 'h-prefix' });   /* the shared prefix G0..G5: drawn in Cache details: Full, absent in Quiet */
     const preLab = el('text', { x: 370, y: 11, 'text-anchor': 'end', class: 'hs' }, pre, '');
     /* prefix bar */

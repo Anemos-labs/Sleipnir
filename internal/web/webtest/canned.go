@@ -131,7 +131,7 @@ func Shop() *Scenario {
 	h.at(8.6, &wire.Task{ID: "T3", S: "running"})
 	h.at(8.7, &wire.Plan{Steps: steps, St: []string{"done", "act", "act", "pending"}})
 	h.at(9.0, &wire.State{ID: "be-1", S: "edit", Doing: "Write api/catalog/items.go +31", Task: str("T2")})
-	h.at(9.1, &wire.Stream{ID: "be-1", Text: "package catalog\n\n// Page is one page of items.\ntype Page struct {\n\tItems []Item `json:\"items\"`\n\tPage  int    `json:\"page\"`\n}\n", Rate: 400, Code: true, File: "api/catalog/items.go", Mid: "@items"})
+	h.at(9.1, &wire.Stream{ID: "be-1", Text: strings.SplitN(itemsC01, "// Page is", 2)[0], Rate: 400, Code: true, File: "api/catalog/items.go", Mid: "@items"})
 	h.at(12.0, &wire.Tool{ID: "be-1", Name: "Write", Arg: "api/catalog/items.go", Out: "wrote 31 lines", OK: true, File: "api/catalog/items.go", Add: 31, Task: "T2", TID: "toolu_02"})
 	h.at(12.1, &wire.Diff{File: "api/catalog/items.go", Done: true})
 	h.at(12.2, &wire.Ckpt{CID: "c01", TS: "22:15:42", Files: 0, Note: "turn 1: build the shop", Skipped: true})

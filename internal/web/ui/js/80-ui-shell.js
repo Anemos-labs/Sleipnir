@@ -89,8 +89,9 @@
         gf.style.width = (meta.budget && !only ? Math.max(1.6, U.budgetPct(c, meta.budget)) : 0) + '%'; }
       $('#hitArc').style.strokeDashoffset = HIT_C * (1 - c.pct / 100); txt('hit', $('#hitTxt'), String(c.pct)); $('#ringHit').title = 'cache hit ratio: ' + U.fmtN(c.read) + ' of ' + U.fmtN(c.prompt) + ' prompt tokens were read from the cache (' + c.hit1 + '%). The Cache view has the detail.';
       $('#ringHit').classList.toggle('dip', c.pct < 80);
-      txt('teamLab', $('#teamLab'), nW ? 'manager + ' + nW + ' worker' + (nW === 1 ? '' : 's') : 'single agent');
-      { const solo = !nW; $('#vAct').hidden = solo; if (!solo) { txt('act', $('#vActN'), String(calc.active(m))); txt('actOf', $('#vActOf'), 'of ' + nW); } }
+      const hired = S.roster.length - 1, part = hired > 0 && hired < nW;   // fewer workers than slots: both numbers are said, so the header agrees with the cards
+      txt('teamLab', $('#teamLab'), nW ? 'manager + ' + (part ? hired + ' of ' : '') + nW + ' worker' + (nW === 1 ? '' : 's') : 'single agent');
+      { const solo = !nW; $('#vAct').hidden = solo; if (!solo) { txt('act', $('#vActN'), String(calc.active(m))); txt('actOf', $('#vActOf'), 'of ' + (part ? hired : nW)); } }
       /* rate limits are said only while they slow the team down; the rates themselves are the Cockpit's Governor card */
       { const r4 = m.r429 || 0, rt = m.retries || 0, slow = r4 + rt > 0, ge = $('#govTxt'), gt = slow ? (r4 ? 'slowed by rate limits: ' + r4 + ' refused (429) · ' : 'slowed by provider errors: ') + rt + ' retr' + (rt === 1 ? 'y' : 'ies') : ''; ge.hidden = !slow; txt('gov', ge, gt); ge.title = slow ? (r4 ? 'the provider refused or delayed requests' : 'requests failed (network errors, 5xx) and were retried') + '; the Governor card of the Cockpit shows requests per minute, 429s and retries' : ''; }
       $('#vAct').parentNode.title = nW ? 'the team: ' + nW + ' worker slots · ' + calc.started(m) + ' started · ' + calc.active(m) + ' working now (not idle, not done)' : 'one agent: the manager works alone (no workers)';
