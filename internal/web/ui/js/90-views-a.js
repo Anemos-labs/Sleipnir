@@ -131,7 +131,7 @@
   function flowLayout(m, base) {
     const cw = base > 0 && base < FLOW.W ? base : 0, L = flowLayoutAt(m, cw || FLOW.W);   /* any measured width narrower than the wide drawing, however narrow */
     if (!cw) return L;
-    if (L.rot || L.rows === 2) { const F = flowLayoutAt(m, FLOW.W); F.W0 = cw; return F; }   /* a team too large for a narrow page draws wide and scrolls, as before */
+    if (L.rot || L.rows === 2 || L.fs < FLOW.ID_MIN) { const F = flowLayoutAt(m, FLOW.W); F.W0 = cw; return F; }   /* a team too large for a narrow page draws wide and scrolls, as before */
     return L;
   }
   function flowLayoutAt(m, W0) {

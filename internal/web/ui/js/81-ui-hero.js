@@ -48,7 +48,7 @@
     const HS = .6, HTX = -82, HTY = 58, BAR_Y = 26, BAR_H = 17, X0 = 10, W = 352;
     const el = (n, a, p, t) => sv(n, a, p || svg, t);
     /* the title counts the workers hired so far against the team's size, and follows the roster as it grows */
-    const titleOf = S2 => { const n = S2.roster.filter(r => r.id !== 'mgr').length, of = (S2.meta && S2.meta.swarm) || 0, all = Math.max(n, of); return all ? 'Manager + ' + (n && n < of ? n + ' of ' : '') + all + ' workers' : 'One agent, no workers'; };
+    const titleOf = S2 => { const n = S2.roster.filter(r => r.id !== 'mgr').length, of = (S2.meta && S2.meta.swarm) || 0, all = Math.max(n, of); return all ? 'Manager + ' + (n < of ? n + ' of ' : '') + all + ' workers' : 'One agent, no workers'; };
     const title = el('text', { x: 2, y: 11, class: 'hh' }, null, titleOf(S));
     const pre = el('g', { class: 'h-prefix' });   /* the shared prefix G0..G5: drawn in Cache details: Full, absent in Quiet */
     const preLab = el('text', { x: 370, y: 11, 'text-anchor': 'end', class: 'hs' }, pre, '');
