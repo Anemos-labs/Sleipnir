@@ -608,6 +608,7 @@ func (rt *router) pages() {
 	rt.get("/api/plugins", func(*http.Request) (any, error) { return Plugins(), nil })
 	rt.tabRoute("GET /api/sessions/{id}/memory", web.RouteOpts{}, func(w http.ResponseWriter, _ *http.Request, _ *Tab) { ok(w, Memory()) })
 	rt.tabRoute("GET /api/sessions/{id}/plugins", web.RouteOpts{}, func(w http.ResponseWriter, _ *http.Request, _ *Tab) { ok(w, Plugins()) })
+	rt.tabRoute("GET /api/sessions/{id}/research", web.RouteOpts{}, func(w http.ResponseWriter, _ *http.Request, _ *Tab) { ok(w, Research()) })
 	rt.get("/api/recorded", func(*http.Request) (any, error) {
 		return map[string]any{"recorded": Recorded(), "mb": 1.7}, nil
 	})

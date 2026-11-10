@@ -2,6 +2,7 @@ package webtest
 
 import (
 	"github.com/anemos-labs/sleipnir/internal/plugin"
+	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
@@ -99,4 +100,25 @@ func Plugins() map[string]any {
 		warns = []string{}
 	}
 	return map[string]any{"profile": profile, "profiles": plugin.Profiles(), "restart": false, "plugins": rows, "needs": []any{}, "warnings": warns}
+}
+
+// ResearchView is what the Research page reads: the runs of the project, the depths a run can have, and whether the
+// plugin is on.
+type ResearchView struct {
+	Runs   []wire.ResearchRun   `json:"runs"`
+	Depths []wire.ResearchDepth `json:"depths"`
+	On     bool                 `json:"on"`
+}
+
+// Research is the Research page of the canned tab: one run the team works on now, with a gap still open, and an earlier
+// one that is published.
+func Research() ResearchView {
+	return ResearchView{On: true, Depths: session.ResearchDepths(), Runs: []wire.ResearchRun{
+		{Slug: "cart-sync-offline", Question: "How do mature sync engines resolve conflicts when a cart is edited offline on two devices?",
+			Depth: "standard", Mode: "report", Phase: "gather", Created: "2026-10-09T22:02:11Z", Problems: 3,
+			Sources: 14, Domains: 9, Findings: 22, Snippets: 6, Pages: 4, Planned: 11, OpenGaps: 2, Active: true},
+		{Slug: "catalogue-paging", Question: "Cursor or offset paging for a product catalogue of a few thousand items?",
+			Depth: "quick", Mode: "kickoff", Phase: "done", Created: "2026-10-09T21:40:03Z", Built: true,
+			Sources: 8, Domains: 6, Findings: 12, Pages: 5, Planned: 5, NoFactCheck: true},
+	}}
 }

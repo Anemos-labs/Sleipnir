@@ -68,3 +68,18 @@ func TestMemoryAndPluginsRoutes(t *testing.T) {
 		}
 	}
 }
+
+func TestResearchRoute(t *testing.T) {
+	r := StartT(t, Options{})
+	var v ResearchView
+	getJSON(t, r, "/api/sessions/shop/research", &v)
+	if !v.On || len(v.Depths) == 0 || len(v.Runs) != 2 {
+		t.Fatalf("the canned Research page has no runs or depths: %+v", v)
+	}
+	if !v.Runs[0].Active || v.Runs[0].Phase == "done" || v.Runs[1].Phase != "done" {
+		t.Errorf("want one run in work and one published: %+v", v.Runs)
+	}
+	if code, b, _ := call(t, r, "GET", "/api/sessions/nope/research", "", nil); code != 404 {
+		t.Errorf("GET research of a tab that does not exist = %d %s, want 404", code, b)
+	}
+}
