@@ -94,7 +94,7 @@ section.tg+section.tg{margin-top:var(--gap)}
 
 /* the scheduler says what its state means for the jobs below; a cron line stays on one line */
 .dm-note{margin:0;padding:6px 12px 8px;font:400 12px/1.45 var(--f-ui);color:var(--fg2)}
-.jobs .tbl td:nth-child(2){white-space:nowrap}
+.jobs .tbl td:nth-child(2){white-space:nowrap}.jobs .cronx{display:inline-block;max-width:min(100%,46vw);overflow-x:auto;vertical-align:bottom;scrollbar-width:thin}
 /* Remove is the rare, destructive one of a job's five actions: it stands apart and is quiet until pointed at */
 .jobs .btn.rmq{margin-left:10px;border-color:transparent;background:none;color:color-mix(in srgb,var(--err) 72%,var(--dim));text-decoration:underline;text-decoration-color:var(--err-b);text-underline-offset:3px}
 .jobs .btn.rmq:hover,.jobs .btn.rmq:focus-visible{color:var(--err);border-color:var(--err-b)}

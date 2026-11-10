@@ -302,6 +302,7 @@
       'replay.events': '<section class="panel"><div class="ph"><h2>Notable events</h2><div class="r"><span>click to seek</span></div></div><div class="evlist" style="overflow:auto;flex:1;min-height:0"></div></section>',
       'replay.keys': '<section class="panel"><div class="ph"><h2>Keys</h2><div class="r"><span>sleipnir replay</span></div></div><div class="keys"><kbd>space</kbd><span>pause, resume</span><kbd>← →</kbd><span>seek 10 s (shift: a minute)</span><kbd>+ −</kbd><span>speed</span><kbd>home end</kbd><span>start, live</span><kbd>click</kbd><span>the tape seeks</span></div><p class="stubnote" style="padding:0 12px 12px;margin:0">The whole cockpit follows the playhead: open Cockpit and the legs, the clock and the board show that moment. A recording is a function of the log.</p></section>' });
     const svg = $('.tapeSvg', root), X0 = 44; let W = 1100, geo = null, built = '';
+    sc.observe(svg.parentNode, () => { const S = SL.sessions.active; if (S) build(S); });   /* the panel changed width (a turned phone, a dragged card): the tape is drawn again at it */
     function build(S) {
       W = Math.max(280, Math.min(1100, (svg.parentNode.clientWidth || 1120) - 20));   /* drawn at the width it has: a phone shows the whole recording, and nothing is stretched */
       const ids = S.roster.map(r => r.id), head = Math.max(S.wt, 40), pps = (W - X0 - 8) / head, Hh = ids.length * 22 + 24, segs = logSegs(S), sig = ids.join() + '|' + Math.round(head / 4) + '|' + S.log.length + '|' + W; if (sig === built) return; built = sig; geo = { pps, X0, W, head };

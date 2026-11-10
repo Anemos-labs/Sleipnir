@@ -111,8 +111,8 @@
 
 /* ---------- Replay ---------- */
 .replayv{display:grid;gap:var(--gap);grid-template-rows:auto minmax(0,1fr);height:100%;min-height:560px}
-.tape{padding:6px 10px 10px}
-.tape svg{display:block;width:100%;height:auto}
+.tape{padding:6px 10px 10px;overflow-x:auto;overflow-y:hidden}
+.tape svg{display:block;width:100%;min-width:280px;height:auto}
 .tape-key{display:flex;flex-wrap:wrap;gap:3px 14px;padding:0 12px 9px;font:500 11px var(--f-ui);color:var(--fg2)}
 .tape-key span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}.tape-key b{font:700 11px var(--f-num);color:var(--dim)}
 .tape-key .tk{display:inline-block;width:16px;height:9px;background:var(--dim);border-radius:1px}
