@@ -35,7 +35,7 @@
 .tbl td.r,.tbl th.r{text-align:right}
 .tbl tr:hover td{background:var(--panel2)}
 .tbl tr.sel td{background:var(--raise)}
-.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--edge);background:var(--panel2);border-radius:2px;padding:4px 10px;font:600 12px var(--f-ui);color:var(--fg)}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line2);background:var(--panel2);border-radius:2px;padding:4px 10px;font:600 12px var(--f-ui);color:var(--fg2)}
 .btn:hover{border-color:var(--dim);color:var(--bright)}
 /* the primary action of a page or a form is the one filled button on it */
 .btn.pri{border-color:var(--mgr);background:var(--mgr);color:var(--on-accent);font-weight:700}
