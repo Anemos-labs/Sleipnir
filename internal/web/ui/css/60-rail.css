@@ -42,6 +42,10 @@ mark.nca{unicode-bidi:isolate-override;direction:ltr;background:var(--warm-a);co
 .qopt[aria-disabled="true"]{opacity:.5;cursor:not-allowed}
 .qopt small{display:block;color:var(--dim);font-size:11px}
 .qopt.no:hover:not([aria-disabled="true"]){border-color:var(--err)}
+/* Yes is the answer most questions get: it is the one filled button, so the decision reads at a glance */
+.qopt[data-choice="1"]{background:var(--warm);border-color:var(--warm);color:var(--on-accent);font-weight:700;padding-top:6px;padding-bottom:6px}
+.qopt[data-choice="1"] kbd{border-color:var(--on-accent);color:var(--on-accent);background:transparent}
+.qopt[data-choice="1"]:hover:not([aria-disabled="true"]){background:var(--warm);filter:brightness(1.1)}
 .qmeter{display:flex;align-items:center;gap:8px;margin-top:7px;font:500 11px/1.2 var(--f-ui);color:var(--dim)}
 .qmeter .bar{flex:0 0 74px;height:5px;background:var(--panel2);border:1px solid var(--line2);position:relative;overflow:hidden}
 .qmeter .bar i{position:absolute;inset:0 auto 0 0;background:var(--warm);width:0}

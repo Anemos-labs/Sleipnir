@@ -46,10 +46,12 @@ var DefaultCategories = []string{"hierarchy", "typography", "color and contrast"
 
 // Limits of one council request.
 const (
-	MaxImages        = 24 // screenshots in one request, every subject's together
-	MaxCategories    = 16
-	MaxFindings      = 12 // findings kept per member
-	maxTokens        = 6000
+	MaxImages     = 24 // screenshots in one request, every subject's together
+	MaxCategories = 16
+	MaxFindings   = 12 // findings kept per member
+	// maxTokens leaves a reasoning model room to think and still write the whole sheet of two products with their
+	// findings; a reply cut off mid-JSON cannot be read.
+	maxTokens        = 20000
 	maxAttempts      = 3 // requests per member when the answer cannot be read
 	CandidateSubject = "candidate"
 )
@@ -249,6 +251,15 @@ func Prompt(b Brief, round int, model string) (p *core.Prompt, letters map[strin
 	}, letters
 }
 
+// OutputTokens is how many output tokens a member is asked for: maxTokens, or the model's own output limit when that is known and
+// lower, since an endpoint refuses a request that asks for more than its model writes.
+func OutputTokens(m cost.Model) int {
+	if m.MaxOutput > 0 && m.MaxOutput < maxTokens {
+		return m.MaxOutput
+	}
+	return maxTokens
+}
+
 // answer is a member's reply as written.
 type answer struct {
 	Scores   map[string]map[string]float64 `json:"scores"`
@@ -371,6 +382,7 @@ func ask(ctx context.Context, b Brief, m Member, round int, timeout time.Duratio
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	p, letters := Prompt(b, round, m.Model.ID)
+	p.Params.MaxTokens = OutputTokens(m.Model)
 	var last string
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		resp, err := m.Provider.Do(ctx, &provider.Request{Prompt: p, Label: "council:" + m.Name}, nil)

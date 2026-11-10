@@ -139,3 +139,13 @@
 .stalls.dense .stall[data-state="ask"]{box-shadow:0 0 0 1px var(--warm-b)}
 @container card (min-height:620px){.stalls.dense .stall{flex-direction:column;align-items:stretch;padding:5px 7px}.stalls.dense .stall .s-nums{display:flex}.stalls.dense .stall .s-st .sw{display:inline}}
 @container card (max-width:420px){.sgroup{grid-template-columns:minmax(0,1fr)}.sg-m{flex-basis:auto}}
+/* stacked (a phone, a narrow window): the task board grows to its cards, so that every card shows its title and what it waits for
+   instead of a 30 px slice of each column. A whole view drawn as a card (.cview) fills its card and keeps the card's height. */
+.dash[data-stack="1"] .dcard:has(.kan):not(:has(.cview)){height:auto;min-height:0;container-type:inline-size}
+.dash[data-stack="1"] .dcard:has(.kan):not(:has(.cview))>.dc-body{flex:none;height:auto;overflow:visible}
+.dash[data-stack="1"] .dcard:has(.kan):not(:has(.cview)) .panel{overflow:visible}
+.dash[data-stack="1"] .kan{grid-template-rows:none;grid-auto-rows:auto;overflow:visible}
+.dash[data-stack="1"] .kan .bcol,.dash[data-stack="1"] .kan .cl{overflow:visible;max-height:none;height:auto}
+/* stacked: the Workspace's list is as tall as its rows (at most 360 px), so that the diff of the selected file follows it on screen */
+.dash[data-stack="1"] .dcard.dc-ws-left{height:auto;min-height:0;max-height:360px;container-type:inline-size}
+.dash[data-stack="1"] .dcard.dc-ws-left>.dc-body{flex:1 1 auto;height:auto;min-height:0}

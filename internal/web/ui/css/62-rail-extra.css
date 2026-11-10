@@ -9,7 +9,7 @@
 .chan[data-state="ask"] .cg{color:var(--warm)}.chan[data-state="done"] .cg{color:var(--ok)}.chan[data-state="stuck"] .cg{color:var(--err)}
 .chan.hot{border-color:var(--c)}.chan.dimmed{opacity:.5}
 .chhead{display:flex;flex-wrap:wrap;align-items:center;column-gap:8px;row-gap:3px;padding:5px 12px;font:500 11.5px var(--f-num);color:var(--fg2);border-bottom:1px solid var(--line);flex:none;min-height:28px}
-.chhead>span{white-space:nowrap;min-width:0}
+.chhead>span{white-space:nowrap;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .chhead .agid{font:700 14px var(--f-num)}
 .chhead .sp{flex:1 1 0;min-width:2px}
 .chhead .btn{flex:none}

@@ -2,7 +2,7 @@
 :root{
   color-scheme:dark;
   --bg:#07090f;--panel:#0b0e17;--panel2:#0f1424;--raise:#141b30;--line:#1f2437;--line2:#2d3558;--grid:rgba(122,162,247,.05);
-  --fg:#c0caf5;--fg2:#a1abd4;--dim:#7d87b2;--faint:#565f89;--bright:#e6eaff;--well:#05070c;--on-accent:#04101a;
+  --fg:#c0caf5;--fg2:#a1abd4;--dim:#959fca;--faint:#6f79a6;--bright:#e6eaff;--well:#05070c;--on-accent:#04101a;
   /* the roles (fixed across the product; fs is the legacy fullstack) and the shades of agents that share a role */
   --c-mgr:#bb9af7;--c-be:#7aa2f7;--c-fe:#7dcfff;--c-sc:#73daca;--c-ts:#9ece6a;--c-dc:#e0af68;--c-rv:#ff9e64;--c-fs:#c0a6f7;--c-dv:#e5a1e0;--c-ar:#b4f9f8;
   --a-sc-1:#73daca;--a-sc-2:#5cc7b5;--a-sc-3:#9be8d8;--a-be-1:#7aa2f7;--a-be-2:#8db4ff;--a-be-3:#6a92e8;--a-dc-1:#e0af68;--a-dc-2:#f0c486;--a-dc-3:#c9974f;--a-fe-2:#9fdcf5;--a-ts-2:#b5de88;--a-rv-2:#ffb88a;

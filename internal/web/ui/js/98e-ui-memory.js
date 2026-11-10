@@ -29,6 +29,8 @@
 
   /** The heading of a card: its title and what sits on the right. */
   const head = (t, r) => '<div class="ph"><h2>' + t + '</h2><div class="r">' + (r || '') + '</div></div>';
+  /** What a card shows before the memory is read: that it is being read, or why it could not be. */
+  const wait = st => st.err ? '<p class="stubnote mem-pad err">The memory could not be read: ' + esc(st.err) + '</p>' : '<p class="stubnote mem-pad">reading the memory…</p>';
   const onChip = (on, off) => on ? '<span class="chip mem-on">on</span>' : '<span class="chip mem-off" title="' + esc(off) + '">off</span>';
 
   /** The two lists of notes: [scope, card title, the input's id, what they are]. */
@@ -38,7 +40,7 @@
   };
   function notesHtml(st, scope) {
     const [title, inputId, about, hint] = NOTES[scope], n = st.v && (scope === 'project' ? st.v.project : st.v.notes);
-    if (!st.v) return '<section class="panel">' + head(title) + '<p class="stubnote mem-pad">…</p></section>';
+    if (!st.v) return '<section class="panel">' + head(title) + wait(st) + '</section>';
     if (!n) return '<section class="panel mem-notes">' + head(title) + '<p class="stubnote mem-pad">Open a session of a project to see the notes the agents saved for it.</p></section>';
     const notes = arr(n.notes), ed = st.noteScope === scope ? st.noteEdit : -1, sc = ' data-scope="' + scope + '"';
     const rows = notes.map((t, i) => ed === i
@@ -53,7 +55,7 @@
 
   /** What each role of a team learned in this project: read-only here, the files are for a person to edit (mark one [canon] to keep it). */
   function loreHtml(st) {
-    const L = st.v && st.v.lore; if (!st.v) return '<section class="panel">' + head('Team lore') + '<p class="stubnote mem-pad">…</p></section>';
+    const L = st.v && st.v.lore; if (!st.v) return '<section class="panel">' + head('Team lore') + wait(st) + '</section>';
     if (!L) return '<section class="panel mem-lore">' + head('Team lore') + '<p class="stubnote mem-pad">Open a session of a project to see what its team roles learned there.</p></section>';
     const roles = arr(L.roles).filter(r => arr(r.items).length || r.error);
     const role = r => '<div class="mem-grp"><h3 class="lab">' + esc(r.role) + ' <span class="mono dim">' + esc(r.path) + '</span></h3>' + (r.error ? '<p class="stubnote mem-pad err">' + esc(r.error) + '</p>' : '') +
@@ -83,7 +85,7 @@
   }
 
   function filesHtml(st) {
-    const v = st.v; if (!v) return '<section class="panel">' + head('Instruction files') + '<p class="stubnote mem-pad">…</p></section>';
+    const v = st.v; if (!v) return '<section class="panel">' + head('Instruction files') + wait(st) + '</section>';
     const files = arr(v.files), there = files.filter(f => f.exists).length;
     const groups = SCOPES.map(([sc, title, about]) => {
       const fs = files.filter(f => f.scope === sc && (f.exists || st.showAll || st.edit[f.path] != null)); if (!fs.length) return '';
@@ -106,7 +108,7 @@
   }
 
   function lessonsHtml(st) {
-    const L = st.v && st.v.lessons; if (!L) return '<section class="panel">' + head('Lessons') + '<p class="stubnote mem-pad">…</p></section>';
+    const L = st.v && st.v.lessons; if (!L) return '<section class="panel">' + head('Lessons') + wait(st) + '</section>';
     const ls = arr(L.lessons);
     return '<section class="panel mem-lessons">' + head('Lessons', onChip(L.on, 'the Lesson memory plugin is off') + '<span class="mono dim">' + esc(L.path) + '</span>') +
       '<p class="mem-about">What earlier goals taught: a strategy from a goal that was reached, a pitfall from one that was not. A goal is shown the few most like it when it starts; they are found by keyword, and by meaning too with an embedder model (<span class="mono">--role-model embedder=MODEL</span>).</p>' +
@@ -114,9 +116,10 @@
       (ls.length ? '<ul class="mem-ll">' + ls.map(lessonHtml).join('') + '</ul>' : '<p class="stubnote mem-pad">No lessons yet. They are distilled when a goal ends, while the lesson memory is on.</p>') + '</section>';
   }
 
+  const PURPOSE = 'What the agents remember from one session to the next: the notes they saved, the instruction files they read and the lessons of earlier goals. Read it, correct it, remove what is wrong.';
   SL.views.register({ name: 'memory', title: 'Memory', mount(sc, root, params, S0) {
-    const P = ui.pageHead(sc, root, S0 || SL.sessions.active, 'memory', params, { title: 'Memory', purpose: 'What the agents remember from one session to the next: the notes they saved, the instruction files they read and the lessons of earlier goals. Read it, correct it, remove what is wrong.' });
-    const st = { v: null, seq: 0, sig: '', open: {}, edit: {}, noteEdit: -1, noteScope: 'user', noteDraft: '', newDraft: { user: '', project: '' }, noteBase: null, base: {}, showAll: false, busy: false };
+    const P = ui.pageHead(sc, root, S0 || SL.sessions.active, 'memory', params, { title: 'Memory', purpose: PURPOSE });
+    const st = { v: null, seq: 0, sig: '', open: {}, edit: {}, noteEdit: -1, noteScope: 'user', noteDraft: '', newDraft: { user: '', project: '' }, noteBase: null, base: {}, showAll: false, busy: false, err: '', flying: 0 };
     const S = () => SL.sessions.active;
     /** The routes of the active tab, or the server's own (the user's files only) while there is no tab. */
     const api = sfx => { const s = S(); return (s && s.id ? net.tab(s, '/memory') : '/api/memory') + (sfx || ''); };
@@ -130,9 +133,18 @@
     }
     async function load(force) {
       if (!net) return; const mine = ++st.seq;
-      const r = await net.get(api()); if (!sc.alive || mine !== st.seq) return;
-      if (!r.ok || !r.data) { if (force) net.fail(r, 'the memory could not be read'); return; }
-      st.v = r.data; paint();
+      st.flying++; const r = await net.get(api()); st.flying--; if (!sc.alive || mine !== st.seq) return;
+      if (!r.ok || !r.data) {
+        if (force) { net.fail(r, 'the memory could not be read'); return; }
+        const err = (r && r.message) || ('the server answered ' + ((r && r.status) || 'nothing')); if (err === st.err) return; st.err = err;
+        // nothing read yet: the cards say why. A view already read stays, and only the head says it may be out of date (the cards, and an edit in them, are not drawn again)
+        // (a card of another page has no head of its own: there it is said once, in a toast)
+        if (!st.v) paint(true);
+        else if (ui.dash.modeOf(params) === 'home') P.head({ purpose: 'Shown as it was last read, and it may be out of date: the memory could not be read again (' + esc(err) + ').' });
+        else ui.toast('The memory shown may be out of date: it could not be read again (' + err + ')', 'warm');
+        return;
+      }
+      if (st.err) { st.err = ''; P.head({ purpose: PURPOSE }); } st.v = r.data; paint();
     }
     /** Take the answer of a write: the whole view as it is now, or a refusal (a file that changed meanwhile is read again). */
     function took(r, done, what) {
@@ -184,7 +196,7 @@
         if (took(r, (cur.exists ? 'saved ' : 'created ') + p, 'the file was not saved')) { delete st.edit[p]; delete st.base[p]; st.open[p] = true; } paint(true);
       }
     });
-    sc.interval(() => { if (!editing() && !st.busy) load(); }, 8000);
+    sc.interval(() => { if (!editing() && !st.busy && !st.flying) load(); }, 8000);   // a read still on its way is waited for, so that a slow one is not thrown away by the next
     sc.on('activated', () => { st.v = null; st.open = {}; st.edit = {}; st.noteEdit = -1; st.newDraft.project = ''; paint(); load(); });   // a project note not sent is that project's, not the next one's
     paint(); load();
   } });

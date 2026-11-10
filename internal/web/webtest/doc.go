@@ -22,7 +22,7 @@
 // It prints the address to open as its first line, serves the UI embedded in the binary (or a directory, -ui DIR), answers the routes
 // of docs/WEB-API.md that the live session needs from the fake host (hello, tabs, snapshots, messages, approvals, session settings,
 // the stream) and fixed data in the shapes of package wire for the pages (models, providers, permissions, trust, MCP, skills,
-// configuration, schedule, the Workspace, the recorded sessions and the CLI spec). A route that is not faked answers 501
+// configuration, schedule, the Workspace, the recorded sessions, the CLI spec, the Memory page and the plugin catalogue). A route that is not faked answers 501
 // not_implemented. The canned session is the "shop" team; its first 38 seconds are in the snapshot and the rest arrives on the stream at the pace of the
 // session (-speed 1), all at once (-speed 0 plays nothing until POST /api/_fake/step or /api/_fake/play), or faster.
 //
