@@ -6,7 +6,7 @@
 .dash{display:flex;flex-direction:column;gap:6px;min-height:100%}
 .dash-bar{display:flex;align-items:center;gap:8px;flex:none;min-height:24px;flex-wrap:wrap}
 .dash-bar .sp{flex:1}
-.dash-hint{font:500 11.5px/1.3 var(--f-ui);color:var(--dim);min-width:0;flex:1 1 260px}
+.dash-hint{font:500 12.5px/1.3 var(--f-ui);color:var(--dim);min-width:0;flex:1 1 260px}
 .dash-hint[hidden],.dash-add[hidden],.dash-reset[hidden],.dash-tray[hidden],.dash-chrome[hidden],.dash-store[hidden]{display:none}
 .dash>.dash-grid.dash-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));grid-template-rows:none;grid-auto-rows:var(--rowh,36px);gap:var(--gap);height:auto;min-height:0;align-content:start;flex:none}
 .dash-x.dash-x{display:flex;flex-direction:column;gap:var(--gap);height:auto;min-height:0;grid-template:none}
@@ -22,23 +22,23 @@
 .dcard[data-fit="cap"]>.dc-body{overflow:auto}
 .dc-body>.panel{margin:0}
 .dash-tray b{color:var(--warm)}
-.dc-from{font:600 10px/1 var(--f-num);letter-spacing:.04em;text-transform:none;color:var(--dim);border:1px solid var(--line2);border-radius:2px;padding:2px 4px;white-space:nowrap}
+.dc-from{font:600 11px/1 var(--f-num);letter-spacing:.04em;text-transform:none;color:var(--dim);border:1px solid var(--line2);border-radius:2px;padding:2px 4px;white-space:nowrap}
 .dc-menu{margin-left:auto;flex:none;width:24px;height:22px;border-radius:2px;font:700 15px/1 var(--f-num);color:var(--fg2);cursor:pointer;letter-spacing:0}
 .dc-menu:hover,.dc-menu[aria-expanded="true"]{background:var(--panel2);color:var(--fe)}
 .dc-menu+.dc-x{margin-left:0}
 /* a list card in its compact density: more rows in the same room */
-.dcard[data-density="compact"] .tbl td,.dcard[data-density="compact"] .tbl th{padding-top:2px;padding-bottom:2px;font-size:12px}
+.dcard[data-density="compact"] .tbl td,.dcard[data-density="compact"] .tbl th{padding-top:2px;padding-bottom:2px;font-size:13px}
 .dcard[data-density="compact"] li,.dcard[data-density="compact"] .mrow,.dcard[data-density="compact"] .mcpc,.dcard[data-density="compact"] .tcard{padding-top:2px;padding-bottom:2px}
-.dcard[data-density="compact"] .dc-body{font-size:12px}
+.dcard[data-density="compact"] .dc-body{font-size:13px}
 /* the menu of a card, of the Hidden tray and of the header and the rail */
 .popover.dmenu{padding:4px;min-width:230px;display:flex;flex-direction:column;max-height:min(70vh,520px);overflow:auto}
-.dmenu .dmh{padding:7px 10px 3px;font:700 10.5px/1 var(--f-lab);letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
-.dmenu .dmi{display:grid;grid-template-columns:16px minmax(0,1fr);gap:6px;align-items:start;width:100%;padding:6px 8px;text-align:left;color:var(--fg2);border-radius:2px;font:500 12.5px/1.3 var(--f-ui)}
+.dmenu .dmh{padding:7px 10px 3px;font:700 11.5px/1 var(--f-lab);letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+.dmenu .dmi{display:grid;grid-template-columns:16px minmax(0,1fr);gap:6px;align-items:start;width:100%;padding:6px 8px;text-align:left;color:var(--fg2);border-radius:2px;font:500 13px/1.3 var(--f-ui)}
 .dmenu .dmi:not(:has(.dmc)) .dml{grid-column:1/-1}
 .dmenu .dmi:hover,.dmenu .dmi:focus-visible{background:var(--raise);color:var(--bright)}
 .dmenu .dmi:disabled{opacity:.5}
 .dmenu .dmc{color:var(--fe);font-weight:700}
-.dmenu .dml small{display:block;color:var(--dim);font-size:11.5px;margin-top:1px}
+.dmenu .dml small{display:block;color:var(--dim);font-size:12.5px;margin-top:1px}
 /* the right-click menu (86b-ui-ctxmenu.js): at the pointer, over everything but the dialogs' scrim and the tour */
 .popover.ctxmenu{position:fixed;z-index:65;min-width:236px;max-width:min(340px,calc(100vw - 12px));max-height:calc(100vh - 12px)}
 .ctxmenu .dmi{grid-template-columns:minmax(0,1fr) auto;align-items:center;padding:5px 8px}
@@ -48,16 +48,16 @@
 .ctxmenu .dmi.bad:hover,.ctxmenu .dmi.bad:focus-visible{background:var(--err-c);color:var(--err)}
 .ctxmenu .dmh:not(:first-child){margin-top:3px;border-top:1px solid var(--line);padding-top:9px}
 .ctxmenu .ctxsep{height:1px;margin:3px 6px;background:var(--line)}
-.ctxmenu .ctxfoot{margin-top:3px;padding:6px 10px 3px;border-top:1px solid var(--line);color:var(--dim);font:500 10.5px/1.2 var(--f-ui)}
+.ctxmenu .ctxfoot{margin-top:3px;padding:6px 10px 3px;border-top:1px solid var(--line);color:var(--dim);font:500 11.5px/1.2 var(--f-ui)}
 /* the header's widgets and the rail's parts a person hid or collapsed (ui.chrome): a collapsed part is a line that opens it */
 [data-cust="hidden"],#rail [data-cust="collapsed"]{display:none!important}
-.railstub{display:flex;align-items:center;gap:8px;width:100%;flex:none;padding:6px 10px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--panel2);font:700 11px/1 var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--fg2);text-align:left}
-.railstub .dim{font:500 11px var(--f-ui);letter-spacing:0;text-transform:none;margin-right:auto}
+.railstub{display:flex;align-items:center;gap:8px;width:100%;flex:none;padding:6px 10px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--panel2);font:700 12px/1 var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--fg2);text-align:left}
+.railstub .dim{font:500 12px var(--f-ui);letter-spacing:0;text-transform:none;margin-right:auto}
 .railstub:hover{color:var(--bright);background:var(--raise)}
-.railcust{flex:none;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border:1px solid var(--line2);border-radius:3px;color:var(--fg2);background:var(--panel2);font:700 13px/1 var(--f-num);margin-left:auto;margin-right:4px}
+.railcust{flex:none;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border:1px solid var(--line2);border-radius:3px;color:var(--fg2);background:var(--panel2);font:700 13.5px/1 var(--f-num);margin-left:auto;margin-right:4px}
 .railcust:hover{color:var(--fe);border-color:var(--dim)}
 .railcust+.railtog{margin-left:0}
-.dash-lock{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border:1px solid var(--line2);border-radius:2px;background:var(--panel2);color:var(--fg2);font:700 11px/1 var(--f-lab);letter-spacing:.14em;text-transform:uppercase;white-space:nowrap}
+.dash-lock{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border:1px solid var(--line2);border-radius:2px;background:var(--panel2);color:var(--fg2);font:700 12px/1 var(--f-lab);letter-spacing:.14em;text-transform:uppercase;white-space:nowrap}
 .dash-lock:hover{border-color:var(--dim);color:var(--bright)}
 .dash-lock[aria-pressed="true"]{border-color:var(--fe);color:var(--fe);background:var(--info-a)}
 .dash-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));grid-auto-rows:var(--rowh,36px);gap:var(--gap);position:relative;flex:none}
@@ -66,8 +66,8 @@
 .dc-body>.panel,.dc-body>.stalls-wrap{flex:1 1 auto;min-height:0!important;height:auto!important}
 /* a view in a card: a title bar with a way to the full view, and the view's own markup in a scrolled box */
 .dc-h{display:flex;align-items:center;gap:8px;flex:none;min-height:28px;padding:5px 8px 5px 10px;background:var(--panel);border:1px solid var(--line);border-bottom:0}
-.dc-h h2{margin:0;font:700 12.5px/1 var(--f-lab);letter-spacing:.16em;text-transform:uppercase;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dc-open{margin-left:auto;font:600 11px/1 var(--f-num);color:var(--dim);padding:3px 5px;border-radius:2px;white-space:nowrap}
+.dc-h h2{margin:0;font:700 13px/1 var(--f-lab);letter-spacing:.16em;text-transform:uppercase;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dc-open{margin-left:auto;font:600 12px/1 var(--f-num);color:var(--dim);padding:3px 5px;border-radius:2px;white-space:nowrap}
 .dc-open:hover{color:var(--fe);background:var(--panel2)}
 .dc-view .dc-body{border:1px solid var(--line);background:var(--bg)}
 .cview{position:absolute;inset:0;overflow:auto;padding:var(--gap);container:main/inline-size;scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
@@ -88,10 +88,10 @@
 @container card (max-height:240px){.p-gantt .g-ctl{padding-bottom:4px}.mgr-card .s-spark{display:none}}
 /* unlocked: a bar to drag by, the edges to resize, the content inert so that a press arranges and never acts */
 .dc-edit{display:none}
-.dash[data-arrange="1"] .dc-edit{display:flex;align-items:center;gap:8px;position:absolute;left:0;right:0;top:0;z-index:8;height:28px;padding:0 4px 0 8px;background:var(--raise);border:1px solid var(--fe);color:var(--bright);font:700 12px/1 var(--f-lab);letter-spacing:.12em;text-transform:uppercase;cursor:grab;user-select:none}
+.dash[data-arrange="1"] .dc-edit{display:flex;align-items:center;gap:8px;position:absolute;left:0;right:0;top:0;z-index:8;height:28px;padding:0 4px 0 8px;background:var(--raise);border:1px solid var(--fe);color:var(--bright);font:700 13px/1 var(--f-lab);letter-spacing:.12em;text-transform:uppercase;cursor:grab;user-select:none}
 .dc-edit b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .dc-grip{color:var(--fe);font-size:14px;letter-spacing:0}
-.dc-size{font:500 11px/1 var(--f-num);color:var(--dim);letter-spacing:0;white-space:nowrap}
+.dc-size{font:500 12px/1 var(--f-num);color:var(--dim);letter-spacing:0;white-space:nowrap}
 .dc-x{margin-left:auto;flex:none;width:24px;height:22px;border-radius:2px;font:600 16px/1 var(--f-num);color:var(--fg2);cursor:pointer}
 .dc-x:hover{background:var(--err-a);color:var(--err)}
 .dash[data-arrange="1"] .dcard{cursor:grab;outline:1px dashed var(--line2);outline-offset:3px;touch-action:none}
@@ -111,8 +111,8 @@
 /* the picker of cards */
 .dashpick .dpicks{list-style:none;margin:0 0 12px;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px}
 .dashpick .dpick{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%;height:100%;text-align:left}
-.dashpick .dpick b{font:700 12.5px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--bright)}
-.dashpick .dpick span{font:400 12px/1.3 var(--f-ui);color:var(--dim)}
+.dashpick .dpick b{font:700 13px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--bright)}
+.dashpick .dpick span{font:400 13px/1.3 var(--f-ui);color:var(--dim)}
 .dashpick h3{margin:2px 0 6px}
 /* a narrow view: one column, the cards in their order, each as tall as its rows */
 .dash[data-stack="1"]>.dash-grid.dash-grid{grid-template-columns:minmax(0,1fr);grid-auto-rows:auto}
@@ -127,14 +127,14 @@
 /* a large team: the stalls in role bands (83-ui-cockpit.js, DENSE), one line per worker, the band's head naming its count and models */
 .stalls.dense{display:flex;flex-direction:column;gap:4px;overflow-y:auto}
 .sgroup{display:grid;grid-template-columns:minmax(96px,128px) minmax(0,1fr);gap:6px;align-items:start;border-left:2px solid var(--c);padding-left:6px}
-.sg-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;padding-top:3px;font:700 11px/1.2 var(--f-lab);letter-spacing:.1em;text-transform:uppercase;color:var(--fg2);min-width:0}
+.sg-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;padding-top:3px;font:700 12px/1.2 var(--f-lab);letter-spacing:.1em;text-transform:uppercase;color:var(--fg2);min-width:0}
 .sg-h b{color:var(--c)}.sg-h i{font-style:normal;color:var(--dim);letter-spacing:0}
-.sg-m{flex-basis:100%;font:500 10px/1.2 var(--f-num);letter-spacing:0;text-transform:none;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sg-m{flex-basis:100%;font:500 11px/1.2 var(--f-num);letter-spacing:0;text-transform:none;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sg-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:3px;min-width:0}
 .stalls.dense .stall{flex-direction:row;align-items:center;gap:6px;padding:3px 6px 3px 5px;min-height:0;border-left-width:2px}
-.stalls.dense .stall .s-top{flex:none;gap:4px}.stalls.dense .stall .s-id{font-size:12.5px}.stalls.dense .stall .s-role{display:none}
+.stalls.dense .stall .s-top{flex:none;gap:4px}.stalls.dense .stall .s-id{font-size:13px}.stalls.dense .stall .s-role{display:none}
 .stalls.dense .stall .s-st .sw{display:none}
-.stalls.dense .stall .s-doing{-webkit-line-clamp:1;min-height:0;font-size:12px;line-height:1.3;flex:1;min-width:0}
+.stalls.dense .stall .s-doing{-webkit-line-clamp:1;min-height:0;font-size:13px;line-height:1.3;flex:1;min-width:0}
 .stalls.dense .stall .s-meta,.stalls.dense .stall .s-nums,.stalls.dense .stall .s-spark,.stalls.dense .stall .s-tl{display:none}
 .stalls.dense .stall[data-state="ask"]{box-shadow:0 0 0 1px var(--warm-b)}
 @container card (min-height:620px){.stalls.dense .stall{flex-direction:column;align-items:stretch;padding:5px 7px}.stalls.dense .stall .s-nums{display:flex}.stalls.dense .stall .s-st .sw{display:inline}}
