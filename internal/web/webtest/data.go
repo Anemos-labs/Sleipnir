@@ -121,6 +121,12 @@ func Models() wire.ModelsView {
 		RoleModels: map[string]string{"scout": "anthropic/claude-haiku-5-5"},
 		Efforts:    []string{"default", "minimal", "low", "medium", "high", "xhigh"},
 		FetchedAt:  1760048000000,
+		// the defaults a new session reads: the page says the configuration does not load when there are none
+		Saved: map[string]wire.SavedModel{
+			"default": {Key: "models.default", Ref: "anthropic/claude-sonnet-5-5", From: "~/.sleipnir/config.json", Layer: "user"},
+			"scout":   {Key: "models.roles.scout", Ref: "anthropic/claude-haiku-5-5", From: ".sleipnir/config.json", Layer: "project"},
+		},
+		SaveFile: "~/.sleipnir/config.json",
 	}
 }
 

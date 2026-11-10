@@ -9,7 +9,8 @@
 .field-row input{flex:1}
 .field-row input:focus,.field-row select:focus,.fld input:focus,.fld select:focus,.fld textarea:focus,.rq:focus,.frow input:focus{border-color:var(--c-mgr)}
 .field-row .lab{margin-left:6px}
-select{appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--dim) 50%),linear-gradient(135deg,var(--dim) 50%,transparent 50%);background-position:calc(100% - 14px) 55%,calc(100% - 9px) 55%;background-size:5px 5px;background-repeat:no-repeat;padding-right:24px!important}
+/* a select anywhere is a dark control: without a colour of its own it took the browser's light grey */
+select{appearance:none;-webkit-appearance:none;background-color:var(--bg);border:1px solid var(--line2);border-radius:2px;color:var(--bright);padding:5px 9px;background-image:linear-gradient(45deg,transparent 50%,var(--dim) 50%),linear-gradient(135deg,var(--dim) 50%,transparent 50%);background-position:calc(100% - 14px) 55%,calc(100% - 9px) 55%;background-size:5px 5px;background-repeat:no-repeat;padding-right:24px!important}
 textarea{font:500 13px/1.4 var(--f-ui);resize:vertical}
 .fld{display:grid;grid-template-columns:150px minmax(0,1fr);gap:4px 12px;align-items:start;margin:9px 0}
 .fld>label{font:600 11px var(--f-lab);letter-spacing:.12em;text-transform:uppercase;color:var(--dim);padding-top:7px}

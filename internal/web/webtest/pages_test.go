@@ -129,3 +129,10 @@ func TestScanRoutes(t *testing.T) {
 		}
 	}
 }
+
+func TestModelsHaveSavedDefaults(t *testing.T) {
+	m := Models()
+	if m.Saved["default"].Ref == "" || m.SaveFile == "" {
+		t.Errorf("the canned catalogue has no saved defaults, so the page says the configuration does not load: %+v", m.Saved)
+	}
+}
