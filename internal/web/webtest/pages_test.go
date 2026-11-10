@@ -171,3 +171,48 @@ func TestWorkspaceCountsAgree(t *testing.T) {
 		t.Errorf("Cart.tsx did not change after c01, the diff says +%d with %d hunks", d.Added, len(d.Hunks))
 	}
 }
+
+// TestPrunePlanFollowsItsRequest checks that the fake prune preview lists only the sessions older than the age and past the
+// newest Keep, as the real route does, and that it refuses an age it cannot read.
+func TestPrunePlanFollowsItsRequest(t *testing.T) {
+	r := StartT(t, Options{})
+	plan := func(body string) wire.PrunePlan {
+		t.Helper()
+		code, b, _ := call(t, r, "POST", "/api/recorded/prune", body, nil)
+		if code != 200 {
+			t.Fatalf("prune %s = %d %s", body, code, b)
+		}
+		var p wire.PrunePlan
+		if err := json.Unmarshal(b, &p); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	if p := plan(`{"olderThan":"30d","keep":20}`); len(p.List) != 0 || p.MB != 0 {
+		t.Errorf("no canned recording is 30 days old, the plan lists %d (%.1f MB)", len(p.List), p.MB)
+	}
+	if p := plan(`{"olderThan":"36h","keep":0}`); len(p.List) != 2 {
+		t.Errorf("two canned recordings are older than 36 hours, the plan lists %d", len(p.List))
+	}
+	if p := plan(`{"olderThan":"1h","keep":2}`); len(p.List) != 1 {
+		t.Errorf("past the newest two, one recording is left to delete, the plan lists %d", len(p.List))
+	}
+	if code, b, _ := call(t, r, "POST", "/api/recorded/prune", `{"olderThan":"soon"}`, nil); code != 400 || errorCode(b) != "bad_age" {
+		t.Errorf("an age that is not one = %d %s, want 400 bad_age", code, b)
+	}
+}
+
+// TestACannedProjectIsAFolderThatExists checks that the folder check says a canned project exists, though this disk has no such path.
+func TestACannedProjectIsAFolderThatExists(t *testing.T) {
+	r := StartT(t, Options{})
+	var l struct {
+		State wire.DirState `json:"state"`
+	}
+	code, body, _ := call(t, r, "GET", "/api/fs/dirs?path="+Cwd, "", nil)
+	if err := json.Unmarshal(body, &l); code != 200 || err != nil {
+		t.Fatalf("GET the folder = %d %s (%v)", code, body, err)
+	}
+	if s := l.State; !s.Known || !s.Exists || !s.Dir {
+		t.Errorf("the canned project folder %s: %+v", Cwd, s)
+	}
+}
