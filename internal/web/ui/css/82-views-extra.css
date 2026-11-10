@@ -57,3 +57,7 @@
 .vbody>.dash{flex:1 0 auto}
 .vpage .dash[data-arrange="0"]>.dash-bar{position:absolute;top:2px;right:2px;min-height:0;z-index:1}
 @container main (max-width:620px){.vhead .vh-a{margin-right:0}.vhead .vh-a .btn{min-height:32px}}
+/* Plugins and Settings: Customise sits beside the title as on every other page, not on a row of its own */
+.v-plugins .dash[data-arrange="0"]>.dash-bar,.setpage .dash[data-arrange="0"]>.dash-bar{position:absolute;top:10px;right:10px;min-height:0;z-index:1}
+.setpage{position:relative}.setpage .dash[data-arrange="0"]>.dash-bar{top:2px;right:2px}
+.plghead>.sethead,.setpage .sethost>.sethead{padding-right:132px}

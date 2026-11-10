@@ -2,6 +2,7 @@ package webtest
 
 import (
 	"github.com/anemos-labs/sleipnir/internal/plugin"
+	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
@@ -34,8 +35,8 @@ func Memory() wire.MemoryView {
 			{Path: "web/AGENTS.md", Scope: "dir", Exists: false, Loaded: false, Editable: true, Why: "not written yet: a session reads it once it is"},
 		},
 		Lessons: wire.MemoryLessons{Path: "~/.sleipnir/lessons.json", On: true, Lessons: []wire.MemoryLesson{
-			{ID: "a1b2c3d4e5f6", Kind: "strategy", Text: "Split a full-stack goal by directory so that no two workers edit the same file.", Task: "build", Uses: 6, Wins: 5, Losses: 1, Utility: 0.71, Created: "2026-10-02T09:12:00Z", Last: "2026-10-09T22:15:00Z"},
-			{ID: "0f9e8d7c6b5a", Kind: "pitfall", Text: "A test that needs a network port must pick a free one; port 8080 is often taken.", Task: "test", Uses: 3, Wins: 2, Losses: 1, Utility: 0.42, Created: "2026-10-05T14:40:00Z", Last: "2026-10-08T11:03:00Z"},
+			{ID: "a1b2c3d4e5f6", Kind: "strategy", Text: "Split a full-stack goal by directory so that no two workers edit the same file.", Task: "build", Uses: 6, Wins: 5, Losses: 1, Utility: 0.75, Created: "2026-10-02T09:12:00Z", Last: "2026-10-09T22:15:00Z"},
+			{ID: "0f9e8d7c6b5a", Kind: "pitfall", Text: "A test that needs a network port must pick a free one; port 8080 is often taken.", Task: "test", Uses: 3, Wins: 2, Losses: 1, Utility: 0.6, Created: "2026-10-05T14:40:00Z", Last: "2026-10-08T11:03:00Z"},
 		}},
 		Root:    Cwd,
 		Trusted: true,
@@ -99,4 +100,46 @@ func Plugins() map[string]any {
 		warns = []string{}
 	}
 	return map[string]any{"profile": profile, "profiles": plugin.Profiles(), "restart": false, "plugins": rows, "needs": []any{}, "warnings": warns}
+}
+
+// ResearchView is what the Research page reads: the runs of the project, the depths a run can have, and whether the
+// plugin is on.
+type ResearchView struct {
+	Runs   []wire.ResearchRun   `json:"runs"`
+	Depths []wire.ResearchDepth `json:"depths"`
+	On     bool                 `json:"on"`
+}
+
+// Research is the Research page of the canned tab: one run the team works on now, with a gap still open, and an earlier
+// one that is published.
+func Research() ResearchView {
+	return ResearchView{On: true, Depths: session.ResearchDepths(), Runs: []wire.ResearchRun{
+		{Slug: "cart-sync-offline", Question: "How do mature sync engines resolve conflicts when a cart is edited offline on two devices?",
+			Depth: "standard", Mode: "report", Phase: "gather", Created: "2026-10-09T22:02:11Z", Problems: 3,
+			Sources: 14, Domains: 9, Findings: 22, Snippets: 6, Pages: 4, Planned: 11, OpenGaps: 2, Active: true},
+		{Slug: "catalogue-paging", Question: "Cursor or offset paging for a product catalogue of a few thousand items?",
+			Depth: "quick", Mode: "kickoff", Phase: "done", Created: "2026-10-09T21:40:03Z", Built: true,
+			Sources: 8, Domains: 6, Findings: 12, Pages: 5, Planned: 5, NoFactCheck: true},
+	}}
+}
+
+// Worktrees are the trees of the canned team's workers: the scout's is clean (its task merged), the two builders have work
+// in theirs, and the tester has not started.
+func Worktrees() []wire.Worktree {
+	tree := func(agent, head string, dirty bool, files ...string) wire.Worktree {
+		return wire.Worktree{Agent: agent, Path: "~/.sleipnir/work/" + SID + "/" + agent, Branch: "sleipnir/" + SID + "/" + agent,
+			Base: "ab12cd3", Head: head, Dirty: dirty, Files: files}
+	}
+	return []wire.Worktree{
+		tree("be-1", "4e1f9a0", true, "api/catalog/items.go", "api/catalog/items_test.go"),
+		tree("fe-1", "ab12cd3", true, "web/cart/Cart.tsx"),
+		tree("sc-1", "c7d02b5", false),
+		tree("te-1", "ab12cd3", false),
+	}
+}
+
+// MergeQueue is the canned team's merge queue: the scout's map has merged, nothing waits.
+func MergeQueue() wire.MergeQueueStatus {
+	return wire.MergeQueueStatus{Branch: "sleipnir/" + SID + "/merge", Tip: "c7d02b5", Healthy: true, Waiting: []string{}, Verify: "go test {dirs}",
+		Landed: []wire.LandedEntry{{Agent: "sc-1", Task: "T1", Commit: "c7d02b5", Files: []string{"docs/MAP.md"}}}}
 }

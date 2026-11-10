@@ -121,6 +121,12 @@ func Models() wire.ModelsView {
 		RoleModels: map[string]string{"scout": "anthropic/claude-haiku-5-5"},
 		Efforts:    []string{"default", "minimal", "low", "medium", "high", "xhigh"},
 		FetchedAt:  1760048000000,
+		// the defaults a new session reads: the page says the configuration does not load when there are none
+		Saved: map[string]wire.SavedModel{
+			"default": {Key: "models.default", Ref: "anthropic/claude-sonnet-5-5", From: "~/.sleipnir/config.json", Layer: "user"},
+			"scout":   {Key: "models.roles.scout", Ref: "anthropic/claude-haiku-5-5", From: ".sleipnir/config.json", Layer: "project"},
+		},
+		SaveFile: "~/.sleipnir/config.json",
 	}
 }
 
@@ -267,12 +273,12 @@ func WsIndex() wire.WsIndex {
 					{Path: "api/catalog/items.go", Status: "added", Added: 31, Agents: []string{"be-1"}, Task: "T2"},
 					{Path: "web/cart/Cart.tsx", Status: "added", Added: 54, Agents: []string{"fe-1"}, Task: "T3"},
 				}},
-			{ID: "c02", Time: "22:16:05", At: 1760048165000, Label: "turn 2: page size", Files: []string{"api/catalog/items.go"}, Agents: []string{"be-1"}, Tasks: []string{"T2"}, Added: 6, Removed: 2, NFiles: 1,
-				Changes: []wire.WsChange{{Path: "api/catalog/items.go", Status: "modified", Added: 6, Removed: 2, Agents: []string{"be-1"}, Task: "T2"}}},
+			{ID: "c02", Time: "22:16:05", At: 1760048165000, Label: "turn 2: page size", Files: []string{"api/catalog/items.go"}, Agents: []string{"be-1"}, Tasks: []string{"T2"}, Added: 2, Removed: 1, NFiles: 1,
+				Changes: []wire.WsChange{{Path: "api/catalog/items.go", Status: "modified", Added: 2, Removed: 1, Agents: []string{"be-1"}, Task: "T2"}}},
 			{ID: "c03", Time: "22:16:20", At: 1760048180000, Label: "turn 3: tests", Skipped: true, Files: []string{}, Agents: []string{}, Tasks: []string{}, Changes: []wire.WsChange{}},
 		},
 		Tree: []wire.WsFile{
-			{Path: "api/catalog/items.go", Dir: "api/catalog", Name: "items.go", Kind: "go", Status: "modified", Owner: "be-1", Task: "T2", Cp: "c02", Lease: &wire.WsLease{Agent: "be-1", Task: "T2", Glob: "api/catalog/**"}, Add: 37, Del: 2, Size: 1210, Exists: true},
+			{Path: "api/catalog/items.go", Dir: "api/catalog", Name: "items.go", Kind: "go", Status: "added", Owner: "be-1", Task: "T2", Cp: "c02", Lease: &wire.WsLease{Agent: "be-1", Task: "T2", Glob: "api/catalog/**"}, Add: 32, Size: 811, Exists: true},
 			{Path: "api/server.go", Dir: "api", Name: "server.go", Kind: "go", Status: "unchanged", Size: 5200, Exists: true},
 			{Path: "web/cart/Cart.tsx", Dir: "web/cart", Name: "Cart.tsx", Kind: "ts", Status: "added", Owner: "fe-1", Task: "T3", Cp: "c01", Add: 54, Size: 1900, Exists: true},
 			{Path: ".env", Dir: "", Name: ".env", Kind: "text", Status: "unchanged", Protected: &wire.WsProtect{Rule: "Read(./.env)", Origin: "project config", Tier: "deny", Why: "secrets live here"}, Size: 80, Exists: true},
@@ -283,24 +289,111 @@ func WsIndex() wire.WsIndex {
 	}
 }
 
-// WsContent is a file's text at a point, with authorship.
-func WsContent(path, at string) wire.WsContent {
-	text := "package catalog\n\n// Page is one page of items.\ntype Page struct {\n\tItems []Item `json:\"items\"`\n\tPage  int    `json:\"page\"`\n}\n\n// Size is the page size, at most 50.\nconst Size = 12\n"
-	if strings.HasSuffix(path, ".tsx") {
-		text = "export function Cart({ items }) {\n  return items.map(i => <li key={i.id}>{i.name}</li>)\n}\n"
+// The two files the canned team wrote. be-1 wrote items.go whole in turn 1 (c01) and changed its page size in turn 2 (c02);
+// fe-1 wrote Cart.tsx whole in turn 1. Every count the Workspace shows (the index, the tree, a diff's header) is taken from
+// these texts, so the pages cannot disagree with each other.
+const (
+	itemsOld  = "const Size = 100\n"
+	itemsNew  = "// Size is the page size, at most 50.\nconst Size = 12\n"
+	itemsC01  = "// Package catalog lists the shop's items, a page at a time.\npackage catalog\n\nimport \"sort\"\n\n// Item is one thing the shop sells.\ntype Item struct {\n\tID    string `json:\"id\"`\n\tName  string `json:\"name\"`\n\tCents int    `json:\"cents\"`\n}\n\n// Page is one page of items.\ntype Page struct {\n\tItems []Item `json:\"items\"`\n\tPage  int    `json:\"page\"`\n\tTotal int    `json:\"total\"`\n}\n\nconst Size = 100\n\n// List returns page n of the items, by name.\nfunc List(all []Item, n int) Page {\n\tsort.Slice(all, func(i, j int) bool { return all[i].Name < all[j].Name })\n\tlo := (n - 1) * Size\n\tif n < 1 || lo >= len(all) {\n\t\treturn Page{Items: []Item{}, Page: n, Total: len(all)}\n\t}\n\thi := min(lo+Size, len(all))\n\treturn Page{Items: all[lo:hi], Page: n, Total: len(all)}\n}\n"
+	cartText  = "import { useMemo, useState } from \"react\";\n\ntype Item = { id: string; name: string; cents: number };\ntype Line = { item: Item; count: number };\n\n// money writes cents as dollars.\nconst money = (cents: number) => \"$\" + (cents / 100).toFixed(2);\n\n// Cart is the cart screen: the lines, their total, and the checkout button.\nexport function Cart({ items }: { items: Item[] }) {\n  const [lines, setLines] = useState<Line[]>([]);\n\n  const total = useMemo(\n    () => lines.reduce((sum, l) => sum + l.item.cents * l.count, 0),\n    [lines],\n  );\n\n  function add(item: Item) {\n    setLines((ls) => {\n      const at = ls.findIndex((l) => l.item.id === item.id);\n      if (at < 0) return [...ls, { item, count: 1 }];\n      return ls.map((l, i) => (i === at ? { ...l, count: l.count + 1 } : l));\n    });\n  }\n\n  function remove(id: string) {\n    setLines((ls) => ls.filter((l) => l.item.id !== id));\n  }\n\n  return (\n    <section aria-label=\"Cart\">\n      <ul>\n        {items.map((item) => (\n          <li key={item.id}>\n            {item.name} {money(item.cents)}\n            <button onClick={() => add(item)}>Add</button>\n          </li>\n        ))}\n      </ul>\n      <h2>Your cart</h2>\n      {lines.length === 0 && <p>Nothing in the cart yet.</p>}\n      <ol>\n        {lines.map((l) => (\n          <li key={l.item.id}>\n            {l.count} x {l.item.name}\n            <button onClick={() => remove(l.item.id)}>Remove</button>\n          </li>\n        ))}\n      </ol>\n      <p>Total {money(total)}</p>\n      <button disabled={lines.length === 0}>Check out</button>\n    </section>\n  );\n}\n"
+	itemsPath = "api/catalog/items.go"
+	cartPath  = "web/cart/Cart.tsx"
+)
+
+// wsText is a canned file's text at a point ("c01" is the first turn; anything later is the newest), "" before the session.
+func wsText(path, at string) string {
+	switch {
+	case at == "base":
+		return ""
+	case path == cartPath:
+		return cartText
+	case at == "c01":
+		return itemsC01
 	}
-	return wire.WsContent{
-		Path: path, At: firstNonEmpty(at, "live"), Exists: true, Text: text, Size: int64(len(text)), Exact: true,
-		Blame: []wire.BlameRun{{Line: 1, Count: 7, Ag: "be-1", ID: "c01", Task: "T2"}, {Line: 8, Count: 3, Ag: "be-1", ID: "c02", Task: "T2"}},
-	}
+	return strings.Replace(itemsC01, itemsOld, itemsNew, 1)
 }
 
-// WsDiff is the diff of a file between two points: one hunk.
-func WsDiff(path, from, to string) wire.WsDiff {
-	return wire.WsDiff{
-		Path: path, From: firstNonEmpty(from, "base"), To: firstNonEmpty(to, "live"), Added: 3, Removed: 1,
-		Hunks: []wire.Hunk{{OldStart: 7, OldLines: 2, NewStart: 7, NewLines: 4, Section: "func (p Page)", Lines: []wire.HunkLine{
-			{T: " ", S: "}"}, {T: "-", S: "const Size = 100"}, {T: "+", S: "// Size is the page size, at most 50."}, {T: "+", S: "const Size = 12"}, {T: "+", S: ""},
-		}}},
+// wsLines is the lines of a text, without the empty one after its last newline.
+func wsLines(text string) []string {
+	if text == "" {
+		return nil
 	}
+	return strings.Split(strings.TrimSuffix(text, "\n"), "\n")
+}
+
+// WsContent is a file's text at a point, with authorship.
+func WsContent(path, at string) wire.WsContent {
+	if path != cartPath {
+		path = itemsPath
+	}
+	text := wsText(path, firstNonEmpty(at, "live"))
+	n := len(wsLines(text))
+	if n == 0 { // the file is not there at this point: no text, and no line to blame
+		return wire.WsContent{Path: path, At: firstNonEmpty(at, "live"), Blame: []wire.BlameRun{}}
+	}
+	blame := []wire.BlameRun{{Line: 1, Count: n, Ag: "fe-1", ID: "c01", Task: "T3"}}
+	if path == itemsPath {
+		at1 := len(wsLines(strings.SplitN(itemsC01, itemsOld, 2)[0]))
+		blame = []wire.BlameRun{{Line: 1, Count: n, Ag: "be-1", ID: "c01", Task: "T2"}}
+		if at != "c01" {
+			blame = []wire.BlameRun{{Line: 1, Count: at1, Ag: "be-1", ID: "c01", Task: "T2"}, {Line: at1 + 1, Count: 2, Ag: "be-1", ID: "c02", Task: "T2"},
+				{Line: at1 + 3, Count: n - at1 - 2, Ag: "be-1", ID: "c01", Task: "T2"}}
+		}
+	}
+	return wire.WsContent{Path: path, At: firstNonEmpty(at, "live"), Exists: true, Text: text, Size: int64(len(text)), Exact: true, Blame: blame}
+}
+
+// WsDiff is the diff of a file between two points: the whole file when it did not exist at one of them, the page-size hunk
+// when items.go is compared across its second turn in either direction, and no hunk when the two texts are the same.
+func WsDiff(path, from, to string) wire.WsDiff {
+	if path != cartPath {
+		path = itemsPath
+	}
+	from, to = firstNonEmpty(from, "base"), firstNonEmpty(to, "live")
+	a, b := wsLines(wsText(path, from)), wsLines(wsText(path, to))
+	d := wire.WsDiff{Path: path, From: from, To: to, Hunks: []wire.Hunk{}}
+	whole := func(lines []string, t string) wire.Hunk {
+		h := wire.Hunk{}
+		for _, l := range lines {
+			h.Lines = append(h.Lines, wire.HunkLine{T: t, S: l})
+		}
+		return h
+	}
+	switch {
+	case len(a) == 0 && len(b) > 0:
+		h := whole(b, "+")
+		h.NewStart, h.NewLines = 1, len(b)
+		d.Added, d.Hunks = len(b), []wire.Hunk{h}
+	case len(b) == 0 && len(a) > 0:
+		h := whole(a, "-")
+		h.OldStart, h.OldLines = 1, len(a)
+		d.Removed, d.Hunks = len(a), []wire.Hunk{h}
+	case len(a) != len(b):
+		old, cur, back := a, b, len(a) > len(b) // the turn added a line: the longer text is the later one
+		if back {
+			old, cur = b, a
+		}
+		at := len(wsLines(strings.SplitN(itemsC01, itemsOld, 2)[0])) // the lines above the changed one
+		h := wire.Hunk{OldStart: at - 2, OldLines: 7, NewStart: at - 2, NewLines: 8, Section: "type Page struct {"}
+		minus, plus := "-", "+"
+		if back {
+			h.OldLines, h.NewLines, minus, plus = 8, 7, "+", "-"
+		}
+		for _, l := range old[at-3 : at] {
+			h.Lines = append(h.Lines, wire.HunkLine{T: " ", S: l})
+		}
+		if back {
+			h.Lines = append(h.Lines, wire.HunkLine{T: plus, S: cur[at]}, wire.HunkLine{T: plus, S: cur[at+1]}, wire.HunkLine{T: minus, S: old[at]})
+			d.Added, d.Removed = 1, 2
+		} else {
+			h.Lines = append(h.Lines, wire.HunkLine{T: minus, S: old[at]}, wire.HunkLine{T: plus, S: cur[at]}, wire.HunkLine{T: plus, S: cur[at+1]})
+			d.Added, d.Removed = 2, 1
+		}
+		for _, l := range old[at+1 : at+4] {
+			h.Lines = append(h.Lines, wire.HunkLine{T: " ", S: l})
+		}
+		d.Hunks = []wire.Hunk{h}
+	}
+	return d
 }

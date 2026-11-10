@@ -35,8 +35,8 @@
 
   /** The two lists of notes: [scope, card title, the input's id, what they are]. */
   const NOTES = {
-    user: ['Agent notes', 'memNew', 'What the agents chose to remember about you and your setup, with the memory tool. Every session starts with them, in any project. An agent saves a note without asking you: the Memory item of the left bar counts the new ones, and here you keep, change or remove them.', 'one fact in one sentence, e.g. I prefer pnpm over npm'],
-    project: ['Project notes', 'memNewP', 'What the agents chose to remember about this project only (scope project): a fact about the code base, a mistake not to repeat here. Sessions of this project start with them while it is trusted; the file stays out of git.', 'one fact about this project, e.g. make gen regenerates the client'],
+    user: ['Agent notes', 'memNew', 'What the agents chose to remember about you and your setup. Every session starts with them, in any project.', 'one fact in one sentence, e.g. I prefer pnpm over npm'],
+    project: ['Project notes', 'memNewP', 'What the agents chose to remember about this project only. Its sessions start with them while it is trusted; the file stays out of git.', 'one fact about this project, e.g. make gen regenerates the client'],
   };
   function notesHtml(st, scope) {
     const [title, inputId, about, hint] = NOTES[scope], n = st.v && (scope === 'project' ? st.v.project : st.v.notes);
@@ -61,7 +61,7 @@
     const role = r => '<div class="mem-grp"><h3 class="lab">' + esc(r.role) + ' <span class="mono dim">' + esc(r.path) + '</span></h3>' + (r.error ? '<p class="stubnote mem-pad err">' + esc(r.error) + '</p>' : '') +
       '<ul class="mem-ll">' + arr(r.items).map(it => '<li class="mem-ls"><div class="mem-lh"><span class="chip ' + (it.stage === 'canon' ? 'mem-on' : '') + '" title="' + (it.stage === 'canon' ? 'marked canon by a person: kept first and for good' : 'saved when a task was accepted') + '">' + esc(it.stage) + (it.confirmed > 1 ? ' ×' + it.confirmed : '') + '</span><span class="mem-t">' + esc(it.text) + '</span></div></li>').join('') + '</ul></div>';
     return '<section class="panel mem-lore">' + head('Team lore', onChip(L.on, 'the Memory notes plugin is off: team sessions neither read nor save lore') + '<span class="mono dim">' + esc(L.dir) + '</span>') +
-      '<p class="mem-about">What the workers of each role learned in this project: the role notes of a worker whose task the manager accepted, saved for the agents of that role in later team sessions. Edit a file by hand to delete a wrong line, or mark one <span class="mono">[canon]</span> to keep it first and for good.</p>' +
+      '<p class="mem-about">What the workers of each role learned in this project, for that role in later team sessions. In the file, delete a wrong line or mark one <span class="mono">[canon]</span> to keep it for good.</p>' +
       (L.error ? '<p class="stubnote mem-pad err">' + esc(L.error) + '</p>' : '') +
       (roles.length ? roles.map(role).join('') : '<p class="stubnote mem-pad">No lore yet. It is saved when the manager accepts a task whose worker kept role notes.</p>') + '</section>';
   }
@@ -93,7 +93,7 @@
     }).join('');
     const hidden = files.filter(f => !f.exists).length;
     return '<section class="panel mem-files">' + head('Instruction files', '<span class="dim">' + plural(there, 'file') + '</span>' + (hidden ? '<button class="btn sm" type="button" data-files-all aria-pressed="' + !!st.showAll + '">' + (st.showAll ? 'Hide the places with no file' : 'New file…') + '</button>' : '')) +
-      '<p class="mem-about">Standing instructions every agent reads at the start of a session: yours, then the project’s, then the local ones, the later winning. ' + (!v.root ? 'With no session open, only yours are shown. ' : v.trusted ? '' : '<b class="warm">This project is not trusted</b>, so its sessions read only yours: trust it in Settings › Permissions & trust. ') + esc(NEXT) + '</p>' +
+      '<p class="mem-about">Standing instructions every agent reads at the start of a session: yours, then the project’s, then the local ones. ' + (!v.root ? 'With no session open, only yours are shown. ' : v.trusted ? '' : '<b class="warm">This project is not trusted</b>, so its sessions read only yours: trust it in Settings › Permissions & trust. ') + esc(NEXT) + '</p>' +
       (groups || '<p class="stubnote mem-pad">No instruction file yet. <button class="linkbtn" type="button" data-files-all>Create one</button>: AGENTS.md at the project root is read by most agent tools.</p>') + '</section>';
   }
 
@@ -103,7 +103,7 @@
       '<button class="btn sm" type="button" data-lesson-del="' + esc(l.id) + '">Remove</button></div>' +
       '<div class="mem-lm dim">' + (l.task ? '<span title="the goal it came from">from: ' + esc(l.task) + '</span>' : '') +
       '<span class="mono" title="goals it was shown to: reached / not reached">' + plural(l.uses, 'use') + ' · ' + l.wins + ' won · ' + l.losses + ' lost</span>' +
-      '<span class="mem-u" title="how often the goals it was shown to were reached (smoothed)"><i style="width:' + pct + '%"></i></span><span class="mono">' + pct + '%</span></div>' +
+      '<span class="mem-u" title="how often the goals it was shown to were reached (smoothed)"><i style="width:' + pct + '%"></i></span><span class="mono" title="how often the goals it was shown to were reached (smoothed)">reached ≈' + pct + '%</span></div>' +
       (l.replaced ? '<div class="mem-lm dim mem-lr" title="an earlier lesson that the outcome of the goal this one came from showed wrong; goals are no longer shown it">replaced: <s>' + esc(l.replaced) + '</s></div>' : '') + '</li>';
   }
 
@@ -111,7 +111,7 @@
     const L = st.v && st.v.lessons; if (!L) return '<section class="panel">' + head('Lessons') + wait(st) + '</section>';
     const ls = arr(L.lessons);
     return '<section class="panel mem-lessons">' + head('Lessons', onChip(L.on, 'the Lesson memory plugin is off') + '<span class="mono dim">' + esc(L.path) + '</span>') +
-      '<p class="mem-about">What earlier goals taught: a strategy from a goal that was reached, a pitfall from one that was not. A goal is shown the few most like it when it starts; they are found by keyword, and by meaning too with an embedder model (<span class="mono">--role-model embedder=MODEL</span>).</p>' +
+      '<p class="mem-about">What earlier goals taught: a strategy from a goal that was reached, a pitfall from one that was not. A new goal is shown the few most like it.</p>' +
       (L.error ? '<p class="stubnote mem-pad err">' + esc(L.error) + '</p>' : '') +
       (ls.length ? '<ul class="mem-ll">' + ls.map(lessonHtml).join('') + '</ul>' : '<p class="stubnote mem-pad">No lessons yet. They are distilled when a goal ends, while the lesson memory is on.</p>') + '</section>';
   }

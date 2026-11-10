@@ -99,17 +99,17 @@ test('normalize: unknown and repeated cards leave, sizes and places are clamped,
 test('move, resize, add, remove and the keys of a focused card', () => {
   const D = dash(), L0 = D.DEFAULT;
   let L = D.move(L0, 'gov', 0, 0);   // onto the horse: the horse and what is under it go down
-  assert.deepEqual(at(L, 'gov'), [0, 0, 3, 3]); assert.ok(noOverlap(D, L)); assert.equal(at(L, 'hero')[1], 3);
-  assert.deepEqual(at(D.move(L0, 'gov', 40, -5), 'gov'), [9, 0, 3, 3], 'clamped into the grid');
-  L = D.resize(L0, 'gantt', 3, 18); assert.deepEqual(at(L, 'gantt'), [0, 8, 3, 18]); assert.ok(noOverlap(D, L));
-  assert.deepEqual(at(D.resize(L0, 'gantt', 1, 1), 'gantt'), [0, 8, 3, 4], 'not under its minimum');
-  assert.deepEqual(at(D.resize(L0, 'tasks', 30, 7), 'tasks'), [6, 8, 6, 7].map((v, i) => (i === 0 ? 0 : i === 2 ? 12 : v)), 'as wide as the grid, moved left to fit');
+  assert.deepEqual(at(L, 'gov'), [0, 0, 3, 5]); assert.ok(noOverlap(D, L)); assert.equal(at(L, 'hero')[1], 5);
+  assert.deepEqual(at(D.move(L0, 'gov', 40, -5), 'gov'), [9, 0, 3, 5], 'clamped into the grid');
+  L = D.resize(L0, 'gantt', 3, 18); assert.deepEqual(at(L, 'gantt'), [0, 6, 3, 18]); assert.ok(noOverlap(D, L));
+  assert.deepEqual(at(D.resize(L0, 'gantt', 1, 1), 'gantt'), [0, 6, 3, 4], 'not under its minimum');
+  assert.deepEqual(at(D.resize(L0, 'tasks', 30, 7), 'tasks'), [6, 6, 6, 7].map((v, i) => (i === 0 ? 0 : i === 2 ? 12 : v)), 'as wide as the grid, moved left to fit');
   L = D.add(L0, 'v:cache'); assert.deepEqual(at(L, 'v:cache'), [0, 18, 6, 9], 'the first place it fits'); assert.ok(noOverlap(D, L));
   assert.equal(D.add(L, 'v:cache').length, L.length, 'a card is on the grid once'); assert.equal(D.add(L, 'nope').length, L.length);
-  const R = D.remove(L0, 'gov'); assert.equal(R.length, 6); assert.deepEqual(at(D.add(R, 'gov'), 'gov'), [9, 15, 3, 3], 'it comes back where there is room');
-  assert.deepEqual(at(D.keyOp(L0, 'queue', 'ArrowRight', false), 'queue'), [1, 15, 4, 3]);
-  assert.deepEqual(at(D.keyOp(L0, 'queue', 'ArrowDown', true), 'queue'), [0, 15, 4, 4], 'shift: resize');
-  assert.deepEqual(at(D.keyOp(L0, 'queue', 'ArrowLeft', true), 'queue'), [0, 15, 3, 3]);
+  const R = D.remove(L0, 'gov'); assert.equal(R.length, 6); assert.deepEqual(at(D.add(R, 'gov'), 'gov'), [9, 13, 3, 5], 'it comes back where there is room');
+  assert.deepEqual(at(D.keyOp(L0, 'queue', 'ArrowRight', false), 'queue'), [1, 13, 4, 5]);
+  assert.deepEqual(at(D.keyOp(L0, 'queue', 'ArrowDown', true), 'queue'), [0, 13, 4, 6], 'shift: resize');
+  assert.deepEqual(at(D.keyOp(L0, 'queue', 'ArrowLeft', true), 'queue'), [0, 13, 3, 5]);
   assert.equal(D.keyOp(L0, 'queue', 'Enter', false), null);
   assert.ok(D.same(L0, L0.slice().reverse())); assert.ok(!D.same(L0, D.move(L0, 'gov', 0, 0)));
   assert.equal(D.rowHeight(900, 8), Math.floor((900 - 8 * 17) / 18)); assert.equal(D.rowHeight(100, 8), D.ROW_MIN);
@@ -145,11 +145,11 @@ test('the page: the Cockpit is a grid of its panels; unlocked, a focused card mo
   assert.equal($('.dash-add').hidden, false);
   const gov = L.focus('.dcard[data-card="gov"]');
   const e = L.press('left'); await L.settle(); assert.ok(e.defaultPrevented);
-  assert.deepEqual(plain(SL.ui.dash.layout().find(c => c.id === 'gov')), { id: 'gov', x: 8, y: 15, w: 3, h: 3 });
+  assert.deepEqual(plain(SL.ui.dash.layout().find(c => c.id === 'gov')), { id: 'gov', x: 8, y: 13, w: 3, h: 5 });
   assert.match(gov.style.gridColumn, /^9 \/ span 3$/);
   L.press('shift+down'); await L.settle();
-  assert.equal(SL.ui.dash.layout().find(c => c.id === 'gov').h, 4);
-  const stored = JSON.parse(L.store.get(SL.dash.KEY)); assert.equal(stored.version, 2); assert.deepEqual(plain(stored.pages.cockpit.find(c => c.id === 'gov')), { id: 'gov', x: 8, y: 15, w: 3, h: 4 });
+  assert.equal(SL.ui.dash.layout().find(c => c.id === 'gov').h, 6);
+  const stored = JSON.parse(L.store.get(SL.dash.KEY)); assert.equal(stored.version, 2); assert.deepEqual(plain(stored.pages.cockpit.find(c => c.id === 'gov')), { id: 'gov', x: 8, y: 13, w: 3, h: 6 });
   L.focus('.dcard[data-card="gov"]'); L.press('delete'); await L.settle();
   assert.ok(!cards().includes('gov')); assert.equal(JSON.parse(L.store.get(SL.dash.KEY)).pages.cockpit.find(c => c.id === 'gov').hidden, true, 'Delete hides: the card keeps its place');
   assert.equal($('.dash-tray').hidden, false); assert.match($('.dash-tray').textContent, /Hidden 1/);
@@ -162,7 +162,7 @@ test('the page: the Cockpit is a grid of its panels; unlocked, a focused card mo
   /* the next page load reads the layout back */
   const L2 = await boot({ storage: { [SL.dash.KEY]: L.store.get(SL.dash.KEY) } });
   assert.deepEqual(L2.doc.querySelectorAll('.dcard').map(c => c.dataset.card), ['hero', 'team', 'gantt', 'tasks', 'queue', 'mail']);
-  assert.deepEqual(plain(L2.SL.ui.dash.layout().find(c => c.id === 'queue')), { id: 'queue', x: 0, y: 15, w: 4, h: 3 });
+  assert.deepEqual(plain(L2.SL.ui.dash.layout().find(c => c.id === 'queue')), { id: 'queue', x: 0, y: 13, w: 4, h: 5 });
 });
 
 test('the page: a card of a view draws the view with its own code, leaves with its scope, and a broken stored layout gives the default', async () => {

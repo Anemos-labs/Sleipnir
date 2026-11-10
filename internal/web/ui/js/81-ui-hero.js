@@ -47,7 +47,9 @@
     const legs = roleLegs(S).map(L => Object.assign(L, { phase: (L.i * .37) % 1, speed: 0, amp: 0, lift: 0, op: .16, raise: 0, st: 'free' }));
     const HS = .6, HTX = -82, HTY = 58, BAR_Y = 26, BAR_H = 17, X0 = 10, W = 352;
     const el = (n, a, p, t) => sv(n, a, p || svg, t);
-    const title = el('text', { x: 2, y: 11, class: 'hh' }, null, Math.max(workers.length, S.meta.swarm || 0) ? 'Manager + ' + Math.max(workers.length, S.meta.swarm || 0) + ' workers' : 'One agent, no workers');
+    /* the title counts the workers hired so far against the team's size, and follows the roster as it grows */
+    const titleOf = S2 => { const n = S2.roster.filter(r => r.id !== 'mgr').length, of = (S2.meta && S2.meta.swarm) || 0, all = Math.max(n, of); return all ? 'Manager + ' + (n < of ? n + ' of ' : '') + all + ' workers' : 'One agent, no workers'; };
+    const title = el('text', { x: 2, y: 11, class: 'hh' }, null, titleOf(S));
     const pre = el('g', { class: 'h-prefix' });   /* the shared prefix G0..G5: drawn in Cache details: Full, absent in Quiet */
     const preLab = el('text', { x: 370, y: 11, 'text-anchor': 'end', class: 'hs' }, pre, '');
     /* prefix bar */
@@ -150,7 +152,7 @@
       const w = cold ? 'cold' : 'warm ' + U.clock(cc); if (warmSpan.textContent !== w) { warmSpan.textContent = w; warmSpan.setAttribute('fill', cold || cc < 8 ? 'var(--err)' : 'var(--warm)'); }
           }
     function update(S2, m) {
-      if (!m) return; drawBar(); const quiet = SL.settings.cache === 'quiet'; if (pre.style.display !== (quiet ? 'none' : '')) { pre.style.display = quiet ? 'none' : ''; svg.setAttribute('viewBox', quiet ? '0 30 372 358' : '0 0 372 388'); title.setAttribute('y', quiet ? 46 : 11); svg.parentNode.classList.toggle('qhorse', quiet); }
+      if (!m) return; drawBar(); const tt = titleOf(S2 || S); if (title.textContent !== tt) title.textContent = tt; const quiet = SL.settings.cache === 'quiet'; if (pre.style.display !== (quiet ? 'none' : '')) { pre.style.display = quiet ? 'none' : ''; svg.setAttribute('viewBox', quiet ? '0 30 372 358' : '0 0 372 388'); title.setAttribute('y', quiet ? 46 : 11); svg.parentNode.classList.toggle('qhorse', quiet); }
       labels.forEach(({ L, sg, badge }) => { const s = sharedState(m, L.ids), t = L.roles.length && !L.slots ? '· no slot' : GLYPH[s] + ' ' + WORD[s]; if (sg.textContent !== t) sg.textContent = t;
         const tip = 'leg ' + (L.i + 1) + (L.roles.length ? ': ' + L.roles.join(', ') : ': no role') + (L.ids.length ? '\n' + L.ids.map(id => { const A = m.ag[id], st = A && A.spawned ? A.state : 'not started'; return id + '  ' + (GLYPH[st] || '◌') + ' ' + (WORD[st] || st); }).join('\n') : L.roles.length ? '\nno worker started yet: a free slot' : '');
         if (L.tip.textContent !== tip) { L.tip.textContent = tip; L.g.setAttribute('aria-description', tip.replace(/\n/g, '; ')); } sg.setAttribute('fill', s === 'ask' ? 'var(--warm)' : s === 'stuck' ? 'var(--err)' : s === 'done' ? 'var(--ok)' : 'var(--dim)'); });

@@ -10,9 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/web"
 	"github.com/anemos-labs/sleipnir/internal/web/dirs"
 	"github.com/anemos-labs/sleipnir/internal/web/seam"
@@ -156,7 +158,11 @@ func (rt *router) live() {
 			return nil, werr(400, "bad_path", err.Error())
 		}
 		for _, p := range h.Projects(r.Context()) {
-			l.State.Known = l.State.Known || p.Dir == l.State.Path
+			// A canned project is a folder that exists, though this disk has no such path. The path as asked is compared too:
+			// where the canned path is not an absolute one (Windows), the completion has joined it to the base.
+			if p.Dir == l.State.Path || p.Dir == r.URL.Query().Get("path") {
+				l.State.Path, l.State.Known, l.State.Exists, l.State.Dir, l.State.Readable, l.State.ParentOK = p.Dir, true, true, true, true, true
+			}
 		}
 		return l, nil
 	})
@@ -608,6 +614,15 @@ func (rt *router) pages() {
 	rt.get("/api/plugins", func(*http.Request) (any, error) { return Plugins(), nil })
 	rt.tabRoute("GET /api/sessions/{id}/memory", web.RouteOpts{}, func(w http.ResponseWriter, _ *http.Request, _ *Tab) { ok(w, Memory()) })
 	rt.tabRoute("GET /api/sessions/{id}/plugins", web.RouteOpts{}, func(w http.ResponseWriter, _ *http.Request, _ *Tab) { ok(w, Plugins()) })
+	rt.tabRoute("GET /api/sessions/{id}/scan", web.RouteOpts{}, func(w http.ResponseWriter, _ *http.Request, _ *Tab) { ok(w, Scans()) })
+	rt.tabRoute("GET /api/sessions/{id}/scan/{slug}", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, _ *Tab) {
+		if r.PathValue("slug") != ScanSlug {
+			web.Error(w, http.StatusNotFound, "no_scan", "no scan "+r.PathValue("slug"))
+			return
+		}
+		ok(w, ScanDetail())
+	})
+	rt.tabRoute("GET /api/sessions/{id}/research", web.RouteOpts{}, func(w http.ResponseWriter, _ *http.Request, _ *Tab) { ok(w, Research()) })
 	rt.get("/api/recorded", func(*http.Request) (any, error) {
 		return map[string]any{"recorded": Recorded(), "mb": 1.7}, nil
 	})
@@ -629,7 +644,23 @@ func (rt *router) pages() {
 		if !web.DecodeJSON(w, r, &body) {
 			return
 		}
-		list := Recorded()[1:]
+		// The plan follows the request as the real route does: older than the age, past the newest Keep.
+		older := strings.TrimSpace(body.OlderThan)
+		if older == "" {
+			older = "30d"
+		}
+		age, err := session.ParseAge(older)
+		if err != nil {
+			web.Error(w, http.StatusBadRequest, "bad_age", "bad --older-than: "+strconv.Quote(older)+" is not an age (try 30d, 36h or 2w)")
+			return
+		}
+		list, mb := []wire.RecordedSession{}, 0.0
+		for i, s := range Recorded() {
+			if i >= body.Keep && float64(s.AgeS) > age.Seconds() {
+				list = append(list, s)
+				mb += s.MB
+			}
+		}
 		if body.Apply {
 			ids := []string{}
 			for _, s := range list {
@@ -640,7 +671,7 @@ func (rt *router) pages() {
 				return
 			}
 		}
-		ok(w, wire.PrunePlan{List: list, MB: 0.5, Applied: body.Apply})
+		ok(w, wire.PrunePlan{List: list, MB: mb, Applied: body.Apply})
 	}, web.RouteOpts{})
 	rt.get("/api/models", func(*http.Request) (any, error) { return Models(), nil })
 	srv.HandleFunc("POST /api/models/fav", func(w http.ResponseWriter, r *http.Request) {
@@ -817,11 +848,11 @@ func (rt *router) workspace() {
 		}
 		ok(w, okBody)
 	})
-	for _, p := range []string{"worktrees", "queue"} {
-		rt.tabRoute("GET /api/sessions/{id}/ws/"+p, web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *Tab) {
-			web.Error(w, http.StatusConflict, "not_isolated", "this team does not use worktrees")
-		})
-	}
+	// the canned team runs with --isolation worktree (its launch line and its queue events say so), so the Merge tab has trees and a queue
+	rt.tabRoute("GET /api/sessions/{id}/ws/worktrees", web.RouteOpts{}, func(w http.ResponseWriter, _ *http.Request, _ *Tab) {
+		ok(w, map[string]any{"worktrees": Worktrees()})
+	})
+	rt.tabRoute("GET /api/sessions/{id}/ws/queue", web.RouteOpts{}, func(w http.ResponseWriter, _ *http.Request, _ *Tab) { ok(w, MergeQueue()) })
 }
 
 // cleanRel reports whether p is a project-relative path with no dot or dot-dot elements, no backslash or NUL and no leading slash.

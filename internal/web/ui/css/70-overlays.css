@@ -44,6 +44,8 @@
 .tbl .btn.pri{background:transparent;color:var(--mgr);font-weight:600}.tbl .btn.pri:hover{background:var(--mgr-a);color:var(--mgr);filter:none}
 .btn.danger{border-color:var(--err);color:var(--err)}
 .btn.danger:hover{background:var(--err-a)}
+/* an action that rewrites files but can be undone (restore a checkpoint) is amber, so it is not taken for the harmless one beside it */
+.btn.caution{border-color:var(--warm-b);color:var(--warm)}.btn.caution:hover{background:var(--warm-c);border-color:var(--warm);color:var(--warm)}
 .btn[disabled]{opacity:.45;cursor:not-allowed}
 .field{display:flex;gap:8px;align-items:center;margin:8px 0}
 .field input{flex:1;background:var(--bg);border:1px solid var(--line2);padding:6px 9px;font:500 13px var(--f-num);color:var(--bright);border-radius:2px}
