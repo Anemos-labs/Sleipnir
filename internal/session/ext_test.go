@@ -13,6 +13,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/skills/builtin"
 )
 
 func writeFile(t *testing.T, path, body string) {
@@ -191,6 +192,35 @@ func TestWritesToHooksSkillsAndConfigAskEvenInBypass(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(seen, "\n"), "approval") {
 		t.Errorf("the refusal should say approval is required: %q", seen)
+	}
+}
+
+// The state directory's own write rule asks in every mode, and a built-in skill is unpacked under it: a run with nobody to ask must
+// still be able to run that skill's script, and must not be able to change it.
+func TestABuiltinSkillsScriptRunsInAnUnattendedSession(t *testing.T) {
+	repo := newRepo(t)
+	client, model := startMock(t, func(*mock.Call) mock.Reply { return mock.Reply{Text: "done"} })
+	o := opts(t, repo, client, model) // bypass mode, no prompter: an ask is a refusal
+	s, err := session.New(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	dir, err := builtin.Materialize(session.StateRoot(o.Home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(dir, "vuln-check", "vulns.mjs")
+	if _, err := os.Stat(script); err != nil {
+		t.Fatal(err)
+	}
+	run := s.Perm.Check(context.Background(), perm.Request{Agent: "a1", Tool: "bash", Command: "node " + script + " id CVE-2021-44228", Cwd: repo})
+	if !run.Allow {
+		t.Errorf("the skill's script was refused: %s", run.Reason)
+	}
+	overwrite := s.Perm.Check(context.Background(), perm.Request{Agent: "a1", Tool: "bash", Command: "cp notes.txt " + script, Cwd: repo, Writes: true})
+	if overwrite.Allow {
+		t.Error("the skill's script could be overwritten without anyone approving it")
 	}
 }
 

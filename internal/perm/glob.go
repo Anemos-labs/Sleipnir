@@ -27,6 +27,8 @@ type resolver struct {
 	treeParents []string
 	// treeParentsLex are the tree parents as given, cleaned (for the lexical form of an access).
 	treeParentsLex []string
+	// shipped are the resolved directories of code the harness ships (Config.ShippedDirs).
+	shipped []string
 }
 
 type rootPair struct{ lex, real string }
@@ -170,6 +172,20 @@ func inside(dir, p string) bool {
 // inTmp reports whether a resolved path lies inside the session's scratch directory (Config.Tmp).
 func (rs *resolver) inTmp(real string) bool {
 	return rs.tmpReal != "" && real != "" && inside(rs.tmpReal, real)
+}
+
+// isShipped reports whether an access resolves to a file inside a directory of code the harness ships. A link there that leads
+// elsewhere resolves to where it leads, so it does not count.
+func (rs *resolver) isShipped(a access) bool {
+	if a.unresolved || a.dynamic || a.real == "" {
+		return false
+	}
+	for _, d := range rs.shipped {
+		if a.real != d && inside(d, a.real) {
+			return true
+		}
+	}
+	return false
 }
 
 // inWorkspace reports whether a resolved path lies under one of the workspace roots.

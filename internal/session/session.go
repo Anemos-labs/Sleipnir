@@ -894,12 +894,16 @@ func (s *Session) buildPerm() error {
 		}
 	}
 	ask := append(append(append([]string(nil), protectedConfigDirs...), linkedConfigDirs(o.Root, o.Home, o.TrustProject)...), s.cfg.Permissions.Ask...)
+	var shipped []string
+	if s.ext != nil {
+		shipped = s.ext.shipped
+	}
 	after, upTo, err := s.managerAnswers()
 	if err != nil {
 		return fmt.Errorf("permissions: %w", err)
 	}
 	e, err := perm.NewEngine(perm.Config{
-		Mode: mode, Root: o.Root, Home: o.Home, StateDir: stateRoot(o.Home), RecordDirs: s.recordDirs(), Tmp: s.tmp, TreeParents: extra, Ignored: ignored,
+		Mode: mode, Root: o.Root, Home: o.Home, StateDir: stateRoot(o.Home), RecordDirs: s.recordDirs(), ShippedDirs: shipped, Tmp: s.tmp, TreeParents: extra, Ignored: ignored,
 		Allow: append(append([]string(nil), s.cfg.Permissions.Allow...), o.Allow...), Ask: ask, Deny: s.cfg.Permissions.Deny,
 		Roles: roles, Prompter: s.trackAsks(s.hookPrompter(o.Prompter)), AskTimeout: o.AskTimeout, Audit: s.auditPermission,
 		Delegate: s.delegateApproval, Fallback: s.fallbackApproval, FallbackAfter: after, FallbackUpTo: upTo,

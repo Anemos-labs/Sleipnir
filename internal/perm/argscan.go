@@ -167,6 +167,8 @@ type pathUse struct {
 	raw   string
 	write bool
 	both  bool // may read and write (operands of unlisted commands)
+	// script: the program an interpreter runs (node x.mjs). In a directory the harness ships it is run and read, not written.
+	script bool
 	// noFollow: the command acts on a symlink itself (rm, rmdir), not on what
 	// it points to, so only the directory part is resolved.
 	noFollow bool

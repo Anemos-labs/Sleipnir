@@ -518,6 +518,18 @@ func withoutInlineCode(prog string, args []string) []string {
 	return out
 }
 
+// markInterpreterScript marks the use of the program an interpreter is told to run, when that program is its very first word
+// (node x.mjs ARGS). An option before it could load other code or make the word its value, and with an inline program the word is
+// only that program's argument, so in those forms nothing is marked.
+func markInterpreterScript(uses []pathUse, prog string, args []string) {
+	if len(inlineCodeFlags[shellparse.InterpreterName(prog)]) == 0 || len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		return
+	}
+	if len(uses) > 0 && uses[0].raw == args[0] {
+		uses[0].script = true
+	}
+}
+
 // unknownUses treats every operand of an unlisted command as a path it may read
 // or write, recursively. Options are searched for embedded paths too
 // (--out=/etc/x, -o/etc/x, of=/dev/sda, -v ~/.ssh:/root/.ssh).
