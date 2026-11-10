@@ -384,4 +384,9 @@ func TestDaemonStateSaysASinglePass(t *testing.T) {
 	if !st.Running || st.Once || strings.Contains(string(b), `"once"`) {
 		t.Errorf("the loop = %s", b)
 	}
+	// with no daemon (a pass that ended, or none started) the state is stopped and carries no once
+	w := newRig(t, nil).do(req{method: "GET", path: "/api/schedule"})
+	if d := decode[wire.ScheduleView](t, w).Daemon; d.Running || d.Once || d.Owner != "none" || strings.Contains(w.Body.String(), `"once"`) {
+		t.Errorf("stopped = %+v", d)
+	}
 }
