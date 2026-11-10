@@ -73,9 +73,9 @@
   ]);
   page('replay', { title: 'Replay', view: 'replay', wrap: 'replayv' }, [
     ['replay.tape', 'The recorded session', 'the tape of every agent, with play, seek and speed', 0, 0, 12, 7, 4, 3],
-    ['replay.frame', 'Frame', 'what the cockpit shows at the playhead', 0, 7, 4, 10, 2, 3, 'fill'],
-    ['replay.events', 'Notable events', 'mail, breaks, merges and questions; a click seeks', 4, 7, 4, 10, 2, 3, 'fill list'],
-    ['replay.keys', 'Keys', 'the keys of a replay', 8, 7, 4, 10, 2, 3, 'fill'],
+    ['replay.frame', 'Frame', 'what the cockpit shows at the playhead', 0, 7, 4, 7, 2, 3, 'fill'],
+    ['replay.events', 'Notable events', 'mail, breaks, merges and questions; a click seeks', 4, 7, 4, 7, 2, 3, 'fill list'],
+    ['replay.keys', 'Keys', 'the keys of a replay', 8, 7, 4, 7, 2, 3, 'fill'],
   ]);
   page('sessions', { title: 'Sessions', view: 'sessions', wrap: 'sessv' }, [
     ['sessions.live', 'Live sessions', 'the sessions this server runs, with their cost and state', 0, 0, 8, 6, 3, 3, 'list'],

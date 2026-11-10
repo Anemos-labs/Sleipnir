@@ -40,5 +40,8 @@
 
 /* the depths are three rows of one list, each its name beside what it does (three cards in a narrow panel wrapped to two and one) */
 .rs-depths{grid-template-columns:minmax(0,1fr)}
-.rs-depth{display:grid;grid-template-columns:78px minmax(0,1fr);gap:3px 12px;align-items:baseline}
+.rs-depth{display:grid;grid-template-columns:94px minmax(0,1fr);gap:3px 12px;align-items:baseline}
 .rs-depth b{grid-row:1/span 2}.rs-depth span,.rs-depth small{grid-column:2}
+/* the chosen depth carries a mark, not only a tint */
+.rs-depth b::before{content:'';display:inline-block;width:9px;height:9px;margin-right:7px;border:1.5px solid var(--dim);border-radius:50%;vertical-align:-1px}
+.rs-depth.sel b::before{border-color:var(--c-mgr);background:radial-gradient(circle,var(--c-mgr) 0 45%,transparent 50%)}

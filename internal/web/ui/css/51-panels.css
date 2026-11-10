@@ -62,10 +62,11 @@ body.still .tcard.live .tid::before{animation:none}
 .tcard.tflash{animation:tflash 1.6s ease-out}
 @keyframes tflash{0%,40%{box-shadow:0 0 0 2px var(--fe)}100%{box-shadow:0 0 0 2px transparent}}
 body.still .tcard.tflash{animation:none;outline:2px solid var(--fe)}
-.blegend{display:flex;flex-wrap:wrap;gap:4px 14px;padding:6px 12px 10px;font:500 10.5px var(--f-ui);color:var(--dim)}
+.blegend{display:flex;flex-wrap:wrap;gap:4px 16px;padding:6px 12px 10px;font:500 11px var(--f-ui);color:var(--fg2)}
 .blegend span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .blegend .lg{display:inline-block;width:16px;height:10px;border:1px solid var(--line2);border-radius:2px}
 .blegend .lg.live{border-color:var(--ok);box-shadow:0 0 6px color-mix(in srgb,var(--ok) 40%,transparent)}
+.blegend .lg.blocked{border:1px dashed var(--warm);border-top-style:solid}
 .blegend .lg.stalled{border:1px dashed var(--warm);border-top:2px solid var(--warm)}
 .blegend .lg.failed{border-color:var(--err-b);border-top:2px solid var(--err)}
 .blegend .lg.strip{height:4px;border:0;background:linear-gradient(90deg,var(--warm) 0 30%,var(--ok) 30% 70%,var(--info) 70%)}

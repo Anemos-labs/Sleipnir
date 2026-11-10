@@ -113,6 +113,11 @@
 .replayv{display:grid;gap:var(--gap);grid-template-rows:auto minmax(0,1fr);height:100%;min-height:560px}
 .tape{padding:6px 10px 10px}
 .tape svg{display:block;width:100%;height:auto}
+.tape-key{display:flex;flex-wrap:wrap;gap:3px 14px;padding:0 12px 9px;font:500 11px var(--f-ui);color:var(--fg2)}
+.tape-key span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}.tape-key b{font:700 11px var(--f-num);color:var(--dim)}
+.tape-key .tk{display:inline-block;width:16px;height:9px;background:var(--dim);border-radius:1px}
+.tape-key .tk.think{background:repeating-linear-gradient(45deg,var(--dim) 0 2px,transparent 2px 5px);outline:1px solid var(--line2)}
+.tape-key .tk.tool{height:5px}.tape-key .tk.ask{background:var(--warm);opacity:.6}
 .rp-ctl{display:flex;gap:8px;align-items:center;padding:6px 10px;flex-wrap:wrap}
 .rp-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--gap);min-height:0}
 .frame{padding:6px 12px 12px;font:500 12.5px/1.45 var(--f-num);color:var(--fg2)}
