@@ -2,6 +2,7 @@ package webtest
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
@@ -212,8 +213,33 @@ func TestACannedProjectIsAFolderThatExists(t *testing.T) {
 	if err := json.Unmarshal(body, &l); code != 200 || err != nil {
 		t.Fatalf("GET the folder = %d %s (%v)", code, body, err)
 	}
-	if s := l.State; !s.Known || !s.Exists || !s.Dir {
+	if s := l.State; !s.Known || !s.Exists || !s.Dir || s.Git != "repo" || s.Repo == nil || !s.Repo.HasCommits {
 		t.Errorf("the canned project folder %s: %+v", Cwd, s)
+	}
+}
+
+// TestCannedTaskEventsAreWholeTasks checks that every task event of the canned session carries the whole task, as the server's
+// do: the UI reads a field an event omits as empty, so a bare state change would strip a card of its owner, scope and edges.
+func TestCannedTaskEventsAreWholeTasks(t *testing.T) {
+	deps := map[string]string{}
+	n, sc := 0, Shop()
+	for _, ev := range append(append([]wire.Event{}, sc.History...), sc.Live...) {
+		tk, ok := ev.(*wire.Task)
+		if !ok {
+			continue
+		}
+		n++
+		if tk.Title == "" || tk.Owner == "" || tk.Scope == "" {
+			t.Errorf("task event %s (%s) lacks its title, owner or scope: %+v", tk.ID, tk.S, tk)
+		}
+		d := strings.Join(tk.Deps, ",")
+		if was, seen := deps[tk.ID]; seen && was != d {
+			t.Errorf("task %s (%s): deps %q, were %q", tk.ID, tk.S, d, was)
+		}
+		deps[tk.ID] = d
+	}
+	if n < 8 {
+		t.Fatalf("%d task events in the canned session, want the board's whole story", n)
 	}
 }
 

@@ -91,3 +91,7 @@ section.tg+section.tg{margin-top:var(--gap)}
 }
 /* the recorded sessions fit their panel at a laptop's width: the row's last button is not cut */
 .reclist .tbl td,.reclist .tbl th{padding-left:5px;padding-right:5px}
+
+/* the scheduler says what its state means for the jobs below; a cron line stays on one line */
+.dm-note{margin:0;padding:6px 12px 8px;font:400 12px/1.45 var(--f-ui);color:var(--fg2)}
+.jobs .tbl td:nth-child(2){white-space:nowrap}

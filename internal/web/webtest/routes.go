@@ -162,6 +162,8 @@ func (rt *router) live() {
 			// where the canned path is not an absolute one (Windows), the completion has joined it to the base.
 			if p.Dir == l.State.Path || p.Dir == r.URL.Query().Get("path") {
 				l.State.Path, l.State.Known, l.State.Exists, l.State.Dir, l.State.Readable, l.State.ParentOK = p.Dir, true, true, true, true, true
+				// and a git repository with commits, as a team that works in worktrees needs
+				l.State.Git, l.State.Repo = "repo", &wire.RepoState{HasCommits: true, Branch: "main", Clean: true}
 			}
 		}
 		return l, nil
