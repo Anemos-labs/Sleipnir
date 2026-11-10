@@ -56,11 +56,11 @@
   ]);
   page('cache', { title: 'Cache', view: 'cache', wrap: 'cache' }, [
     ['cache.head', 'The latest prompt, layer by layer', 'the prompt of the agent answered last, by layer, and what was read from the cache', 0, 0, 12, 5, 4, 3],
-    ['cache.hit', 'How much of each request came from the cache', 'the share of each request read from the cache, with breaks and compactions', 0, 5, 12, 6, 4, 3],
-    ['cache.fold', 'Folding the conversation', 'the latest summary of earlier work: when it happened and what it cost', 0, 11, 6, 6, 3, 3],
-    ['cache.anom', 'Unexpected cache misses', 'requests that read less from the cache than expected, and why', 6, 11, 6, 6, 3, 3, 'list'],
-    ['cache.table', 'Every agent\'s cache', 'read, uncached and written tokens of every agent, and the savings', 0, 17, 12, 7, 4, 3, 'list'],
-    ['cache.sum', 'The whole session', 'the session\'s hit ratio, savings, spend, compactions and anomalies', 0, 24, 12, 2, 3, 2],
+    ['cache.hit', 'How much of each request came from the cache', 'the share of each request read from the cache, with breaks and compactions', 0, 5, 6, 6, 4, 3],
+    ['cache.fold', 'Folding the conversation', 'the latest summary of earlier work: when it happened and what it cost', 6, 5, 6, 6, 3, 3],
+    ['cache.anom', 'Unexpected cache misses', 'requests that read less from the cache than expected, and why', 0, 11, 5, 7, 3, 3, 'list'],
+    ['cache.table', 'Every agent\'s cache', 'read, uncached and written tokens of every agent, and the savings', 5, 11, 7, 7, 4, 3, 'list'],
+    ['cache.sum', 'The whole session', 'the session\'s hit ratio, savings, spend, compactions and anomalies', 0, 18, 12, 2, 3, 2],
   ]);
   page('mail', { title: 'Mail', view: 'mail', wrap: 'mailv' }, [
     ['mail.flow', 'Who writes to whom', 'an arc per mail between the agents of the team', 0, 0, 12, 4, 4, 3],
@@ -120,8 +120,8 @@
   page('schedule', { title: 'Schedule', view: 'schedule', wrap: 'schv' }, [
     ['schedule.daemon', 'Daemon', 'whether the daemon that starts the jobs runs', 0, 0, 12, 2, 3, 2],
     ['schedule.jobs', 'Jobs', 'the cron jobs of this machine', 0, 2, 12, 5, 3, 2, 'list'],
-    ['schedule.add', 'Add a job', 'a cron line, a goal, a folder, a mode, a model and a budget', 0, 7, 5, 11, 3, 4],
-    ['schedule.log', 'Log', 'the log of a job, or of a run started now', 5, 7, 7, 11, 3, 4, 'fill'],
+    ['schedule.add', 'Add a job', 'a cron line, a goal, a folder, a mode, a model and a budget', 0, 7, 12, 7, 3, 4],
+    ['schedule.log', 'Log', 'the log of a job, or of a run started now', 0, 14, 12, 5, 3, 4, 'fill'],
   ]);
   /* the Workspace: one set of panels, a layout for each of its four tabs */
   page('files', { title: 'Files', group: 'Workspace', view: 'workspace', params: { tab: 'files' }, wrap: 'wsv' }, [

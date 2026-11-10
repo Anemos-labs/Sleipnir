@@ -53,6 +53,8 @@ section.tg+section.tg{margin-top:var(--gap)}
 .jobs .tbl td{vertical-align:top}.jg{max-width:300px}
 .slog{padding:0 12px 12px}.slog .term{min-height:240px;max-height:46vh}
 .schv .fld{grid-template-columns:90px minmax(0,1fr)}
+/* a wide Add a job is two columns of fields, so the whole form and its button sit above the fold */
+@container main (min-width:820px){.schv .schadd{columns:2;column-gap:28px}.schv .schadd .fld{break-inside:avoid}.schv .schadd .row2{column-span:all}}
 /* a short window: each column of the doctor scrolls by itself, never cutting its form */
 .docv>*{min-height:0;overflow:auto}
 @container main (max-width:860px){.docv{grid-template-columns:minmax(0,1fr);height:auto;grid-auto-rows:min-content}.docv>*{overflow:visible}.dv-out{height:auto}.g2s{grid-template-columns:minmax(0,1fr)}.dstep{grid-template-columns:16px minmax(0,1fr) 56px 80px 36px}.dstep .io{display:none}}
