@@ -158,8 +158,10 @@ func (rt *router) live() {
 			return nil, werr(400, "bad_path", err.Error())
 		}
 		for _, p := range h.Projects(r.Context()) {
-			if p.Dir == l.State.Path { // a canned project is a folder that exists, though this disk has no such path
-				l.State.Known, l.State.Exists, l.State.Dir, l.State.Readable, l.State.ParentOK = true, true, true, true, true
+			// A canned project is a folder that exists, though this disk has no such path. The path as asked is compared too:
+			// where the canned path is not an absolute one (Windows), the completion has joined it to the base.
+			if p.Dir == l.State.Path || p.Dir == r.URL.Query().Get("path") {
+				l.State.Path, l.State.Known, l.State.Exists, l.State.Dir, l.State.Readable, l.State.ParentOK = p.Dir, true, true, true, true, true
 			}
 		}
 		return l, nil
