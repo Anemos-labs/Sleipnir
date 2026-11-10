@@ -53,6 +53,8 @@ section.tg+section.tg{margin-top:var(--gap)}
 .jobs .tbl td{vertical-align:top}.jg{max-width:300px}
 .slog{padding:0 12px 12px}.slog .term{min-height:240px;max-height:46vh}
 .schv .fld{grid-template-columns:90px minmax(0,1fr)}
+/* a wide Add a job is two columns of fields, so the whole form and its button sit above the fold */
+@container main (min-width:820px){.schv .schadd{columns:2;column-gap:28px}.schv .schadd .fld{break-inside:avoid}.schv .schadd .row2{column-span:all}}
 /* a short window: each column of the doctor scrolls by itself, never cutting its form */
 .docv>*{min-height:0;overflow:auto}
 @container main (max-width:860px){.docv{grid-template-columns:minmax(0,1fr);height:auto;grid-auto-rows:min-content}.docv>*{overflow:visible}.dv-out{height:auto}.g2s{grid-template-columns:minmax(0,1fr)}.dstep{grid-template-columns:16px minmax(0,1fr) 56px 80px 36px}.dstep .io{display:none}}
@@ -91,3 +93,10 @@ section.tg+section.tg{margin-top:var(--gap)}
 }
 /* the recorded sessions fit their panel at a laptop's width: the row's last button is not cut */
 .reclist .tbl td,.reclist .tbl th{padding-left:5px;padding-right:5px}
+
+/* the scheduler says what its state means for the jobs below; a cron line stays on one line */
+.dm-note{margin:0;padding:6px 12px 8px;font:400 12px/1.45 var(--f-ui);color:var(--fg2)}
+.jobs .tbl td:nth-child(2){white-space:nowrap}.jobs .cronx{display:inline-block;max-width:min(100%,46vw);overflow-x:auto;vertical-align:bottom;scrollbar-width:thin}
+/* Remove is the rare, destructive one of a job's five actions: it stands apart and is quiet until pointed at */
+.jobs .btn.rmq{margin-left:10px;border-color:transparent;background:none;color:color-mix(in srgb,var(--err) 72%,var(--dim));text-decoration:underline;text-decoration-color:var(--err-b);text-underline-offset:3px}
+.jobs .btn.rmq:hover,.jobs .btn.rmq:focus-visible{color:var(--err);border-color:var(--err-b)}

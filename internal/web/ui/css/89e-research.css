@@ -37,3 +37,11 @@
 .rs-depth:focus-within{outline:2px solid var(--c-mgr);outline-offset:1px}
 .rs-new .stubnote{margin:0;line-height:1.45}
 @media (max-width:900px){.rs-steps li span{font-size:9px;letter-spacing:.02em}}
+
+/* the depths are three rows of one list, each its name beside what it does (three cards in a narrow panel wrapped to two and one) */
+.rs-depths{grid-template-columns:minmax(0,1fr)}
+.rs-depth{display:grid;grid-template-columns:86px minmax(0,1fr);gap:3px 12px;align-items:baseline}
+.rs-depth span{grid-column:2}.rs-depth small{grid-column:1/-1;padding-left:17px}
+/* the chosen depth carries a mark, not only a tint */
+.rs-depth b::before{content:'';display:inline-block;width:9px;height:9px;margin-right:6px;border:1.5px solid var(--dim);border-radius:50%;vertical-align:-1px}
+.rs-depth.sel b::before{border-color:var(--c-mgr);background:radial-gradient(circle,var(--c-mgr) 0 45%,transparent 50%)}

@@ -46,6 +46,7 @@ func (s *service) daemonState() wire.DaemonState {
 		st.Running, st.Owner, st.PID, st.Every = true, "here", os.Getpid(), d.every.String()
 		st.Line = "sleipnir daemon: looking for due jobs every " + d.every.String()
 		if d.once {
+			st.Once = true
 			st.Line = "sleipnir daemon --once: starting what is due now"
 		}
 		return st

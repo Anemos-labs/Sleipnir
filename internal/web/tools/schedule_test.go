@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -365,5 +366,27 @@ func TestAJobsCheckIsKeptAndAnEditForgetsWhatItSaw(t *testing.T) {
 	}
 	if jobs, _ := st.List(); jobs[0].CheckSum != "" {
 		t.Errorf("a changed check kept the old value: %+v", jobs[0])
+	}
+}
+
+// A single pass says so in its state (the page then promises no later start); the loop and its JSON do not carry the field.
+func TestDaemonStateSaysASinglePass(t *testing.T) {
+	s := &service{o: Options{Every: time.Minute}}
+	s.daemon = &daemon{every: 5 * time.Second, once: true}
+	st := s.daemonState()
+	b, _ := json.Marshal(st)
+	if !st.Running || !st.Once || st.Owner != "here" || !strings.Contains(string(b), `"once":true`) {
+		t.Errorf("a single pass = %s", b)
+	}
+	s.daemon = &daemon{every: 5 * time.Second}
+	st = s.daemonState()
+	b, _ = json.Marshal(st)
+	if !st.Running || st.Once || strings.Contains(string(b), `"once"`) {
+		t.Errorf("the loop = %s", b)
+	}
+	// with no daemon (a pass that ended, or none started) the state is stopped and carries no once
+	w := newRig(t, nil).do(req{method: "GET", path: "/api/schedule"})
+	if d := decode[wire.ScheduleView](t, w).Daemon; d.Running || d.Once || d.Owner != "none" || strings.Contains(w.Body.String(), `"once"`) {
+		t.Errorf("stopped = %+v", d)
 	}
 }

@@ -89,7 +89,7 @@ test('the Models page shows a plan\'s model at the API list price, tagged plan',
     { ref: 'a/priced', provider: 'a', ctx: 8000, in: 1, out: 2, cached: 0.1, tools: true, reasoning: false }];
   const html = SL.toolkit.settings.pages.models(session(), SL.toolkit.settings.newState({ page: 'models' }));
   const row = ref => html.split('<tr').find(p => p.includes('>' + ref + '<')).split('</tr>')[0];
-  assert.match(row('chatgpt/gpt-6-luna'), /<td class="r">0\.10<\/td><td class="r">0\.50<\/td>/);
+  assert.match(row('chatgpt/gpt-6-luna'), /<td class="r"><span class="mlab">in \$\/M <\/span>0\.10<\/td><td class="r"><span class="mlab">out \$\/M <\/span>0\.50<\/td>/);
   assert.match(row('chatgpt/gpt-6-luna'), /class="tag ok" title="a ChatGPT plan covers its use[^"]*">plan</);
   assert.doesNotMatch(row('chatgpt/gpt-6-luna'), /price unknown/);
   assert.doesNotMatch(row('a/priced'), />plan</);

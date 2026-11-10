@@ -66,7 +66,7 @@ func str(s string) *string { return &s }
 func Roster() []wire.RosterEntry {
 	return []wire.RosterEntry{
 		{ID: "mgr", Role: "manager", Code: "mgr", Nth: 0, K: 0, Leg: -1, Scope: "**", Model: Model, Spawn: 0},
-		{ID: "sc-1", Role: "scout", Code: "sc", Nth: 1, K: 1, Leg: 0, Scope: "- (read-only)", RO: true, Model: "anthropic/claude-haiku-5-5", Spawn: 2.6},
+		{ID: "sc-1", Role: "scout", Code: "sc", Nth: 1, K: 1, Leg: 0, Scope: "read-only", RO: true, Model: "anthropic/claude-haiku-5-5", Spawn: 2.6},
 		{ID: "be-1", Role: "backend", Code: "be", Nth: 1, K: 2, Leg: 1, Scope: "api/**", Model: Model, Spawn: 8.6},
 		{ID: "fe-1", Role: "frontend", Code: "fe", Nth: 1, K: 3, Leg: 2, Scope: "web/**", Model: Model, Spawn: 8.6},
 		{ID: "te-1", Role: "tester", Code: "te", Nth: 1, K: 4, Leg: 3, Scope: "**/*_test.go", Model: Model, Spawn: 20.0},
@@ -106,7 +106,7 @@ func Shop() *Scenario {
 	h.at(0.3, &wire.State{ID: "mgr", S: "think", Doing: "plans the build"})
 	h.at(1.0, &wire.Say{Who: "mgr", Text: "I'll have a scout map the API and the seed data, then split the build by directory so no two workers touch the same file.", Stream: true, Rate: 240, Mid: "@plan"})
 	h.at(2.5, &wire.Tool{ID: "mgr", Name: "TaskBoard", Arg: "create T1 T2 T3 T4", Out: "created 4 tasks", OK: true})
-	h.at(2.6, &wire.Task{ID: "T1", Title: "survey the API and the seed data", Owner: "sc-1", Scope: "- (read-only)", S: "running"})
+	h.at(2.6, &wire.Task{ID: "T1", Title: "survey the API and the seed data", Owner: "sc-1", Scope: "read-only", S: "running"})
 	h.at(2.6, &wire.Task{ID: "T2", Title: "catalogue: GET /items?page&size", Owner: "be-1", Deps: []string{"T1"}, Scope: "api/catalog/**, api/server.go", S: "todo"})
 	h.at(2.6, &wire.Task{ID: "T3", Title: "cart screen", Owner: "fe-1", Deps: []string{"T1"}, Scope: "web/cart/**, web/package.json", S: "todo"})
 	h.at(2.6, &wire.Task{ID: "T4", Title: "tests for the catalogue and the cart", Owner: "te-1", Deps: []string{"T2", "T3"}, Scope: "**/*_test.go", S: "todo"})
@@ -119,16 +119,16 @@ func Shop() *Scenario {
 	h.at(3.6, &wire.Layers{ID: "sc-1", Toks: [6]int{900, 1200, 300, 0, 700, 0}})
 	h.at(5.5, &wire.Mail{From: "sc-1", To: "mgr", Text: "API: GET /items?page&size -> {items[], page}; seed data: 40 items; paging by page and size"})
 	h.at(6.2, &wire.Note{ID: "sc-1", G: "done", Text: "submitted T1", Task: "T1"})
-	h.at(6.3, &wire.Task{ID: "T1", S: "verify"})
+	h.at(6.3, &wire.Task{ID: "T1", Title: "survey the API and the seed data", Owner: "sc-1", Scope: "read-only", S: "verify"})
 	head := "T1"
 	h.at(6.5, &wire.Queue{QHead: &head, Cmd: "go vet ./...", Step: "verifying"})
 	h.at(8.0, &wire.Queue{QHead: &head, Cmd: "go vet ./...", Step: "verified", Ms: 1500})
 	h.at(8.1, &wire.Merge{ID: "T1", Cmd: "go vet ./...", Ms: 1500})
-	h.at(8.2, &wire.Task{ID: "T1", S: "merged"})
+	h.at(8.2, &wire.Task{ID: "T1", Title: "survey the API and the seed data", Owner: "sc-1", Scope: "read-only", S: "merged"})
 	h.at(8.4, &wire.Queue{})
 	h.at(8.5, &wire.State{ID: "sc-1", S: "idle", Doing: "waits for work", Task: str("T1")})
-	h.at(8.6, &wire.Task{ID: "T2", S: "running"})
-	h.at(8.6, &wire.Task{ID: "T3", S: "running"})
+	h.at(8.6, &wire.Task{ID: "T2", Title: "catalogue: GET /items?page&size", Owner: "be-1", Deps: []string{"T1"}, Scope: "api/catalog/**, api/server.go", S: "running"})
+	h.at(8.6, &wire.Task{ID: "T3", Title: "cart screen", Owner: "fe-1", Deps: []string{"T1"}, Scope: "web/cart/**, web/package.json", S: "running"})
 	h.at(8.7, &wire.Plan{Steps: steps, St: []string{"done", "act", "act", "pending"}})
 	h.at(9.0, &wire.State{ID: "be-1", S: "edit", Doing: "Write api/catalog/items.go +31", Task: str("T2")})
 	h.at(9.1, &wire.Stream{ID: "be-1", Text: strings.SplitN(itemsC01, "// Page is", 2)[0], Rate: 400, Code: true, File: "api/catalog/items.go", Mid: "@items"})
@@ -169,12 +169,12 @@ func Shop() *Scenario {
 	l.at(41.5, &wire.Req{ID: "be-1", Ratio: 0.93, P: 7000, O: 210})
 	l.at(41.5, &wire.Use{ID: "be-1", Rd: 12142, Un: 1058, Out: 610, Wr: 1058, Cost: 0.0466, Saved: 0.0279})
 	l.at(42.0, &wire.Note{ID: "be-1", G: "done", Text: "submitted T2", Task: "T2"})
-	l.at(42.1, &wire.Task{ID: "T2", S: "verify"})
+	l.at(42.1, &wire.Task{ID: "T2", Title: "catalogue: GET /items?page&size", Owner: "be-1", Deps: []string{"T1"}, Scope: "api/catalog/**, api/server.go", S: "verify"})
 	t2 := "T2"
 	l.at(42.5, &wire.Queue{QHead: &t2, Cmd: "go test ./api/catalog/...", Step: "verifying"})
 	l.at(46.8, &wire.Queue{QHead: &t2, Cmd: "go test ./api/catalog/...", Step: "verified", Ms: 4300})
 	l.at(46.9, &wire.Merge{ID: "T2", Cmd: "go test ./api/catalog/...", Ms: 4300})
-	l.at(47.0, &wire.Task{ID: "T2", S: "merged"})
+	l.at(47.0, &wire.Task{ID: "T2", Title: "catalogue: GET /items?page&size", Owner: "be-1", Deps: []string{"T1"}, Scope: "api/catalog/**, api/server.go", S: "merged"})
 	l.at(47.2, &wire.Queue{})
 	l.at(47.5, &wire.State{ID: "be-1", S: "idle", Doing: "waits for work", Task: str("T2")})
 	l.at(48.0, &wire.Ask{Q: LaterQuestion()})

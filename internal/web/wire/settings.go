@@ -329,6 +329,7 @@ type ScheduleJob struct {
 // DaemonState is the schedule daemon: running here, running elsewhere (another process holds the lock), or stopped.
 type DaemonState struct {
 	Running bool   `json:"running"`
+	Once    bool   `json:"once,omitempty"` // a single pass (--once), not the loop
 	Owner   string `json:"owner"`
 	PID     int    `json:"pid,omitempty"`
 	Every   string `json:"every"`

@@ -409,6 +409,22 @@ func TestPrivilegedRoutesAskForAConfirmation(t *testing.T) {
 	if code, _, _ := call(t, r, "POST", "/api/sessions", `{"cwd":"`+Cwd+`","name":"fresh","goalText":"do it"}`, nil); code != 201 {
 		t.Errorf("a trusted project needs no step: %d", code)
 	}
+	// the isolation and the commit switch of the form reach the new tab
+	code, b, _ = call(t, r, "POST", "/api/sessions", `{"cwd":"`+Cwd+`","name":"iso","isolation":"worktree","commit":true}`, nil)
+	var made struct {
+		Tab wire.TabSummary `json:"tab"`
+	}
+	if code != 201 || json.Unmarshal(b, &made) != nil {
+		t.Fatalf("a session with an isolation = %d %s", code, b)
+	}
+	tab, _ := r.Host.Tab(made.Tab.ID)
+	snap, err := tab.Snapshot(context.Background())
+	if err != nil || snap.Meta.Isolation == nil || *snap.Meta.Isolation != "worktree" || snap.Meta.Commit == nil || !*snap.Meta.Commit {
+		t.Errorf("the new tab's isolation and commit = %+v, %v", snap.Meta, err)
+	}
+	if code, b, _ := call(t, r, "POST", "/api/sessions", `{"cwd":"`+Cwd+`","isolation":"jail"}`, nil); code != 400 || errorCode(b) != "bad_isolation" {
+		t.Errorf("an unknown isolation = %d %s", code, b)
+	}
 }
 
 func TestSessionsCanBeRenamedStoppedResumedAndClosed(t *testing.T) {

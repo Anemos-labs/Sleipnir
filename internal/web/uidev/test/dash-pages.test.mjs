@@ -143,9 +143,9 @@ test('list cards have a density; a card sized by hand keeps its height; Reset si
   L = D.resetSize(L, 'cache.table'); const t = L.find(c => c.id === 'cache.table');
   assert.equal(t.h, 7); assert.deepEqual(plain(t.opts), { density: 'compact' }, 'the size goes back to following its content; the density stays');
   /* a card whose height follows its content: taller pushes down, shorter lets what was under it come up */
-  const F = D.fitHeight(D.defaults('cache'), 'cache.hit', 10), hit = F.find(c => c.id === 'cache.hit'), fold = F.find(c => c.id === 'cache.fold');
-  assert.equal(hit.h, 10); assert.equal(fold.y, hit.y + hit.h);
-  const G = D.fitHeight(F, 'cache.hit', 3); assert.equal(G.find(c => c.id === 'cache.fold').y, 8);
+  const F = D.fitHeight(D.defaults('cache'), 'cache.hit', 10), hit = F.find(c => c.id === 'cache.hit'), under = F.find(c => c.id === 'cache.anom');   /* the misses sit under the request bars */
+  assert.equal(hit.h, 10); assert.equal(under.y, hit.y + hit.h);
+  const G = D.fitHeight(F, 'cache.hit', 3); assert.equal(G.find(c => c.id === 'cache.anom').y, 8);
 });
 
 test('a narrow screen stacks the cards in one column: customising there hides, restores and reorders only', async () => {

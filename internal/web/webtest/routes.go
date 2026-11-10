@@ -162,6 +162,8 @@ func (rt *router) live() {
 			// where the canned path is not an absolute one (Windows), the completion has joined it to the base.
 			if p.Dir == l.State.Path || p.Dir == r.URL.Query().Get("path") {
 				l.State.Path, l.State.Known, l.State.Exists, l.State.Dir, l.State.Readable, l.State.ParentOK = p.Dir, true, true, true, true, true
+				// and a git repository with commits, as a team that works in worktrees needs
+				l.State.Git, l.State.Repo = "repo", &wire.RepoState{HasCommits: true, Branch: "main", Clean: true}
 			}
 		}
 		return l, nil
@@ -494,10 +496,21 @@ func (rt *router) newSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if body.Isolation != "" && body.Isolation != "none" && body.Isolation != "worktree" {
+		web.Error(w, http.StatusBadRequest, "bad_isolation", "isolation must be none or worktree")
+		return
+	}
 	t, err := rt.host.AddTab(body.Name, body.Cwd)
 	if err != nil {
 		fail(w, err)
 		return
+	}
+	if body.Isolation != "" || body.Commit { // the tab starts with what the form asked for, as the real server's does
+		mp := wire.MetaPatch{Commit: &body.Commit}
+		if body.Isolation != "" {
+			mp.Isolation = &body.Isolation
+		}
+		t.Meta(mp)
 	}
 	if body.GoalText != "" {
 		_ = t.Goal(r.Context(), wire.GoalRequest{Action: "set", Text: body.GoalText})
