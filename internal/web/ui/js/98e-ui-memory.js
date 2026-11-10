@@ -116,9 +116,10 @@
       (ls.length ? '<ul class="mem-ll">' + ls.map(lessonHtml).join('') + '</ul>' : '<p class="stubnote mem-pad">No lessons yet. They are distilled when a goal ends, while the lesson memory is on.</p>') + '</section>';
   }
 
+  const PURPOSE = 'What the agents remember from one session to the next: the notes they saved, the instruction files they read and the lessons of earlier goals. Read it, correct it, remove what is wrong.';
   SL.views.register({ name: 'memory', title: 'Memory', mount(sc, root, params, S0) {
-    const P = ui.pageHead(sc, root, S0 || SL.sessions.active, 'memory', params, { title: 'Memory', purpose: 'What the agents remember from one session to the next: the notes they saved, the instruction files they read and the lessons of earlier goals. Read it, correct it, remove what is wrong.' });
-    const st = { v: null, seq: 0, sig: '', open: {}, edit: {}, noteEdit: -1, noteScope: 'user', noteDraft: '', newDraft: { user: '', project: '' }, noteBase: null, base: {}, showAll: false, busy: false, err: '' };
+    const P = ui.pageHead(sc, root, S0 || SL.sessions.active, 'memory', params, { title: 'Memory', purpose: PURPOSE });
+    const st = { v: null, seq: 0, sig: '', open: {}, edit: {}, noteEdit: -1, noteScope: 'user', noteDraft: '', newDraft: { user: '', project: '' }, noteBase: null, base: {}, showAll: false, busy: false, err: '', flying: 0 };
     const S = () => SL.sessions.active;
     /** The routes of the active tab, or the server's own (the user's files only) while there is no tab. */
     const api = sfx => { const s = S(); return (s && s.id ? net.tab(s, '/memory') : '/api/memory') + (sfx || ''); };
@@ -132,9 +133,15 @@
     }
     async function load(force) {
       if (!net) return; const mine = ++st.seq;
-      const r = await net.get(api()); if (!sc.alive || mine !== st.seq) return;
-      if (!r.ok || !r.data) { if (force) net.fail(r, 'the memory could not be read'); else if (!st.v) { const err = (r && r.message) || ('the server answered ' + ((r && r.status) || 'nothing')); if (err !== st.err) { st.err = err; paint(true); } } return; }
-      st.err = ''; st.v = r.data; paint();
+      st.flying++; const r = await net.get(api()); st.flying--; if (!sc.alive || mine !== st.seq) return;
+      if (!r.ok || !r.data) {
+        if (force) { net.fail(r, 'the memory could not be read'); return; }
+        const err = (r && r.message) || ('the server answered ' + ((r && r.status) || 'nothing')); if (err === st.err) return; st.err = err;
+        // nothing read yet: the cards say why. A view already read stays, and only the head says it may be out of date (the cards, and an edit in them, are not drawn again)
+        if (st.v) P.head({ purpose: 'Shown as it was last read, and it may be out of date: the memory could not be read again (' + err + ').' }); else paint(true);
+        return;
+      }
+      if (st.err) { st.err = ''; P.head({ purpose: PURPOSE }); } st.v = r.data; paint();
     }
     /** Take the answer of a write: the whole view as it is now, or a refusal (a file that changed meanwhile is read again). */
     function took(r, done, what) {
@@ -186,7 +193,7 @@
         if (took(r, (cur.exists ? 'saved ' : 'created ') + p, 'the file was not saved')) { delete st.edit[p]; delete st.base[p]; st.open[p] = true; } paint(true);
       }
     });
-    sc.interval(() => { if (!editing() && !st.busy) load(); }, 8000);
+    sc.interval(() => { if (!editing() && !st.busy && !st.flying) load(); }, 8000);   // a read still on its way is waited for, so that a slow one is not thrown away by the next
     sc.on('activated', () => { st.v = null; st.open = {}; st.edit = {}; st.noteEdit = -1; st.newDraft.project = ''; paint(); load(); });   // a project note not sent is that project's, not the next one's
     paint(); load();
   } });
