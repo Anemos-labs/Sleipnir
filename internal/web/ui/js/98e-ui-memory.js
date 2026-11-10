@@ -138,7 +138,10 @@
         if (force) { net.fail(r, 'the memory could not be read'); return; }
         const err = (r && r.message) || ('the server answered ' + ((r && r.status) || 'nothing')); if (err === st.err) return; st.err = err;
         // nothing read yet: the cards say why. A view already read stays, and only the head says it may be out of date (the cards, and an edit in them, are not drawn again)
-        if (st.v) P.head({ purpose: 'Shown as it was last read, and it may be out of date: the memory could not be read again (' + err + ').' }); else paint(true);
+        // (a card of another page has no head of its own: there it is said once, in a toast)
+        if (!st.v) paint(true);
+        else if (ui.dash.modeOf(params) === 'home') P.head({ purpose: 'Shown as it was last read, and it may be out of date: the memory could not be read again (' + esc(err) + ').' });
+        else ui.toast('The memory shown may be out of date: it could not be read again (' + err + ')', 'warm');
         return;
       }
       if (st.err) { st.err = ''; P.head({ purpose: PURPOSE }); } st.v = r.data; paint();
