@@ -12,8 +12,6 @@
 .mem-nl{list-style:none;margin:6px 0 0;padding:0}
 .mem-note{display:flex;gap:10px;align-items:flex-start;padding:8px 12px;border-top:1px solid var(--line)}
 .mem-note:first-child{border-top:0}
-.mem-note .mem-btns{opacity:.55;transition:opacity .12s}
-.mem-note:hover .mem-btns,.mem-note:focus-within .mem-btns{opacity:1}
 .mem-n{flex:none;min-width:18px;font:600 11px/1.9 var(--f-num);color:var(--faint);text-align:right}
 .mem-nf{flex:1 1 auto;display:flex;flex-direction:column;gap:6px;min-width:0}
 .mem-nf textarea,.mem-ff textarea,.mem-add input{width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--line2);padding:6px 8px;color:var(--bright);border-radius:2px}
@@ -49,4 +47,4 @@
 .mem-lm .mono{font-size:11px}
 .mem-u{display:inline-block;width:64px;height:4px;border-radius:2px;background:var(--line2);overflow:hidden}
 .mem-u i{display:block;height:100%;background:var(--ok)}
-@media (max-width:900px){.mem-note .mem-btns{opacity:1}.mem-fh .mem-btns{margin-left:0}}
+@media (max-width:900px){.mem-fh .mem-btns{margin-left:0}}

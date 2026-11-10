@@ -1,7 +1,7 @@
 /* tokens: every colour in the app is a token on :root. Components never use a literal colour. Tokyo Night family, dark only. */
 :root{
   color-scheme:dark;
-  --bg:#07090f;--panel:#0b0e17;--panel2:#0f1424;--raise:#141b30;--line:#1f2437;--line2:#2d3558;--grid:rgba(122,162,247,.05);
+  --bg:#07090f;--panel:#0b0e17;--panel2:#0f1424;--raise:#141b30;--line:#1f2437;--line2:#2d3558;--edge:#46507f;--grid:rgba(122,162,247,.05);
   --fg:#c0caf5;--fg2:#a1abd4;--dim:#959fca;--faint:#6f79a6;--bright:#e6eaff;--well:#05070c;--on-accent:#04101a;
   /* the roles (fixed across the product; fs is the legacy fullstack) and the shades of agents that share a role */
   --c-mgr:#bb9af7;--c-be:#7aa2f7;--c-fe:#7dcfff;--c-sc:#73daca;--c-ts:#9ece6a;--c-dc:#e0af68;--c-rv:#ff9e64;--c-fs:#c0a6f7;--c-dv:#e5a1e0;--c-ar:#b4f9f8;
