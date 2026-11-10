@@ -234,3 +234,12 @@ func TestATargetOutsideTheScaleIsRefused(t *testing.T) {
 		}
 	}
 }
+
+// TestOutputTokensRespectsTheModelLimit: a member is asked for 20000 output tokens, or for its model's limit when that is lower.
+func TestOutputTokensRespectsTheModelLimit(t *testing.T) {
+	for _, c := range []struct{ limit, want int }{{0, 20000}, {128000, 20000}, {20000, 20000}, {16384, 16384}, {4096, 4096}} {
+		if got := OutputTokens(cost.Model{MaxOutput: c.limit}); got != c.want {
+			t.Errorf("output limit %d: asked for %d tokens, want %d", c.limit, got, c.want)
+		}
+	}
+}

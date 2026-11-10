@@ -604,12 +604,10 @@ func (t *Tab) wasAnswered(qid string) bool {
 func (rt *router) pages() {
 	srv := rt.srv
 	rt.get("/api/cli", func(*http.Request) (any, error) { return CLISpec(), nil })
-	for _, pre := range []string{"/api/memory", "/api/sessions/{id}/memory"} {
-		rt.get(pre, func(*http.Request) (any, error) { return Memory(), nil })
-	}
-	for _, pre := range []string{"/api/plugins", "/api/sessions/{id}/plugins"} {
-		rt.get(pre, func(*http.Request) (any, error) { return Plugins(), nil })
-	}
+	rt.get("/api/memory", func(*http.Request) (any, error) { return UserMemory(), nil })
+	rt.get("/api/plugins", func(*http.Request) (any, error) { return Plugins(), nil })
+	rt.tabRoute("GET /api/sessions/{id}/memory", web.RouteOpts{}, func(w http.ResponseWriter, _ *http.Request, _ *Tab) { ok(w, Memory()) })
+	rt.tabRoute("GET /api/sessions/{id}/plugins", web.RouteOpts{}, func(w http.ResponseWriter, _ *http.Request, _ *Tab) { ok(w, Plugins()) })
 	rt.get("/api/recorded", func(*http.Request) (any, error) {
 		return map[string]any{"recorded": Recorded(), "mb": 1.7}, nil
 	})

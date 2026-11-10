@@ -42,6 +42,20 @@ func Memory() wire.MemoryView {
 	}
 }
 
+// UserMemory is the Memory page with no tab: the user's own notes, instruction file and lessons, and nothing of a project.
+func UserMemory() wire.MemoryView {
+	m := Memory()
+	m.Project, m.Lore, m.Root, m.Trusted = nil, nil, "", false
+	files := []wire.MemoryFile{}
+	for _, f := range m.Files {
+		if f.Scope == "user" {
+			files = append(files, f)
+		}
+	}
+	m.Files = files
+	return m
+}
+
 // pluginRow is one plugin of the Plugins page, in the shape of GET /api/plugins.
 type pluginRow struct {
 	ID           string                `json:"id"`

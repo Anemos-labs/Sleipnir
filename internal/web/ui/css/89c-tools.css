@@ -86,5 +86,6 @@ section.tg+section.tg{margin-top:var(--gap)}
   .jobs .tbl td:nth-child(1),.jobs .tbl td:nth-child(2){order:0}
   .jobs .tbl td:nth-child(4){flex:1 1 100%;order:2}
   .jobs .tbl td:nth-child(5),.jobs .tbl td:nth-child(6){order:3}
+  .jobs .tbl td:nth-child(5)::before{content:"last run ";color:var(--dim)}.jobs .tbl td:nth-child(6)::before{content:"next ";color:var(--dim)}
   .jobs .tbl td:nth-child(n+7){order:4;flex:1 1 100%;display:flex;flex-wrap:wrap;gap:6px}
 }

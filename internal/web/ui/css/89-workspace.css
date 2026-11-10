@@ -136,7 +136,7 @@
 @container main (max-width:620px){
   .wsv{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(300px,auto) auto;height:auto;min-height:0}
   .ws-left{grid-column:1;grid-row:2;max-height:260px}.ws-main{grid-column:1;grid-row:3;min-height:320px}
-  .ws-bar{gap:8px}.ws-sum{display:none}.ws-tt{min-width:0}.ws-at{min-width:0}
+  .ws-bar{gap:8px}.ws-sum{display:none}.ws-tt{min-width:0;flex-wrap:wrap}.ws-at{min-width:0;flex:1 1 100%;max-width:none;white-space:normal;overflow:visible}
   .ws-sb{flex-wrap:wrap}.ws-strip{flex-direction:column}.ws-sh{border-right:0;flex-direction:row;align-items:center}
 }
 /* contrast: numbers and comments are dim, not faint; a skipped checkpoint is quieter by colour, never by opacity */

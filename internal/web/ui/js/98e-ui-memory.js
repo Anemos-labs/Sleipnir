@@ -133,7 +133,7 @@
     async function load(force) {
       if (!net) return; const mine = ++st.seq;
       const r = await net.get(api()); if (!sc.alive || mine !== st.seq) return;
-      if (!r.ok || !r.data) { if (force) net.fail(r, 'the memory could not be read'); else { st.err = (r && r.message) || ('the server answered ' + ((r && r.status) || 'nothing')); paint(true); } return; }
+      if (!r.ok || !r.data) { if (force) net.fail(r, 'the memory could not be read'); else if (!st.v) { const err = (r && r.message) || ('the server answered ' + ((r && r.status) || 'nothing')); if (err !== st.err) { st.err = err; paint(true); } } return; }
       st.err = ''; st.v = r.data; paint();
     }
     /** Take the answer of a write: the whole view as it is now, or a refusal (a file that changed meanwhile is read again). */

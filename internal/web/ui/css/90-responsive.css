@@ -100,7 +100,8 @@
      the fold instead of under 300 px of chrome */
   #hud{gap:2px 12px;padding:6px 16px}
   .brand .mark{width:28px;height:28px}.brand>span{display:none}
-  .hm .lab,.goalbtn .lab{display:none}
+  .hm .lab,#goalLab{display:none}
+  .goalbtn{display:flex;flex-direction:row;align-items:baseline;gap:8px}.goalbtn .lab{flex:none;order:2}.goalbtn .goal-t{flex:1 1 0;min-width:0;order:1}
   .hm.team{order:1}.hm.budget{order:2}
   .hm.team b,.hm.budget b{font-size:13px}
   .goalbtn .goal-t{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
@@ -113,7 +114,7 @@
   .drawer{right:0;width:100%;top:auto;height:86%;bottom:0;border-left:0;border-top:1px solid var(--line2)}
   .scrim{padding:3vh 8px 8px}.sh-h .d{display:none}.sheet{max-height:calc(97vh - 60px)}   /* down to the bottom bar, no gap above it */
   #foot{padding:4px 16px;gap:2px 10px;height:auto;flex-wrap:wrap}#foot .model{display:none}
-  #statusLine{font-size:11px;flex:1 1 100%;flex-wrap:nowrap;gap:2px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}#statusLine kbd{display:none}#foot .sp{display:none}.mockchip{margin-left:auto}
+  #statusLine{font-size:11px;flex:1 1 100%;flex-wrap:nowrap;gap:2px 6px;white-space:nowrap;overflow:hidden;min-width:0}#statusLine>span:nth-child(2){flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}#statusLine>span:not(:nth-child(2)),#statusLine>.btn,#statusLine>button{flex:none}#statusLine kbd{display:none}#foot .sp{display:none}.mockchip{margin-left:auto}
   .talkwrap{flex:none;min-height:220px}.talk{overflow:visible}
   #qSlot{flex:none}#qSlot>.qstrip{flex:none;overflow:visible}   /* the phone rail scrolls as a whole: nothing in it shrinks */
   .composer{position:sticky;bottom:0;z-index:5;background:var(--bg)}
