@@ -818,11 +818,11 @@ func (rt *router) workspace() {
 		}
 		ok(w, okBody)
 	})
-	for _, p := range []string{"worktrees", "queue"} {
-		rt.tabRoute("GET /api/sessions/{id}/ws/"+p, web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *Tab) {
-			web.Error(w, http.StatusConflict, "not_isolated", "this team does not use worktrees")
-		})
-	}
+	// the canned team runs with --isolation worktree (its launch line and its queue events say so), so the Merge tab has trees and a queue
+	rt.tabRoute("GET /api/sessions/{id}/ws/worktrees", web.RouteOpts{}, func(w http.ResponseWriter, _ *http.Request, _ *Tab) {
+		ok(w, map[string]any{"worktrees": Worktrees()})
+	})
+	rt.tabRoute("GET /api/sessions/{id}/ws/queue", web.RouteOpts{}, func(w http.ResponseWriter, _ *http.Request, _ *Tab) { ok(w, MergeQueue()) })
 }
 
 // cleanRel reports whether p is a project-relative path with no dot or dot-dot elements, no backslash or NUL and no leading slash.

@@ -521,8 +521,6 @@ func TestEveryCannedPageAnswerHasTheShapeOfItsWireType(t *testing.T) {
 		"/api/sessions/shop/ws/file?path=":                   {400, "bad_path"},
 		"/api/sessions/shop/ws/file?path=.env":               {403, "denied"},
 		"/api/sessions/shop/ws/diff?path=a//b":               {400, "bad_path"},
-		"/api/sessions/shop/ws/worktrees":                    {409, "not_isolated"},
-		"/api/sessions/shop/ws/queue":                        {409, "not_isolated"},
 		"/api/trust/challenge?dir=/etc":                      {403, "not_a_project"},
 		"/api/recorded/20200101-000000-000000/events":        {404, "not_found"},
 		"/api/schedule/jobs/j9/log":                          {404, "not_found"},

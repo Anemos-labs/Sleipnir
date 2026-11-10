@@ -122,3 +122,24 @@ func Research() ResearchView {
 			Sources: 8, Domains: 6, Findings: 12, Pages: 5, Planned: 5, NoFactCheck: true},
 	}}
 }
+
+// Worktrees are the trees of the canned team's workers: the scout's is clean (its task merged), the two builders have work
+// in theirs, and the tester has not started.
+func Worktrees() []wire.Worktree {
+	tree := func(agent, head string, dirty bool, files ...string) wire.Worktree {
+		return wire.Worktree{Agent: agent, Path: "~/.sleipnir/work/" + SID + "/" + agent, Branch: "sleipnir/" + SID + "/" + agent,
+			Base: "ab12cd3", Head: head, Dirty: dirty, Files: files}
+	}
+	return []wire.Worktree{
+		tree("be-1", "4e1f9a0", true, "api/catalog/items.go", "api/catalog/items_test.go"),
+		tree("fe-1", "ab12cd3", true, "web/cart/Cart.tsx"),
+		tree("sc-1", "c7d02b5", false),
+		tree("te-1", "ab12cd3", false),
+	}
+}
+
+// MergeQueue is the canned team's merge queue: the scout's map has merged, nothing waits.
+func MergeQueue() wire.MergeQueueStatus {
+	return wire.MergeQueueStatus{Branch: "sleipnir/" + SID + "/merge", Tip: "c7d02b5", Healthy: true, Waiting: []string{}, Verify: "go test {dirs}",
+		Landed: []wire.LandedEntry{{Agent: "sc-1", Task: "T1", Commit: "c7d02b5", Files: []string{"docs/MAP.md"}}}}
+}

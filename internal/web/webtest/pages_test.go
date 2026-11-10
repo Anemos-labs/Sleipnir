@@ -83,3 +83,24 @@ func TestResearchRoute(t *testing.T) {
 		t.Errorf("GET research of a tab that does not exist = %d %s, want 404", code, b)
 	}
 }
+
+func TestMergeRoutesAgreeWithTheCannedTeam(t *testing.T) {
+	r := StartT(t, Options{})
+	var trees struct {
+		Worktrees []wire.Worktree `json:"worktrees"`
+	}
+	getJSON(t, r, "/api/sessions/shop/ws/worktrees", &trees)
+	if len(trees.Worktrees) != 4 {
+		t.Fatalf("want a tree per worker of the canned team, got %+v", trees.Worktrees)
+	}
+	var q wire.MergeQueueStatus
+	getJSON(t, r, "/api/sessions/shop/ws/queue", &q)
+	if !q.Healthy || len(q.Landed) != 1 || q.Landed[0].Task != "T1" || q.Waiting == nil {
+		t.Errorf("the queue does not show the merged T1: %+v", q)
+	}
+	for _, path := range []string{"/api/sessions/nope/ws/worktrees", "/api/sessions/nope/ws/queue"} {
+		if code, b, _ := call(t, r, "GET", path, "", nil); code != 404 {
+			t.Errorf("GET %s = %d %s, want 404", path, code, b)
+		}
+	}
+}
