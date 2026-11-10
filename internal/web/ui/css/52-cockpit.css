@@ -14,9 +14,9 @@
 .mgr-card .rc-top{grid-area:top;display:flex;align-items:baseline;gap:8px;min-width:0}
 .mgr-card .s-id{font:700 18px/1 var(--f-num);color:var(--c-mgr);letter-spacing:-.02em}
 .mgr-card .s-role{flex:none}
-.mgr-card .s-doing{grid-area:doing;min-height:0;-webkit-line-clamp:2;font-size:13.5px}
+.mgr-card .s-doing{grid-area:doing;min-height:0;-webkit-line-clamp:2;font-size:13px}
 .mgr-card .rc-meta{grid-area:meta;display:flex;gap:8px;align-items:center;min-width:0}
-.mgr-card .rc-note{font:400 12px var(--f-ui);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mgr-card .rc-note{font:400 11px var(--f-ui);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mgr-card .s-nums{grid-area:nums;flex-direction:column;gap:3px;margin:0;align-items:flex-end}
 .mgr-card .s-spark{grid-area:spark;height:34px;margin:0;width:100%}
 .mgr-card .s-st{margin-left:auto}
@@ -24,14 +24,14 @@
 .mgr-card[data-state="done"] .s-st{color:var(--ok)}
 .stall .legn{font-style:normal;color:var(--fg2)}
 .stall.ghost{border:1px dashed var(--line2);border-left:3px dashed var(--line2);background:transparent;opacity:.55;cursor:default}
-.stall.ghost .s-id{color:var(--faint);font:700 13px/1.15 var(--f-lab);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.stall.ghost .s-id{color:var(--faint);font:700 12.5px/1.15 var(--f-lab);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .solo{grid-column:1/-1;grid-row:1/-1;background:var(--panel);border:1px solid var(--line);padding:14px 16px;overflow:auto}
-.solo b{font:700 13.5px var(--f-lab);letter-spacing:.14em;text-transform:uppercase;color:var(--c-mgr)}
-.solo p{color:var(--fg2);margin:6px 0 10px;font-size:13.5px}
-.sololog{list-style:none;margin:0;padding:0;font:500 13px/1.6 var(--f-num);color:var(--fg2)}
+.solo b{font:700 13px var(--f-lab);letter-spacing:.14em;text-transform:uppercase;color:var(--c-mgr)}
+.solo p{color:var(--fg2);margin:6px 0 10px;font-size:13px}
+.sololog{list-style:none;margin:0;padding:0;font:500 12px/1.6 var(--f-num);color:var(--fg2)}
 .sololog b{color:var(--fe);font-family:var(--f-num);letter-spacing:0;text-transform:none}
 .s-spark{flex:1;min-height:20px;max-height:42px;margin-top:auto}
 .stall .s-top{flex:none}
-.plus{font:700 11px var(--f-num);fill:var(--warm)}
+.plus{font:700 10px var(--f-num);fill:var(--warm)}
 .arcs{position:absolute;inset:0;width:100%;height:100%;pointer-events:none!important;overflow:visible}
 .sololog .tdrow{cursor:pointer;border-radius:3px}.sololog .tdrow:hover{background:var(--panel2)}
