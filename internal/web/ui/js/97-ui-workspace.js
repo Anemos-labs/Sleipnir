@@ -537,7 +537,7 @@
       const tk = ['<span class="tk" style="left:0">' + vt(c.I.base.id) + '</span>'].concat(c.I.pos.map((p, i) => (i + 1 === c.k || (i + 1) % every === 0 || i + 1 === n) ? '<span class="tk' + (i + 1 === c.k ? ' on' : '') + '" style="left:' + ((i + 1) / Math.max(1, n) * 100) + '%">' + vt(p.id) + '</span>' : '')).join(''); put(ticks, tk);
       at.textContent = c.cur ? F.vis(c.cur.id + ' · ' + c.cur.time + ' · ' + c.cur.label) : F.vis(c.I.base.id + ' · ' + c.I.base.label); live.hidden = !c.pinned; scrub.setAttribute('aria-valuetext', c.cur ? F.vis(c.cur.id + ' ' + c.cur.label) : 'the base: ' + F.vis(c.I.base.label));
       const tot = ws.rows(S, c.I, c.steps).filter(r => r.status !== '-'); let ad = 0, de = 0; tot.forEach(r => { ad += r.add; de += r.del; });
-      sum.innerHTML = '<span class="chip">' + plural(tot.length, 'file') + ' changed</span><span class="num"><b class="ok">+' + ad + '</b> <b class="err">−' + de + '</b></span><span class="dim">' + esc((c.I.isolation || S.meta.isolation) === 'worktree' ? 'each worker in its own worktree' : 'one shared checkout') + '</span>';
+      sum.innerHTML = '<span class="chip">' + plural(tot.length, 'file') + ' changed</span><span class="num"><b class="ok">+' + ad + '</b> <b class="err">−' + de + '</b></span><span class="dim">' + esc((c.I.isolation || S.meta.isolation) === 'worktree' ? 'own worktrees' : 'shared checkout') + '</span>';
       /* left */
       const lh = { files: 'Files', changes: 'Changes', checkpoints: 'Checkpoints', merge: 'Worktrees' }[W2.tab]; q('.ws-lh').textContent = lh;
       let ch = '', rcount = '', mergeV = null;

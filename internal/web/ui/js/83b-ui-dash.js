@@ -44,15 +44,15 @@
     });
     return P;
   }
-  /* The Cockpit: the horse and the stalls on top, the gantt and the board, then the queue, mail and the governor in a short band. */
+  /* The Cockpit: the horse and the stalls on top, the gantt and the board, then the queue, mail and the governor in a band tall enough to read. */
   page('cockpit', { title: 'Cockpit', view: 'cockpit', kind: 'part' }, [
-    ['hero', 'The horse', 'the team as a horse: each of the eight legs is one role of the team', 0, 0, 4, 8, 2, 4],
-    ['team', 'Manager and stalls', 'the manager\'s card and one stall per worker; a free slot names its role', 4, 0, 8, 8, 3, 4],
-    ['gantt', 'Timeline', 'what each agent did in the last 60 seconds, with the replay controls', 0, 8, 6, 7, 3, 4],
-    ['tasks', 'Task board', 'the tasks by status: todo, running, verify, merged', 6, 8, 6, 7, 3, 4, 'list'],
-    ['queue', 'Merge queue', 'what is being verified and merged, conflicts and bounces', 0, 15, 4, 3, 2, 2],
-    ['mail', 'Mail, latest', 'the last 30 mails between agents', 4, 15, 5, 3, 2, 2, 'list'],
-    ['gov', 'Rate limits', 'requests per minute, refused requests (429) and retries', 9, 15, 3, 3, 2, 2],
+    ['hero', 'The horse', 'the team as a horse: each of the eight legs is one role of the team', 0, 0, 4, 6, 2, 4],
+    ['team', 'Manager and stalls', 'the manager\'s card and one stall per worker; a free slot names its role', 4, 0, 8, 6, 3, 4],
+    ['gantt', 'Timeline', 'what each agent did in the last 60 seconds, with the replay controls', 0, 6, 6, 7, 3, 4],
+    ['tasks', 'Task board', 'the tasks by status: todo, running, verify, merged', 6, 6, 6, 7, 3, 4, 'list'],
+    ['queue', 'Merge queue', 'what is being verified and merged, conflicts and bounces', 0, 13, 4, 5, 2, 2],
+    ['mail', 'Mail, latest', 'the last 30 mails between agents', 4, 13, 5, 5, 2, 2, 'list'],
+    ['gov', 'Rate limits', 'requests per minute, refused requests (429) and retries', 9, 13, 3, 5, 2, 2],
   ]);
   page('cache', { title: 'Cache', view: 'cache', wrap: 'cache' }, [
     ['cache.head', 'The latest prompt, layer by layer', 'the prompt of the agent answered last, by layer, and what was read from the cache', 0, 0, 12, 5, 4, 3],
