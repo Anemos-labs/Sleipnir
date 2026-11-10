@@ -125,11 +125,18 @@
     m.order.forEach((id, i) => { pos.set(id, i); const r = roleOf(m, id); if (!first.has(r)) first.set(r, i); });
     return m.order.slice().sort((a, b) => (a === 'mgr' ? -1 : b === 'mgr' ? 1 : 0) || rank(roleOf(m, a)) - rank(roleOf(m, b)) || first.get(roleOf(m, a)) - first.get(roleOf(m, b)) || (nth(a) - nth(b) || 0) || pos.get(a) - pos.get(b));
   }
-  /** Where the drawing puts its nodes and labels: {ids, W, H, dx, xs, fs (the ids' font size), rows (1 or 2), rot (upright ids), each
+  /** The layout for a page `base` pixels wide: a small team is drawn at the page's own width, so a narrow page shows the whole line.
+   *  flowLayoutAt: where the drawing puts its nodes and labels at a given width: {ids, W, H, dx, xs, fs (the ids' font size), rows (1 or 2), rot (upright ids), each
    *  (a role under every node), groups [{role, id, i1, i2, x1, x2, cx, word}], idBottom (where the ids end, below the line)}. */
-  function flowLayout(m) {
+  function flowLayout(m, base) {
+    const cw = base >= 300 && base < FLOW.W ? base : 0, L = flowLayoutAt(m, cw || FLOW.W);
+    if (!cw) return L;
+    if (L.rot || L.rows === 2) { const F = flowLayoutAt(m, FLOW.W); F.W0 = cw; return F; }   /* a team too large for a narrow page draws wide and scrolls, as before */
+    return L;
+  }
+  function flowLayoutAt(m, W0) {
     const ids = flowOrder(m), n = ids.length, len = ids.reduce((l, id) => Math.max(l, id.length), 3), fit = room => (room - 4) / (len * FLOW.MONO);
-    let W = FLOW.W, dx = (W - 2 * FLOW.X0) / Math.max(1, n - 1), fs = Math.min(12, fit(dx)), rows = 1, rot = false;
+    let W = W0, dx = (W - 2 * FLOW.X0) / Math.max(1, n - 1), fs = Math.min(12, fit(dx)), rows = 1, rot = false;
     if (n > 1 && fs < FLOW.ID_MIN) {
       fs = Math.min(12, fit(2 * dx)); rows = 2;
       if (fs < FLOW.ID_MIN) { rows = 1; rot = true; if (dx < FLOW.ROT_DX) { dx = FLOW.ROT_DX; W = 2 * FLOW.X0 + (n - 1) * dx; } fs = Math.min(11, Math.max(7, dx * .95)); }
@@ -143,7 +150,7 @@
       g.x1 = xs[g.i1]; g.x2 = xs[g.i2]; g.cx = (g.x1 + g.x2) / 2;
       g.word = g.role === 'manager' ? '' : word.length * FLOW.ROLE_ADV <= room ? word : code.length * FLOW.ROLE_ADV <= room ? code : '';   /* the manager's id says it */
     });
-    return { ids, n, W, H: FLOW.BY + (each ? 50 : idBottom + (groups.some(g => g.word) ? 26 : 12)), dx, xs, fs, rows, rot, each, groups, idBottom };
+    return { ids, n, W, W0, H: FLOW.BY + (each ? 50 : idBottom + (groups.some(g => g.word) ? 26 : 12)), dx, xs, fs, rows, rot, each, groups, idBottom };
   }
   /** The nodes of a layout, with their ids (and roles, or the groups' role labels), as SVG markup. */
   function flowNodes(L, m) {
@@ -173,10 +180,11 @@
      *  bounded list of mails). */
     function mailHead(m, S) { const st = m.mailstat, mm = 'mailman ' + (st && st.mailman ? esc(st.mailman) : S.meta.mailman ? 'on' : 'off'), n = calc.counts(m).mail; if (!st) return esc(n + ' routed · ' + mm); const nd = st.undelivered != null ? st.undelivered : (st.dropped || 0); return n + ' sent · ' + (st.delivered || 0) + ' delivered · <span class="' + (nd ? 'warm' : '') + '">' + nd + ' not delivered</span>' + (st.digests ? ' · ' + st.digests + ' digests in ' + (st.batches || 0) + ' batches' : '') + ' · ' + mm; }
     function render(S, m) {
-      if (!m) return; const L = lay = flowLayout(m), ids = L.ids, n = ids.length, ml = m.mail.slice().reverse(); if (!sel || !m.mail.some(x => x.t === sel)) sel = ml.length ? ml[0].t : null; const cur = m.mail.find(x => x.t === sel);
-      let arcs = ''; m.mail.forEach(x => { const a = ids.indexOf(x.from), b = ids.indexOf(x.to); if (a < 0 || b < 0) return; const x1 = L.xs[a], x2 = L.xs[b], h = arcH(a, b, n), s = x.t === sel, cy = BY - h * 1.75, d = 'M' + x1 + ' ' + BY + ' Q' + (x1 + x2) / 2 + ' ' + cy + ' ' + x2 + ' ' + BY, mid = BY - h * .87;
+      if (!m) return; const L = lay = flowLayout(m, svg.parentNode.clientWidth), ids = L.ids, n = ids.length, ml = m.mail.slice().reverse(); if (!sel || !m.mail.some(x => x.t === sel)) sel = ml.length ? ml[0].t : null; const cur = m.mail.find(x => x.t === sel);
+      let arcs = '', apex = 34; m.mail.forEach(x => { const a = ids.indexOf(x.from), b = ids.indexOf(x.to); if (a < 0 || b < 0) return; const x1 = L.xs[a], x2 = L.xs[b], h = arcH(a, b, n), s = x.t === sel, cy = BY - h * 1.75, d = 'M' + x1 + ' ' + BY + ' Q' + (x1 + x2) / 2 + ' ' + cy + ' ' + x2 + ' ' + BY, mid = BY - h * .87; apex = Math.max(apex, h * .875);
         arcs += '<g data-ag="' + esc(x.from) + ' ' + esc(x.to) + '" data-mt="' + esc(x.t) + '" style="cursor:pointer"><path d="' + d + '" fill="none" stroke="' + (s ? 'var(--warm)' : agCol(x.from)) + '" stroke-width="' + (s ? 2.6 : 1.6) + '" opacity="' + (s ? 1 : .7) + '"/><path d="' + d + '" fill="none" stroke="transparent" stroke-width="14"/><text x="' + (x1 + x2) / 2 + '" y="' + (mid + 4) + '" text-anchor="middle" fill="var(--warm)" font-size="14" font-family="var(--f-num)" stroke="var(--panel)" stroke-width="3" paint-order="stroke">✉</text></g>'; });
-      const html = '<g class="arcs-static">' + arcs + '</g>' + flowNodes(L, m) + '<g class="travel"></g>'; svg.setAttribute('viewBox', '0 0 ' + L.W + ' ' + L.H); svg.style.setProperty('--fw', String(L.W / FLOW.W));
+      const html = '<g class="arcs-static">' + arcs + '</g>' + flowNodes(L, m) + '<g class="travel"></g>'; const y0 = Math.max(0, Math.floor(BY - apex - 16));   /* the drawing starts just above its highest arc: no empty band over a short line */
+      svg.setAttribute('viewBox', '0 ' + y0 + ' ' + L.W + ' ' + (L.H - y0)); svg.style.setProperty('--fw', String(L.W / L.W0));
       if (svg._h !== html) { svg._h = html; const tr = $('.travel', svg); const keep = tr ? Array.from(tr.childNodes) : []; svg.innerHTML = html; const t2 = $('.travel', svg); keep.forEach(k => t2.appendChild(k)); }
       $('.mcount', root).innerHTML = mailHead(m, S);
       const menv = $('.menv', root), envT = 'newest first' + (m.mail.length < m.nmail ? ' · the newest ' + m.mail.length + ' shown' : ''); if (menv.textContent !== envT) menv.textContent = envT;   /* the page keeps the newest mails (nmail counts them all; the head has the run's count) */
