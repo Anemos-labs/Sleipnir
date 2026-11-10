@@ -104,3 +104,28 @@ func TestMergeRoutesAgreeWithTheCannedTeam(t *testing.T) {
 		}
 	}
 }
+
+func TestScanRoutes(t *testing.T) {
+	r := StartT(t, Options{})
+	var v ScanView
+	getJSON(t, r, "/api/sessions/shop/scan", &v)
+	if !v.On || len(v.Depths) == 0 || len(v.Runs) != 1 || v.Runs[0].Slug != ScanSlug {
+		t.Fatalf("the canned Deep scan page has no scan or depths: %+v", v)
+	}
+	run := v.Runs[0]
+	if run.Shards != 4 || run.Mapped != 4 || run.Leads != 4 || run.Confirmed+run.Unproven != 2 || run.Rejected != 1 || run.Open != 1 {
+		t.Errorf("the canned scan is not measured as built: %+v", run)
+	}
+	var d map[string]json.RawMessage
+	getJSON(t, r, "/api/sessions/shop/scan/"+ScanSlug, &d)
+	for _, k := range []string{"findings", "summary", "headline", "shards", "points", "edges", "counts", "phase"} {
+		if len(d[k]) == 0 || string(d[k]) == "null" {
+			t.Errorf("the scan's detail has no %s", k)
+		}
+	}
+	for _, path := range []string{"/api/sessions/nope/scan", "/api/sessions/shop/scan/nope"} {
+		if code, b, _ := call(t, r, "GET", path, "", nil); code != 404 {
+			t.Errorf("GET %s = %d %s, want 404", path, code, b)
+		}
+	}
+}
