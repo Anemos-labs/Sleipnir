@@ -536,23 +536,27 @@ func shownScopes(scopes []string) []string {
 // parentRefuses reports the parent whose scope refuses rel when no task agent is doing allows it: rel lies in a task's scope,
 // and, for a pool child whose parent declares a scope, in the parent's too. A child's scope lies inside its parent's by the paths
 // it names (scopeContains); one that names a directory must not reach below it out of the parent's area.
-// outsideParent reports whether rel lies outside the declared scope of the parent of a task agent is doing, other than a
-// dependency lockfile: the merge queue refuses such a path for that child (submitRefusal), so a write to it is not free even
-// when no task claims it.
+// outsideParent reports whether rel lies outside the declared scope of the parent of every task agent is doing, other than
+// a dependency lockfile: the merge queue refuses such a path for a child (submitRefusal), so a write to it is not free even
+// when no task claims it. A held task that no parent's scope bounds (one without a parent, or whose parent has no scope, or
+// whose parent's scope holds rel) can submit the path, so then it is free.
 func (l *Leases) outsideParent(agent, rel string) bool {
 	if workspace.IsLockfile(rel) {
 		return false
 	}
 	snap := l.board.Snapshot()
+	bounded := false
 	for _, t := range snap.Tasks {
-		if t.Pool != nil || t.Owner != agent || t.Status != StatusDoing || t.Parent == "" {
+		if t.Pool != nil || t.Owner != agent || t.Status != StatusDoing {
 			continue
 		}
-		if p, ok := snap.Task(t.Parent); ok && len(p.Files) > 0 && !inScope(p.Files, rel) {
-			return true
+		p, ok := snap.Task(t.Parent)
+		if t.Parent == "" || !ok || len(p.Files) == 0 || inScope(p.Files, rel) {
+			return false
 		}
+		bounded = true
 	}
-	return false
+	return bounded
 }
 
 func (l *Leases) parentRefuses(agent, rel string) (Task, bool) {

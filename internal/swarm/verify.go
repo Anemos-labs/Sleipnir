@@ -140,7 +140,9 @@ func (s *Swarm) verifyFiles(ctx context.Context, m *member, t Task) []string {
 	}
 	files := t.Files
 	for _, rel := range changed {
-		if !inScope(t.Files, rel) {
+		// a lockfile a build rewrote is not the task's change (the merge holds it to no scope either), and a root one would
+		// widen {dirs} to the whole tree
+		if !inScope(t.Files, rel) && !workspace.IsLockfile(rel) {
 			files = append(slices.Clone(files), rel)
 		}
 	}

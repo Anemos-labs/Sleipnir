@@ -152,7 +152,7 @@ func (t unsentTool) Spec() core.ToolSpec { return t.inner.Spec() }
 // Run runs the wrapped tool and keeps or clears the agent's refusal record for the call's kind of delivery.
 func (t unsentTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error) {
 	res, err := t.inner.Run(ctx, c)
-	if err != nil || res == nil || c == nil || c.Env.Agent == "" {
+	if err != nil || res == nil || c == nil || c.Env == nil || c.Env.Agent == "" {
 		return res, err
 	}
 	key, what, ok := unsentKey(t.inner.Spec().Name, c.Input)

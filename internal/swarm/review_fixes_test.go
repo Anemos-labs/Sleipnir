@@ -140,6 +140,17 @@ func TestUnclaimedFileOutsideTheParentScopeIsNotFree(t *testing.T) {
 	if l.outsideParent("be-1", "docs/notes.md") {
 		t.Fatal("an agent with no parent-scoped task was held to one")
 	}
+	// a task of its own that no parent bounds can carry the path, so the write is free again
+	own, err := b.CreateTask("mgr", TaskSpec{Title: "notes", Role: "frontend", Files: []string{"notes/**"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.assignTask(assignReq{by: "mgr", agent: "fe-1", id: own.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if l.outsideParent("fe-1", "docs/notes.md") {
+		t.Fatal("a path a parentless held task can submit was held to the child's parent")
+	}
 	got, _ := b.Snapshot().Task(child.ID)
 	refuse := (&Swarm{Board: b}).submitRefusal("frontend", got)
 	if refuse == nil || refuse("docs/notes.md") == "" {
