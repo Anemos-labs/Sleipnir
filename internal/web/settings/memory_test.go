@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/lore"
 	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/tools/memtool"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
@@ -95,7 +97,7 @@ func TestMemoryNotesAreReplacedFromTheirVersion(t *testing.T) {
 	if rec := e.do(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: []string{"x"}, Version: old}, nil); rec.Code != http.StatusConflict || errCode(rec) != "changed" {
 		t.Errorf("a write from a stale version: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := e.do(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: []string{strings.Repeat("a", 301)}, Version: v.Notes.Version}, nil); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "limit is 300") {
+	if rec := e.do(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: []string{strings.Repeat("a", memtool.MaxNoteRunes+1)}, Version: v.Notes.Version}, nil); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), fmt.Sprintf("limit is %d", memtool.MaxNoteRunes)) {
 		t.Errorf("a note over the limit: %d %s", rec.Code, rec.Body.String())
 	}
 }
