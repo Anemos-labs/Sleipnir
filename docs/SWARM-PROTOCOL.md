@@ -283,7 +283,8 @@ tests and static checks stay allowed, `perm.ReadOnlyAllow`: `go test`, `go vet`,
 `npm test`, `pnpm test`, `yarn test`, `cargo test`, `cargo check`, `make test`, and on the tests preset's terms, every file inside the workspace and no option
 that writes the project's files or installs, `ruff check`, `ruff format --check`, `ruff format --diff`, `mypy`, `pyright`,
 `tsc --noEmit`, `eslint` and `cargo clippy` (not `--fix`), `go build` (a named output only in `$TMPDIR`),
-`pnpm exec tsc --noEmit`, and the `typecheck` and `lint` scripts of npm and pnpm; plan mode also lets a command write in the
+and `pnpm exec tsc --noEmit` and `pnpm exec eslint` on the same terms as `tsc` and `eslint` (a project's `lint` script is
+not among them: it may take `--fix`); plan mode also lets a command write in the
 session's scratch directory, `$TMPDIR`); the manager
 uses the session's permissions and any explicit manager profile), and swarm
 tools check the caller's role, which the harness puts in the call. The manager owns

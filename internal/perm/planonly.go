@@ -17,8 +17,7 @@ var ReadOnlyAllow = []string{
 	"Bash(cargo test:*)", "Bash(cargo check:*)", "Bash(cargo clippy:workspace)", "Bash(make test)",
 	"Bash(ruff check:workspace)", "Bash(ruff format --check:workspace)", "Bash(ruff format --diff:workspace)",
 	"Bash(mypy:workspace)", "Bash(pyright:workspace)", "Bash(tsc --noEmit:workspace)", "Bash(eslint:workspace)",
-	"Bash(go build:*)", "Bash(pnpm exec tsc --noEmit:*)", "Bash(npm run typecheck:*)", "Bash(pnpm run typecheck:*)",
-	"Bash(pnpm typecheck:*)", "Bash(npm run lint:*)", "Bash(pnpm run lint:*)", "Bash(pnpm lint:*)",
+	"Bash(go build -o:*)", "Bash(pnpm exec tsc --noEmit:workspace)", "Bash(pnpm exec eslint:workspace)",
 	"WebFetch", "WebSearch",
 }
 

@@ -133,12 +133,19 @@ func TestReadOnlyChecksIncludeABuildToTheScratchDirectory(t *testing.T) {
 	}
 	tmp, _ = filepath.EvalSymlinks(tmp)
 	po := f.engine(t, Config{Mode: ModeBypass, Tmp: tmp}).PlanOnly(ReadOnlyAllow...)
-	for _, cmd := range []string{`go build -o "$TMPDIR/app" ./cmd/app`, "go build ./...", "pnpm exec tsc --noEmit"} {
+	for _, cmd := range []string{`go build -o "$TMPDIR/app" ./cmd/app`, "pnpm exec tsc --noEmit", "pnpm exec eslint src"} {
 		if d := po.Check(context.Background(), f.request(bash(cmd))); !d.Allow {
 			t.Errorf("%s: %s", cmd, d.Reason)
 		}
 	}
 	if d := po.Check(context.Background(), f.request(bash("go build -o notes.bin ./cmd/app"))); d.Allow {
 		t.Error("a build that writes its named output into the workspace was allowed")
+	}
+	// A checker's writing options take it off its rule; a project's lint script may take --fix.
+	for _, cmd := range []string{"pnpm exec tsc --noEmit --generateTrace trace", "pnpm exec eslint --fix src",
+		"npm run lint -- --fix", "pnpm lint --fix"} {
+		if d := po.Check(context.Background(), f.request(bash(cmd))); d.Allow {
+			t.Errorf("a read-only check allowed %s: %s", cmd, d.Reason)
+		}
 	}
 }

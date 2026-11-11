@@ -248,6 +248,7 @@ func TestPoolChecksIncludeTheVerificationCommand(t *testing.T) {
 		"{dirs}":                  "",
 		"":                        "",
 		"sh -c (x)":               "",
+		"pnpm --dir {dirs} test":  "",
 	} {
 		got := verifyAllowRule(cmd)
 		if got != want {
@@ -259,6 +260,12 @@ func TestPoolChecksIncludeTheVerificationCommand(t *testing.T) {
 				t.Errorf("%s does not parse: %v", got, err)
 			}
 		}
+	}
+	if got := verifyAllowRules("go test ./... && go vet ./... && ./ci.sh {dirs}"); !slices.Equal(got, []string{"Bash(go test ./...)", "Bash(go vet ./...)", "Bash(./ci.sh:*)"}) {
+		t.Fatalf("a chain of checks: %v", got)
+	}
+	if got := verifyAllowRules("make check; rm -rf x"); len(got) != 0 {
+		t.Fatalf("a command list that does not parse as one rule: %v", got)
 	}
 	s := &Swarm{cfg: Config{VerifyCmd: "bash /opt/ops/verify.sh"}}
 	if rules := s.poolChecks(); !slices.Contains(rules, "Bash(bash /opt/ops/verify.sh)") || len(rules) != len(perm.ReadOnlyAllow)+1 {
