@@ -7,6 +7,7 @@ package agent_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -789,5 +790,45 @@ func TestAResultOverThePerResultCapWithoutRecallSaysToNarrowTheCall(t *testing.T
 	defer mu.Unlock()
 	if strings.Contains(shown, "out_") || !strings.Contains(shown, "narrower request") {
 		t.Fatalf("the cut result without recall: ...%s", shown[max(0, len(shown)-200):])
+	}
+}
+
+// failingPuts is a blob store that refuses to save any payload holding marker, the way a full disk refuses a large write.
+type failingPuts struct {
+	events.Blobs
+	marker string
+}
+
+func (f failingPuts) Put(data []byte) (core.Hash, error) {
+	if strings.Contains(string(data), f.marker) {
+		return "", errors.New("disk full")
+	}
+	return f.Blobs.Put(data)
+}
+
+// When saving a cut result fails, the result names no handle that would not resolve: it says to narrow the call instead.
+func TestAResultOverThePerResultCapThatCannotBeSavedSaysToNarrowTheCall(t *testing.T) {
+	long := "HEAD " + strings.Repeat("a line of an unsaved listing\n", 4000) + "TAIL-UNSAVED"
+	fts := []fakeTool{{name: "read", readOnly: true, run: func(json.RawMessage) *tools.Result { return &tools.Result{Text: long} }}}
+	var mu sync.Mutex
+	var shown string
+	r := newLimRig(t, func(c *agent.Config) {
+		c.Blobs, c.MaxTurnResultChars, c.Perm = failingPuts{Blobs: c.Blobs, marker: "TAIL-UNSAVED"}, 1_000_000, perm.AllowAll{}
+	}, fts, func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		defer mu.Unlock()
+		if tm := toolMessages(c); len(tm) > 0 {
+			shown = tm[0]
+			return mock.Reply{Text: "done"}
+		}
+		return mock.Reply{ToolCalls: []mock.ToolCall{{ID: "c1", Name: "read", Args: `{}`}}}
+	})
+	if _, err := r.agent.Run(context.Background(), "list"); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if strings.Contains(shown, "saved as out_") || !strings.Contains(shown, "narrower request") {
+		t.Fatalf("the cut result whose save failed: ...%s", shown[max(0, len(shown)-200):])
 	}
 }
