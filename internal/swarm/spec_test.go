@@ -1156,11 +1156,12 @@ func TestAgingNeverAdmitsACancelledWaiter(t *testing.T) {
 	g := NewGovernor(GovernorConfig{RPM: 6000, Burst: 50})
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	live := &waiter{prio: 2, ready: make(chan error, 1)}
-	g.qs[0] = []*waiter{{prio: 0, ready: make(chan error, 1)}}
-	g.qs[2] = []*waiter{{prio: 2, ready: make(chan error, 1), dead: true}, live}
+	l := g.laneLocked("")
+	live := &waiter{prio: 2, lane: l, ready: make(chan error, 1)}
+	g.qs[0] = []*waiter{{prio: 0, lane: l, ready: make(chan error, 1)}}
+	g.qs[2] = []*waiter{{prio: 2, lane: l, ready: make(chan error, 1), dead: true}, live}
 	g.skipped[2] = agingEvery
-	if w := g.nextLocked(); w != live {
+	if w, _ := g.nextLocked(g.cfg.Now()); w != live {
 		t.Fatalf("aging picked %+v, want the live waiter of the lower class", w)
 	}
 }

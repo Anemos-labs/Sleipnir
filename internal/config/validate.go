@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"net"
 	"net/url"
@@ -342,6 +343,11 @@ func (v *validator) swarm(s Swarm) {
 	v.nonNegative(seg("swarm", "max_workers"), s.MaxWorkers)
 	v.nonNegative(seg("swarm", "requests_per_minute"), s.RequestsPerMinute)
 	v.nonNegative(seg("swarm", "max_concurrent_requests"), s.MaxConcurrentRequests)
+	v.nonNegative(seg("swarm", "max_verifies"), s.MaxVerifies)
+	v.nonNegative(seg("swarm", "merge_batch"), s.MergeBatch)
+	for _, m := range slices.Sorted(maps.Keys(s.ModelConcurrency)) {
+		v.nonNegative(seg("swarm", "model_concurrency", m), s.ModelConcurrency[m])
+	}
 	if s.Isolation != "" && !slices.Contains(isolations, s.Isolation) {
 		v.err(seg("swarm", "isolation"), "must be \"none\" or \"worktree\", got %q", s.Isolation)
 	}

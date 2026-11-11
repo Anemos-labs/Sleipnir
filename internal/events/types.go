@@ -132,6 +132,7 @@ const (
 	TypeMergeRolledBack = "merge.rolled_back"
 	TypeMergeRejected   = "merge.rejected"
 	TypeMergeFastFwd    = "merge.fast_forward"
+	TypeMergeBatch      = "merge.batch"
 	// task.merge is the swarm's account of one submission to the queue: which task,
 	// which outcome (merged, empty, conflict, verify_failed, rejected, error), the
 	// integration commit and the files; swarm.integration is the end of the run: the

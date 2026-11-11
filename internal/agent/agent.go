@@ -43,6 +43,22 @@ type Limiter interface {
 	Acquire(ctx context.Context, prio int) (Release, error)
 }
 
+// KeyedLimiter is a Limiter that keeps what each endpoint answers apart: key names the model and its endpoint
+// (LimiterKey), so a model that is throttled waits on its own while requests to other models go on. The agent uses
+// AcquireFor when its Limiter has it.
+type KeyedLimiter interface {
+	Limiter
+	AcquireFor(ctx context.Context, key string, prio int) (Release, error)
+}
+
+// LimiterKey is the KeyedLimiter key of a request for model on prov: the endpoint's profile name and the model.
+func LimiterKey(prov provider.Provider, model string) string {
+	if prov == nil {
+		return model
+	}
+	return prov.Profile().Name + "/" + model
+}
+
 // NopLimiter admits everything.
 type NopLimiter struct{}
 

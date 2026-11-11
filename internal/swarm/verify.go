@@ -120,7 +120,39 @@ func (s *Swarm) gateFor(ctx context.Context, t Task, m *member, dir string) (ver
 		return verifyResult{infra: true, err: err}, dir
 	}
 	defer release()
-	return s.verifyFor(ctx, t, at, t.Files), at
+	files := t.Files
+	if at == dir {
+		files = s.verifyFiles(ctx, m, t)
+	}
+	return s.verifyFor(ctx, t, at, files), at
+}
+
+// wholeTreeScope is a scope entry that makes {dirs} the whole tree ("./..."): verifyDirs reads the top of the repository as
+// everything, and a scope that is not empty is not narrowed to the changed files.
+const wholeTreeScope = "./"
+
+// verifyFiles is what {dirs} covers for task t in member m's own tree: the task's scope and, in an isolated run, the files
+// the tree changed outside it (a file no task claims may be written there, see leases.go), so a changed package is
+// checked. Without a scope it is the scope as it is; when the tree's changes cannot be listed it is wholeTreeScope, so a change
+// the listing missed is still checked (an empty list would not do: the worker gate narrows that to what git status lists, which
+// leaves out the tree's commits).
+func (s *Swarm) verifyFiles(ctx context.Context, m *member, t Task) []string {
+	if len(t.Files) == 0 || m == nil || m.tree == nil || !strings.Contains(s.cfg.VerifyCmd, verifyDirsToken) {
+		return t.Files
+	}
+	changed, err := m.tree.Changed(ctx)
+	if err != nil {
+		return []string{wholeTreeScope}
+	}
+	files := t.Files
+	for _, rel := range changed {
+		// a lockfile a build rewrote is not the task's change (the merge holds it to no scope either), and a root one would
+		// widen {dirs} to the whole tree
+		if !inScope(t.Files, rel) && !workspace.IsLockfile(rel) {
+			files = append(slices.Clone(files), rel)
+		}
+	}
+	return files
 }
 
 // EventVerifyRun is the log event of one run of the verification gate: {task, rev,
@@ -476,6 +508,36 @@ const verifyDirsToken = "{dirs}"
 
 // maxVerifyDirs bounds how many directories {dirs} lists; a scope wider than that is the whole tree.
 const maxVerifyDirs = 40
+
+// CombineVerify is workspace.QueueOptions.CombineVerify for a verify command template (the --verify value): a batch of
+// submissions whose commands are the template expanded for different scopes is verified once over the union of their
+// scopes. A submission that had no scope was checked over what its tree changed, which the union cannot name, so such a
+// batch is not combined (submissions with the same expanded command still share one run).
+func CombineVerify(template string) func(dir string, subs []workspace.Submission) (string, bool) {
+	return func(dir string, subs []workspace.Submission) (string, bool) {
+		if !strings.Contains(template, verifyDirsToken) {
+			return template, true
+		}
+		var files []string
+		wide := ExpandVerify(template, dir, nil)
+		narrow := true // every member's own command is narrower than the whole tree
+		for _, s := range subs {
+			if len(s.VerifyScope) == 0 {
+				return "", false
+			}
+			if s.VerifyCmd == "" || s.VerifyCmd == wide {
+				narrow = false
+			}
+			files = append(files, s.VerifyScope...)
+		}
+		cmd := ExpandVerify(template, dir, files)
+		if narrow && cmd == wide {
+			// a union too wide for {dirs} is the whole tree, which can fail on work none of them touched
+			return "", false
+		}
+		return cmd, true
+	}
+}
 
 // ExpandVerify replaces {dirs} in a verify command with the directories the task's scope covers,
 // as words a shell (or cmd) reads as they are: `go test {dirs}` becomes `go test ./p01 ./p05`.

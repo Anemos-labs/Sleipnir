@@ -629,7 +629,17 @@ func (a *Agent) callOn(ctx context.Context, prov provider.Provider, req *provide
 	var failed time.Time // when the request first failed: OutagePatience counts from there
 	announced := -1      // the half-minute of waiting that the last notice of the patient phase was made in
 	for attempt := 0; ; attempt++ {
-		rel, err := a.cfg.Limiter.Acquire(ctx, prio)
+		var rel Release
+		var err error
+		if kl, ok := a.cfg.Limiter.(KeyedLimiter); ok {
+			model := ""
+			if req.Prompt != nil {
+				model = req.Prompt.Model
+			}
+			rel, err = kl.AcquireFor(ctx, LimiterKey(prov, model), prio)
+		} else {
+			rel, err = a.cfg.Limiter.Acquire(ctx, prio)
+		}
 		if err != nil {
 			return nil, err
 		}

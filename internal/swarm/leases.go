@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
 
 // Leases is the swarm's tools.Guard. It does three jobs before a write happens:
@@ -414,6 +415,44 @@ func (l *Leases) rel(path string) (string, bool) {
 	return "", false
 }
 
+// isolatedNow reports whether every writer has a tree of its own.
+func (l *Leases) isolatedNow() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.isolated
+}
+
+// unclaimed reports whether rel, a path relative to the project root, lies outside the scope of every task in flight
+// (doing or blocked) that another agent holds, and of every pool parent agent is not a member of. A task in review has
+// merged already (isolated runs merge before review), and a task nobody has started takes the tip as it finds it.
+func (l *Leases) unclaimed(agent, rel string) bool {
+	if l.board == nil {
+		return false
+	}
+	return Unclaimed(l.board.Snapshot(), agent, rel)
+}
+
+// Unclaimed is Leases.unclaimed on a board snapshot: rel is in no in-flight task's scope but agent's own. A task with no
+// scope claims nothing (it is not held to one either).
+func Unclaimed(sn *Snapshot, agent, rel string) bool {
+	for _, t := range sn.Tasks {
+		if t.Status != StatusDoing && t.Status != StatusBlocked || len(t.Files) == 0 {
+			continue
+		}
+		if t.Pool != nil {
+			if slices.Contains(t.Pool.Members, agent) || t.Owner == agent {
+				continue
+			}
+		} else if t.Owner == agent || t.Owner == "" {
+			continue
+		}
+		if inScope(t.Files, rel) {
+			return false
+		}
+	}
+	return true
+}
+
 // scopeOf returns the scope an agent is bound to: the union of the scopes of the
 // tasks it is doing, and those tasks' ids. Unscoped means no restriction.
 func (l *Leases) scopeOf(agent string) (scopes, ids []string, scoped bool) {
@@ -452,6 +491,13 @@ func (l *Leases) checkScopeAt(agent, path, rel string, relOK bool) error {
 		return fmt.Errorf("%s is inside the scope of your task but outside the scope of its parent %s (%s). Edit only inside both; if the task needs more, ask the manager (mail)",
 			displayPath(path), parent.ID, strings.Join(shownScopes(parent.Files), ", "))
 	}
+	if relOK && l.isolatedNow() && l.unclaimed(agent, rel) && !l.outsideParent(agent, rel) {
+		// A tree of its own: a file no other task in flight claims cannot collide with anyone's work but textually, and
+		// the merge queue settles that. Shared files (a test helper, a .gitignore, a go.mod) are what many tasks need
+		// and none owns; refusing them sent workers to the manager for a scope change, one mail at a time.
+		l.emit(agent, "scope_free", path, "")
+		return nil
+	}
 	l.raiseScopeAlert(agent, rel, relOK, ids)
 	l.emit(agent, "scope", path, "")
 	hint := ""
@@ -485,6 +531,29 @@ func shownScopes(scopes []string) []string {
 		return append(append([]string(nil), scopes[:4]...), "…")
 	}
 	return scopes
+}
+
+// outsideParent reports whether rel lies outside the declared scope of the parent of every task agent is doing, other than
+// a dependency lockfile: the merge queue refuses such a path for a child (submitRefusal), so a write to it is not free even
+// when no task claims it. A held task that no parent's scope bounds (one without a parent, or whose parent has no scope, or
+// whose parent's scope holds rel) can submit the path, so then it is free.
+func (l *Leases) outsideParent(agent, rel string) bool {
+	if workspace.IsLockfile(rel) {
+		return false
+	}
+	snap := l.board.Snapshot()
+	bounded := false
+	for _, t := range snap.Tasks {
+		if t.Pool != nil || t.Owner != agent || t.Status != StatusDoing {
+			continue
+		}
+		p, ok := snap.Task(t.Parent)
+		if t.Parent == "" || !ok || len(p.Files) == 0 || inScope(p.Files, rel) {
+			return false
+		}
+		bounded = true
+	}
+	return bounded
 }
 
 // parentRefuses reports the parent whose scope refuses rel when no task agent is doing allows it: rel lies in a task's scope,

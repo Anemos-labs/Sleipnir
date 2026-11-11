@@ -1099,7 +1099,11 @@ func (t *poolTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 		return res, nil
 	}
 	if in.Action == "propose" || in.Action == "reconcile" {
-		s.wakePool(in.ID, "Pool updated: "+in.Action+". "+agreement)
+		shown, rest := inlineHeadBytes(agreement, agreementInlineBytes)
+		if rest > 0 {
+			shown += fmt.Sprintf("\n(the agreement goes on for %d more characters: task get %s shows all of it)", rest, in.ID)
+		}
+		s.wakePool(in.ID, "Pool updated: "+in.Action+". "+shown)
 		if !read {
 			// A reconciliation without text keeps the earlier agreement: the answer is the pool's task in full, the read it counts.
 			res := s.readTask(c, in.ID, "pool reconcile")

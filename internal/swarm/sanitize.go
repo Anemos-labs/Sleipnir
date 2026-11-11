@@ -141,3 +141,37 @@ func safeToken(s string, max int) string {
 	}
 	return sb.String()
 }
+
+// inlineHead is the opening of s that fits in max runes, cut at the last line break in its second half when there is one,
+// and how many runes of s are left out. s is whole (rest 0) when it fits.
+func inlineHead(s string, max int) (head string, rest int) {
+	r := []rune(s)
+	if max <= 0 || len(r) <= max {
+		return s, 0
+	}
+	cut := max
+	if i := strings.LastIndex(string(r[:max]), "\n"); i >= 0 {
+		if n := len([]rune(string(r[:max])[:i])); n >= max/2 {
+			cut = n
+		}
+	}
+	head = strings.TrimRight(string(r[:cut]), " \n")
+	return head, len(r) - utf8.RuneCountInString(head) // what was trimmed is left out too
+}
+
+// inlineHeadBytes is inlineHead with limit in bytes, cut on a rune boundary: the head of s within limit bytes, cut at the last line
+// break in its second half when there is one, and how many runes of s are left out. With limit below one rune the head is empty.
+func inlineHeadBytes(s string, limit int) (head string, rest int) {
+	if len(s) <= limit {
+		return s, 0
+	}
+	cut := max(0, limit)
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	if i := strings.LastIndexByte(s[:cut], '\n'); i >= cut/2 && i > 0 {
+		cut = i
+	}
+	head = strings.TrimRight(s[:cut], " \n")
+	return head, utf8.RuneCountInString(s[len(head):]) // what was trimmed is left out too
+}

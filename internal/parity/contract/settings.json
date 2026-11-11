@@ -133,8 +133,20 @@
       "reason": "a request limit of the swarm: a file or SLEIPNIR_SWARM_MAX_CONCURRENT_REQUESTS in both interfaces; the governor line of the HUD shows its effect and Configuration its value"
     },
     {
+      "item": "swarm.max_verifies",
+      "reason": "how many verify gates the workers run at once: a file in both interfaces; the verify lane of the board shows its effect and Configuration its value"
+    },
+    {
       "item": "swarm.max_workers",
       "reason": "the ceiling on the team size: a file or SLEIPNIR_SWARM_MAX_WORKERS in both interfaces; the worker steppers of the New session dialog and of Team & run stop at it, and Configuration shows it"
+    },
+    {
+      "item": "swarm.merge_batch",
+      "reason": "how many waiting submissions the worktree merge queue verifies together: a file in both interfaces; the merge queue panels show each merge, and Configuration its value"
+    },
+    {
+      "item": "swarm.model_concurrency.*",
+      "reason": "a request limit per model: a file in both interfaces; the governor line of the HUD shows its effect and Configuration its value"
     },
     {
       "item": "swarm.pool_max",

@@ -306,6 +306,13 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 			txt := RenderHot(snap, agentID, r.Name, isMgr, s.cfg.Hot, d.Est)
 			// the team's occupancy (the manager's) and the auto-docs state (everyone's) go inside the frame too
 			var extra []string
+			// what the agent tried to send and the harness refused comes first: a refusal read once in a tool result is
+			// easy to read past (unsent.go)
+			extra = append(extra, s.unsent.lines(agentID)...)
+			if !isMgr {
+				// where each pool the agent is in stands, and the agent's own next step in it (pool_step.go)
+				extra = append(extra, poolStepLines(snap, agentID)...)
+			}
 			if r.ReadOnly && s.isolated() {
 				ref := s.integrationRef()
 				extra = append(extra, "Isolation: Your read-only tools use the original project checkout, which can lag behind integrated work. Inspect merged work with git show "+ref+":<path>, git ls-tree or git diff of "+ref+". Resuming a task does not refresh this checkout; do not block waiting for it.")

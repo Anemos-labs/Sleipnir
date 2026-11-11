@@ -63,8 +63,20 @@ type QueueOptions struct {
 	// MaxPatchBytes bounds Finish (default 64 MiB).
 	MaxPatchBytes int
 	// OnEvent receives queue events (queued, merged, conflict, verify_failed,
-	// rolled_back, rejected, fast_forward). Defaults to the manager's OnEvent.
+	// rolled_back, rejected, fast_forward, batch). Defaults to the manager's OnEvent.
 	OnEvent EventFunc
+	// MaxBatch is how many waiting submissions one verification may cover (default 8; 1 integrates one at a time).
+	// The queue is serial and the verifier usually dominates its time, so a queue that verified each submission alone
+	// could land at most one per verification however many agents fed it. When several submissions are waiting, they
+	// are merged onto the tip one after another and the combined result is verified once: on a pass they all land, on a
+	// failure the tip is untouched and the batch is split in halves that are tried again, down to single submissions,
+	// which are judged exactly as without batching. Only submissions with the same verify command are batched, unless
+	// CombineVerify names one command for them all.
+	MaxBatch int
+	// CombineVerify, when set, gives the verify command for a batch of submissions whose own commands differ (each
+	// submission's command is subs[i].VerifyCmd, or VerifyCmd when it names none), run in dir, the integration tree:
+	// for example one command over the union of the directories each would check. ok false: they are not batched.
+	CombineVerify func(dir string, subs []Submission) (cmd string, ok bool)
 }
 
 // Submission is a finished tree offered to the queue.
@@ -77,6 +89,9 @@ type Submission struct {
 	Task string
 	// VerifyCmd overrides QueueOptions.VerifyCmd for this submission.
 	VerifyCmd string
+	// VerifyScope is what VerifyCmd was made for (for example the task's paths), for QueueOptions.CombineVerify; the
+	// queue itself does not read it.
+	VerifyScope []string
 	// Message is the commit message for uncommitted work (default derived from
 	// Task).
 	Message string
@@ -86,6 +101,9 @@ type Submission struct {
 	// to the integration tip, so work merged in from other agents does not count.
 	Scope        []string
 	EnforceScope bool
+	// AllowOutside, when set, lets a file outside Scope through when it answers true for it (the swarm: a file no
+	// other task in flight claims, in a run where every writer has a tree of its own).
+	AllowOutside func(path string) bool
 	// Refuse, when set, is asked about every file the submission changed (judged
 	// like Scope, on the submission's own changes, renames at both ends); a file it
 	// answers with a non-empty reason is refused, and the submission is rejected
@@ -213,6 +231,25 @@ type Queue struct {
 	waiting []*QueueEntry
 	// verifies are the verifications the queue ran, oldest first (at most maxLedger).
 	verifies []VerifyRecord
+	// pending are the submissions waiting for their turn, in arrival order. Whoever has the turn takes a batch of them
+	// (its own first or among the first) and integrates it; the others find their result delivered when their turn comes.
+	pending []*job
+	// held, while a batch is being integrated (non-nil), keeps the events it would emit until it lands: a batch that is
+	// split and tried again reports what its parts come to, not what the whole attempt saw.
+	held []queueEvent
+}
+
+// job is one waiting submission: what it is, its caller's context, and where its result goes.
+type job struct {
+	ctx   context.Context
+	s     Submission
+	entry *QueueEntry
+	done  chan jobResult // buffered: the result is sent once
+}
+
+type jobResult struct {
+	res *Result
+	err error
 }
 
 const maxLedger = 500
@@ -266,8 +303,14 @@ func (o QueueOptions) withDefaults(m *Manager) QueueOptions {
 	if o.OnEvent == nil {
 		o.OnEvent = m.OnEvent
 	}
+	if o.MaxBatch <= 0 {
+		o.MaxBatch = defaultMaxBatch
+	}
 	return o
 }
+
+// defaultMaxBatch is QueueOptions.MaxBatch when none is given.
+const defaultMaxBatch = 8
 
 // NewQueue creates the integration branch (<Prefix>/_integration, at the
 // manager's base) and the integration tree, a detached worktree that all merging
@@ -418,6 +461,15 @@ func (q *Queue) Status() QueueStatus {
 
 // emit forwards merge-queue events through the configured event hook.
 func (q *Queue) emit(typ, agent, task string, data map[string]any) {
+	if typ != EventQueued && typ != EventBatch {
+		q.mu.Lock()
+		if q.held != nil {
+			q.held = append(q.held, queueEvent{typ, agent, task, data})
+			q.mu.Unlock()
+			return
+		}
+		q.mu.Unlock()
+	}
 	q.opts.OnEvent.emit(typ, agent, task, data)
 }
 
@@ -475,19 +527,24 @@ func (t *turnstile) wait(ctx context.Context, ch chan struct{}) error {
 	case <-ch:
 		return nil // the turn was handed to us; busy stays true
 	case <-ctx.Done():
-		t.mu.Lock()
-		for i, c := range t.q {
-			if c == ch {
-				t.q = append(t.q[:i], t.q[i+1:]...)
-				t.mu.Unlock()
-				return ctx.Err()
-			}
-		}
-		t.mu.Unlock()
-		// We were handed the turn just as the context ended: pass it on.
-		t.release()
+		t.abandon(ch)
 		return ctx.Err()
 	}
+}
+
+// abandon gives up a ticket that has not been waited for to the end: its place in line, or, when the turn was handed to it
+// meanwhile, the turn itself, which passes to the next in line.
+func (t *turnstile) abandon(ch chan struct{}) {
+	t.mu.Lock()
+	for i, c := range t.q {
+		if c == ch {
+			t.q = append(t.q[:i], t.q[i+1:]...)
+			t.mu.Unlock()
+			return
+		}
+	}
+	t.mu.Unlock()
+	t.release()
 }
 
 func (t *turnstile) release() {
@@ -533,12 +590,14 @@ func (q *Queue) Submit(ctx context.Context, s Submission) (*Result, error) {
 		return nil, err
 	}
 	entry := &QueueEntry{Agent: s.Agent, Task: s.Task, Phase: "queued"}
+	j := &job{ctx: ctx, s: s, entry: entry, done: make(chan jobResult, 1)}
 	q.mu.Lock()
 	if q.closed {
 		q.mu.Unlock()
 		return nil, ErrClosed
 	}
 	q.waiting = append(q.waiting, entry)
+	q.pending = append(q.pending, j)
 	// The place in the turnstile is taken together with the place in the waiting
 	// list: taken later, a submission that arrived after this one could get its
 	// turn first while Status still shows them in arrival order.
@@ -550,39 +609,307 @@ func (q *Queue) Submit(ctx context.Context, s Submission) (*Result, error) {
 	q.mu.Unlock()
 	q.emit(EventQueued, s.Agent, s.Task, map[string]any{"position": position})
 
-	err := q.turn.wait(ctx, tk)
-	q.mu.Lock()
-	for i, w := range q.waiting {
-		if w == entry {
-			q.waiting = append(q.waiting[:i], q.waiting[i+1:]...)
-			break
+	if tk != nil {
+		select {
+		case <-tk: // our turn; busy stays true
+		case r := <-j.done: // integrated in a batch that a submission ahead of this one ran
+			q.turn.abandon(tk)
+			return r.res, r.err
+		case <-ctx.Done():
+			q.turn.abandon(tk)
+			if q.unqueue(j) {
+				return nil, ctx.Err()
+			}
+			// Taken into a batch already: the batch sees this context end, leaves the
+			// submission out and answers.
+			r := <-j.done
+			return r.res, r.err
 		}
 	}
-	if err != nil {
+	defer q.turn.release()
+	for {
+		select {
+		case r := <-j.done:
+			return r.res, r.err
+		default:
+		}
+		q.mu.Lock()
+		closed := q.closed
 		q.mu.Unlock()
-		return nil, err
+		if closed {
+			if q.unqueue(j) {
+				return nil, ErrClosed
+			}
+			continue // taken and answered: the loop reads it
+		}
+		batch := q.takeBatch()
+		if len(batch) == 0 {
+			// Nothing waits, so this submission's answer has been sent.
+			r := <-j.done
+			return r.res, r.err
+		}
+		q.runGroup(batch)
 	}
-	q.active = entry
+}
+
+// unqueue takes j out of the waiting submissions; false when a batch has taken it.
+func (q *Queue) unqueue(j *job) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	i := slices.Index(q.pending, j)
+	if i < 0 {
+		return false
+	}
+	q.pending = slices.Delete(q.pending, i, i+1)
+	if k := slices.Index(q.waiting, j.entry); k >= 0 {
+		q.waiting = slices.Delete(q.waiting, k, k+1)
+	}
+	return true
+}
+
+// verifyCmdOf is the command the queue verifies s with.
+func (q *Queue) verifyCmdOf(s Submission) string {
+	if s.VerifyCmd != "" {
+		return s.VerifyCmd
+	}
+	return q.opts.VerifyCmd
+}
+
+// takeBatch takes the next submissions to integrate together, oldest first: the oldest waiting one, and after it as many
+// of the next as MaxBatch allows that can be verified by one command (the same one, or CombineVerify's). Without a verifier
+// there is nothing to share, so each goes alone. A submission whose caller has given up is answered and skipped.
+func (q *Queue) takeBatch() []*job {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	var out []*job
+	var first string
+	passed := false // once one is passed over, the rest wait too: the queue keeps arrival order
+	keep := q.pending[:0]
+	for _, j := range q.pending {
+		if j.ctx.Err() != nil {
+			j.done <- jobResult{err: j.ctx.Err()}
+			if k := slices.Index(q.waiting, j.entry); k >= 0 {
+				q.waiting = slices.Delete(q.waiting, k, k+1)
+			}
+			continue
+		}
+		cmd := q.verifyCmdOf(j.s)
+		take := len(out) == 0 ||
+			!passed && len(out) < q.opts.MaxBatch && first != "" && (cmd == first || q.opts.CombineVerify != nil)
+		if !take {
+			passed = true
+			keep = append(keep, j)
+			continue
+		}
+		if len(out) == 0 {
+			first = cmd
+		}
+		out = append(out, j)
+		if k := slices.Index(q.waiting, j.entry); k >= 0 {
+			q.waiting = slices.Delete(q.waiting, k, k+1)
+		}
+	}
+	clear(q.pending[len(keep):])
+	q.pending = keep
+	return out
+}
+
+// deliver answers j.
+func (q *Queue) deliver(j *job, res *Result, err error) {
+	j.done <- jobResult{res: res, err: err}
+}
+
+// runGroup integrates jobs, oldest first, and answers each: alone exactly as a single submission is integrated, together as
+// one batch when there are several. A batch that cannot land as a whole (its combined result failed verification, a caller
+// gave up, the harness failed) leaves the tip as it was and is split in halves that are tried again in order, so a bad
+// submission ends up alone and is judged as it would have been without batching, and the good ones still land together.
+func (q *Queue) runGroup(jobs []*job) {
+	q.mu.Lock()
+	broken := q.broken
+	q.mu.Unlock()
+	if broken != nil {
+		if err := q.repairLocked(jobs[0].ctx); err != nil {
+			for _, j := range jobs {
+				q.deliver(j, nil, fmt.Errorf("%w: %v", ErrBroken, broken))
+			}
+			return
+		}
+	}
+	if len(jobs) == 1 {
+		j := jobs[0]
+		q.setActive(j.entry)
+		res, err := q.integrate(j.ctx, j.s, j.entry)
+		q.setActive(nil)
+		q.deliver(j, res, err)
+		return
+	}
+	if results, ok := q.integrateBatch(jobs); ok {
+		for i, j := range jobs {
+			q.deliver(j, results[i], nil)
+		}
+		return
+	}
+	var live []*job
+	for _, j := range jobs {
+		if err := j.ctx.Err(); err != nil {
+			q.deliver(j, nil, err)
+			continue
+		}
+		live = append(live, j)
+	}
+	switch {
+	case len(live) == 0:
+	case len(live) < len(jobs):
+		q.runGroup(live) // a caller gave up: the others are tried again as they were
+	default:
+		h := len(live) / 2
+		q.runGroup(live[:h])
+		q.runGroup(live[h:])
+	}
+}
+
+// setActive names the submission being integrated (nil: none).
+func (q *Queue) setActive(e *QueueEntry) {
+	q.mu.Lock()
+	q.active = e
+	q.mu.Unlock()
+}
+
+// queueEvent is an event held back while a batch has not landed.
+type queueEvent struct {
+	typ, agent, task string
+	data             map[string]any
+}
+
+// integrateBatch merges jobs onto the tip one after another and verifies the combined result once. ok: every job has its
+// result (merged into the published tip, or refused, conflicting or empty as judged against the batch merged before it).
+// Not ok: nothing was published, the tree is back at the tip, and nothing the attempt did is counted or reported: the
+// caller tries the jobs again in smaller groups.
+func (q *Queue) integrateBatch(jobs []*job) (results []*Result, ok bool) {
+	subs := make([]Submission, len(jobs))
+	for i, j := range jobs {
+		subs[i] = j.s
+	}
+	ctx, cancel := context.WithCancel(context.WithoutCancel(jobs[0].ctx))
+	defer cancel()
+	for _, j := range jobs {
+		stop := context.AfterFunc(j.ctx, cancel)
+		defer stop()
+	}
+	q.mu.Lock()
+	prev, saved := q.tip, q.stats
+	q.held = []queueEvent{}
 	q.mu.Unlock()
 	defer func() {
 		q.mu.Lock()
-		q.active = nil
+		held := q.held
+		q.held = nil
+		if !ok {
+			q.stats = saved
+		}
 		q.mu.Unlock()
-		q.turn.release()
+		if ok {
+			for _, e := range held {
+				q.opts.OnEvent.emit(e.typ, e.agent, e.task, e.data)
+			}
+		}
+		q.setActive(nil)
 	}()
-
-	q.mu.Lock()
-	closed, broken := q.closed, q.broken
-	q.mu.Unlock()
-	if closed {
-		return nil, ErrClosed
+	if err := q.settle(ctx, prev); err != nil {
+		return nil, false
 	}
-	if broken != nil {
-		if err := q.repairLocked(ctx); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrBroken, broken)
+	cmd, same := q.verifyCmdOf(subs[0]), true
+	for _, s := range subs[1:] {
+		same = same && q.verifyCmdOf(s) == cmd
+	}
+	if !same {
+		var can bool
+		if q.opts.CombineVerify == nil {
+			return nil, false
+		}
+		if cmd, can = q.opts.CombineVerify(q.tree.Path, subs); !can {
+			return nil, false
 		}
 	}
-	return q.integrate(ctx, s, entry)
+	if cmd == "" {
+		return nil, false
+	}
+	head := prev
+	results = make([]*Result, len(jobs))
+	afters := make([]string, len(jobs))
+	var merged []int
+	for i, j := range jobs {
+		q.setActive(j.entry)
+		res, after, err := q.combine(ctx, j.s, j.entry, head)
+		if err != nil || ctx.Err() != nil {
+			_ = q.rollbackTo(ctx, prev)
+			return nil, false
+		}
+		results[i] = res
+		if res.Outcome == "" {
+			head, afters[i] = after, after
+			merged = append(merged, i)
+		}
+	}
+	tasks := make([]string, len(jobs))
+	for i, j := range jobs {
+		tasks[i] = j.s.Task
+	}
+	if len(merged) == 0 {
+		return results, true
+	}
+	for _, i := range merged {
+		q.setPhase(jobs[i].entry, "verifying")
+	}
+	q.setActive(jobs[merged[0]].entry)
+	vr := q.opts.Verify(ctx, VerifyRequest{
+		Dir: q.tree.Path, Cmd: cmd, Agent: jobs[merged[0]].s.Agent, Task: fmt.Sprintf("%s and %d more", jobs[merged[0]].s.Task, len(merged)-1),
+		Timeout: q.opts.VerifyTimeout, MaxOutput: q.opts.MaxVerifyOutput, Env: q.opts.VerifyEnv,
+	})
+	if !vr.OK() || ctx.Err() != nil {
+		_ = q.rollbackTo(ctx, prev)
+		if ctx.Err() == nil {
+			q.emit(EventBatch, "", "", map[string]any{"tasks": tasks, "merged": len(merged), "ok": false, "split": true,
+				"cmd": vr.Cmd, "exit_code": vr.ExitCode, "timed_out": vr.TimedOut, "output": tailOf(vr.Output, 2000)})
+		}
+		return nil, false
+	}
+	vr.Wrote = q.verifyWrote(ctx)
+	agents := make([]string, 0, len(merged))
+	for _, i := range merged {
+		q.setPhase(jobs[i].entry, "publishing")
+		if !slices.Contains(agents, jobs[i].s.Agent) {
+			agents = append(agents, jobs[i].s.Agent)
+		}
+	}
+	if err := q.publish(ctx, head, prev, strings.Join(agents, ", ")); err != nil {
+		_ = q.rollbackTo(ctx, prev)
+		return nil, false
+	}
+	now := q.m.now()
+	q.mu.Lock()
+	q.tip = head
+	for _, i := range merged {
+		r := results[i]
+		q.ledger = append(q.ledger, Landed{Agent: r.Agent, Task: r.Task, Commit: afters[i], Before: r.Before, Files: r.Files, Commits: r.Commits})
+	}
+	if len(q.ledger) > maxLedger {
+		q.ledger = append([]Landed(nil), q.ledger[len(q.ledger)-maxLedger:]...)
+	}
+	q.stats.Merged += len(merged)
+	q.mu.Unlock()
+	for _, i := range merged {
+		r := results[i]
+		v := vr
+		r.Verify, r.Outcome, r.After = &v, OutcomeMerged, head
+		q.noteVerify(jobs[i].s, vr, now)
+		q.emit(EventMerged, r.Agent, r.Task, map[string]any{
+			"before": r.Before, "after": head, "commit": afters[i], "commits": r.Commits, "files": firstN(r.Files, 50), "file_count": len(r.Files),
+			"strategy": q.opts.Strategy.String(), "verified": true, "batch": len(merged),
+		})
+	}
+	q.emit(EventBatch, "", "", map[string]any{"tasks": tasks, "merged": len(merged), "ok": true, "tip": head})
+	return results, true
 }
 
 // oneLine collapses whitespace and truncates by bytes without an omission marker; max must be
@@ -596,40 +923,54 @@ func oneLine(s string, max int) string {
 }
 
 func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) (*Result, error) {
+	q.mu.Lock()
+	prev := q.tip
+	q.mu.Unlock()
+	res, after, err := q.combine(ctx, s, entry, prev)
+	if err != nil || res.Outcome != "" {
+		return res, err
+	}
+	return q.verifyAndPublish(ctx, s, entry, res, prev, after)
+}
+
+// combine is steps 1 to 3b of integrate: it commits the submission, judges it, and merges (or rebases) it onto head in
+// the integration tree, which must be at head. A submission that cannot land comes back with its Outcome set and the
+// tree back at head; one that merged comes back with no Outcome yet, res.After and after naming the merge, and the tree
+// at after, unverified and unpublished. head is the queue's tip for a submission on its own, and the unpublished head of
+// the batch for a submission merged in a batch (integrateBatch).
+func (q *Queue) combine(ctx context.Context, s Submission, entry *QueueEntry, head string) (res *Result, after string, err error) {
 	m := q.m
 	// History queries go through the repository the trees belong to, not through the
 	// integration tree: they must keep working while that tree is damaged (settle
 	// below is what repairs it).
 	hist := m.st.base
-	res := &Result{Agent: s.Agent, Task: s.Task}
-	q.mu.Lock()
-	prev := q.tip
-	q.mu.Unlock()
+	res = &Result{Agent: s.Agent, Task: s.Task}
+	prev := head
 	res.Before, res.After = prev, prev
 
 	// 1. The submission must be a commit.
 	q.setPhase(entry, "committing")
 	theirs, reject, err := q.commitSubmission(ctx, s)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if reject != "" {
-		return q.reject(res, reject), nil
+		return q.reject(res, reject), "", nil
 	}
 	if theirs == prev {
-		return q.empty(res, "the submission is the integration tip itself"), nil
+		return q.empty(res, "the submission is the integration tip itself"), "", nil
 	}
 	if ok, err := hist.IsAncestor(ctx, theirs, prev); err != nil {
-		return nil, err
+		return nil, "", err
 	} else if ok {
-		return q.empty(res, "everything in the submission is already integrated"), nil
+		return q.empty(res, "everything in the submission is already integrated"), "", nil
 	}
 	mb, err := hist.MergeBase(ctx, prev, theirs)
 	if err != nil {
 		if gitx.KindOf(err) == gitx.KindNotFound {
-			return q.reject(res, "the submission shares no history with the integration branch"), nil
+			return q.reject(res, "the submission shares no history with the integration branch"), "", nil
 		}
-		return nil, err
+		return nil, "", err
 	}
 
 	// 1b. What the agent committed itself meets the guards that what we commit for it
@@ -639,23 +980,23 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 		var nr *NestedRepoError
 		switch {
 		case errors.As(err, &tl):
-			return q.reject(res, tl.Error()), nil
+			return q.reject(res, tl.Error()), "", nil
 		case errors.As(err, &nr):
-			return q.reject(res, nr.Error()), nil
+			return q.reject(res, nr.Error()), "", nil
 		}
-		return nil, err
+		return nil, "", err
 	}
 
 	// 2. Scope and refused files, judged on what this submission itself changed.
 	if (s.EnforceScope && len(s.Scope) > 0) || s.Refuse != nil {
 		d, err := hist.Diff(ctx, mb, gitx.DiffOptions{To: theirs, NoPatch: true, MaxFiles: 1 << 20})
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		// A file list cut at its cap would judge only the files that fit; what it
 		// left out would merge unchecked.
 		if d.Truncated {
-			return q.reject(res, "changed more files than the queue can check against its scope; split the work into smaller submissions"), nil
+			return q.reject(res, "changed more files than the queue can check against its scope; split the work into smaller submissions"), "", nil
 		}
 		var files []string
 		for _, f := range d.Files {
@@ -667,22 +1008,22 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 		if s.Refuse != nil {
 			out, why := refused(files, s.Refuse)
 			if out, why, _, err = changedFromTip(ctx, hist, prev, theirs, out, why); err != nil {
-				return nil, err
+				return nil, "", err
 			}
 			if len(out) > 0 {
 				res.Files = out
-				return q.reject(res, fmt.Sprintf("changed %d file(s) it may not change: %s%s", len(out), strings.Join(firstN(why, 8), "; "), moreFiles(out, 8))), nil
+				return q.reject(res, fmt.Sprintf("changed %d file(s) it may not change: %s%s", len(out), strings.Join(firstN(why, 8), "; "), moreFiles(out, 8))), "", nil
 			}
 		}
 		if s.EnforceScope && len(s.Scope) > 0 {
-			out := OutOfScopeForMerge(files, s.Scope)
+			out := allowOutside(OutOfScopeForMerge(files, s.Scope), s.AllowOutside)
 			var changes []gitx.FileChange
 			if out, _, changes, err = changedFromTip(ctx, hist, prev, theirs, out, nil); err != nil {
-				return nil, err
+				return nil, "", err
 			}
 			if len(out) > 0 {
 				res.Files = out
-				return q.reject(res, fmt.Sprintf("changed %d file(s) outside its scope: %s%s", len(out), strings.Join(howChanged(firstN(out, 8), changes), ", "), moreFiles(out, 8))), nil
+				return q.reject(res, fmt.Sprintf("changed %d file(s) outside its scope: %s%s", len(out), strings.Join(howChanged(firstN(out, 8), changes), ", "), moreFiles(out, 8))), "", nil
 			}
 		}
 	}
@@ -691,7 +1032,7 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 	// rebuild the tree, so the handle is taken afterwards, never before.
 	q.setPhase(entry, "merging")
 	if err := q.settle(ctx, prev); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	repo := q.tree.repo
 	var out *gitx.MergeResult
@@ -715,30 +1056,30 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 		if rerr := q.rollbackTo(ctx, prev); rerr != nil {
 			err = errors.Join(err, rerr)
 		}
-		return nil, err
+		return nil, "", err
 	}
 	if out.Conflicted {
 		c, cerr := buildConflict(ctx, repo, conflictOpts{agent: s.Agent, task: s.Task, tip: prev, theirs: theirs, mergeBase: mb, landedBy: q.landedBy(ctx, mb, prev)})
 		q.setPhase(entry, "rolling back")
 		if rerr := q.rollbackTo(ctx, prev); rerr != nil {
-			return nil, errors.Join(rerr, cerr)
+			return nil, "", errors.Join(rerr, cerr)
 		}
 		if cerr != nil {
-			return nil, cerr
+			return nil, "", cerr
 		}
 		res.Outcome, res.Conflict = OutcomeConflict, c
 		q.mu.Lock()
 		q.stats.Conflicts++
 		q.mu.Unlock()
 		q.emit(EventConflict, s.Agent, s.Task, map[string]any{"files": c.Files, "hunks": len(c.Hunks), "tip": prev, "theirs": theirs})
-		return res, nil
+		return res, "", nil
 	}
-	after := out.Head
+	after = out.Head
 	if out.UpToDate || after == prev {
 		if err := q.settle(ctx, prev); err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		return q.empty(res, "the merge changed nothing"), nil
+		return q.empty(res, "the merge changed nothing"), "", nil
 	}
 	res.After = after
 	if files, err := q.changedBetween(ctx, prev, after); err == nil {
@@ -746,13 +1087,13 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 	} else {
 		q.setPhase(entry, "rolling back")
 		if rerr := q.rollbackTo(ctx, prev); rerr != nil {
-			return nil, errors.Join(err, rerr)
+			return nil, "", errors.Join(err, rerr)
 		}
 		if errors.Is(err, gitx.ErrTooLarge) {
 			res.After = prev
-			return q.reject(res, "the merge changed more files than the queue can check against its scope; split the work into smaller submissions"), nil
+			return q.reject(res, "the merge changed more files than the queue can check against its scope; split the work into smaller submissions"), "", nil
 		}
-		return nil, err
+		return nil, "", err
 	}
 	res.Commits, _ = hist.CountCommits(ctx, mb, theirs)
 
@@ -763,12 +1104,18 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 	if why := q.outOfBounds(s, res.Files); why != "" {
 		q.setPhase(entry, "rolling back")
 		if rerr := q.rollbackTo(ctx, prev); rerr != nil {
-			return nil, rerr
+			return nil, "", rerr
 		}
 		res.After = prev
-		return q.reject(res, why), nil
+		return q.reject(res, why), "", nil
 	}
 
+	return res, after, nil
+}
+
+// verifyAndPublish is steps 4 and 5 of integrate for a submission combine merged: it verifies the tree at after and
+// moves the integration branch from prev to it, or rolls the tree back to prev.
+func (q *Queue) verifyAndPublish(ctx context.Context, s Submission, entry *QueueEntry, res *Result, prev, after string) (*Result, error) {
 	// 4. Verify the combined result.
 	cmd := s.VerifyCmd
 	if cmd == "" {
@@ -846,6 +1193,23 @@ func (q *Queue) integrate(ctx context.Context, s Submission, entry *QueueEntry) 
 	return res, nil
 }
 
+// allowOutside drops from out the files allow lets through (nil: none).
+func allowOutside(out []string, allow func(string) bool) []string {
+	if allow == nil || len(out) == 0 {
+		return out
+	}
+	kept := out[:0:0]
+	for _, f := range out {
+		if !allow(f) {
+			kept = append(kept, f)
+		}
+	}
+	if len(kept) == 0 {
+		return nil
+	}
+	return kept
+}
+
 // verifyWrote lists the tracked files the verifier left modified in the queue's tree, which was clean at the merge: the
 // verifier wrote them. A status that cannot be read lists none.
 func (q *Queue) verifyWrote(ctx context.Context) []string {
@@ -873,7 +1237,7 @@ func (q *Queue) outOfBounds(s Submission, files []string) string {
 		}
 	}
 	if s.EnforceScope && len(s.Scope) > 0 {
-		if out := OutOfScopeForMerge(files, s.Scope); len(out) > 0 {
+		if out := allowOutside(OutOfScopeForMerge(files, s.Scope), s.AllowOutside); len(out) > 0 {
 			return fmt.Sprintf("changed %d file(s) outside its scope: %s%s", len(out), strings.Join(firstN(out, 8), ", "), moreFiles(out, 8))
 		}
 	}

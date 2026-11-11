@@ -266,6 +266,17 @@ type Swarm struct {
 	MaxWorkers            int `json:"max_workers"`
 	RequestsPerMinute     int `json:"requests_per_minute"`
 	MaxConcurrentRequests int `json:"max_concurrent_requests"`
+	// ModelConcurrency caps the requests in flight to one model ("provider/model": "heimdallm/qwen/qwen3.8-27b"), for
+	// an endpoint that serves a model with less capacity than the swarm's cap. A model it does not name has no cap
+	// of its own. Throttling (429) is already handled per model whatever this says.
+	ModelConcurrency map[string]int `json:"model_concurrency,omitempty"`
+	// MaxVerifies caps the verify commands the workers' gates run at once (0: the swarm's default, 2). The merge
+	// queue's own verification is not counted: it runs one at a time.
+	MaxVerifies int `json:"max_verifies"`
+	// MergeBatch is how many waiting submissions the worktree merge queue verifies together (0: the default, 8; 1
+	// verifies each on its own). A batch that fails verification is split and retried, so a bad submission never
+	// takes the others down with it.
+	MergeBatch int `json:"merge_batch"`
 	// Isolation is "none" (the default: every agent edits the one working tree,
 	// guarded by write leases; "shared" is the older spelling of the same thing) or
 	// "worktree": each writer gets a git worktree of its own and finished work is

@@ -125,9 +125,9 @@ type RouterConfig struct {
 
 // DefaultRouterConfig returns conservative inline limits: 600 characters of a request or
 // a blocker, 1,200 of mail that carries content, reach the recipient's thread; a message
-// of up to 24,000 characters is accepted, and the rest is read with mail read.
+// of up to 48,000 characters is accepted, and the rest is read with mail read.
 func DefaultRouterConfig() RouterConfig {
-	return RouterConfig{MaxPerMinute: 8, MaxPerPairPerMin: 3, MaxChars: 600, MaxContentChars: 1200, MaxBodyChars: 24000,
+	return RouterConfig{MaxPerMinute: 8, MaxPerPairPerMin: 3, MaxChars: 600, MaxContentChars: 1200, MaxBodyChars: 1 << 20,
 		DedupeWindow: 5 * time.Minute}
 }
 
@@ -153,7 +153,7 @@ func (c RouterConfig) maxCharsFor(kind string) int {
 // characters shorter and are refused again. So it says by how much the message is over,
 // gives a target with some margin, and names the places that hold long content:
 // a file in the sender's task scope (for a role that writes), read by its path, and the
-// agreement submitted with task done (at most 16000 bytes), read with task get and
+// agreement submitted with task done, read with task get and
 // inherited by dependent tasks. Notes hold 300 characters and are not offered.
 func tooLong(kind string, n, limit int) error {
 	return fmt.Errorf("message too long: %d characters, %d over the %d-character limit for %s mail. "+
@@ -371,6 +371,7 @@ func (r *Router) Send(from, to, kind, text string) (Message, error) {
 	if to == from {
 		return Message{}, fmt.Errorf("you cannot mail yourself")
 	}
+	fromManager := r.manager != nil && from == r.manager()
 	known := false
 	ids := r.roster()
 	for _, id := range ids {
@@ -415,7 +416,9 @@ func (r *Router) Send(from, to, kind, text string) (Message, error) {
 		r.mu.Unlock()
 		return Message{}, fmt.Errorf("you already sent %s exactly this message; wait for a reply instead of repeating it", to)
 	}
-	if len(r.sender[from]) >= r.cfg.MaxPerMinute {
+	// The manager is not held to the per-sender rate: it coordinates the whole team, and a manager of 28 workers that
+	// mails each of them once in a minute is not flooding anyone (the pair limit still holds per recipient).
+	if len(r.sender[from]) >= r.cfg.MaxPerMinute && !fromManager {
 		r.mu.Unlock()
 		return Message{}, fmt.Errorf("too many messages this minute; combine them into one")
 	}

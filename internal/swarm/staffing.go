@@ -720,12 +720,64 @@ func (s *Swarm) staffingLines(snap *Snapshot) []string {
 	}
 	q := queuedLines(waiting, maxStaffingLines-roleLines)
 	out = append(out, q...)
+	free := 0
+	for _, ids := range idle {
+		for _, id := range ids {
+			if held[id] == "" {
+				free++
+			}
+		}
+	}
+	if line := gateLine(snap, free); line != "" { // one line at most, and the one that says why the others wait
+		out = append(out, line)
+	}
 	if roleLines+len(q) < maxStaffingLines && openTask(snap) {
 		if line := unplannedLine(s.unplannedIdle(snap, idle, held, ready, waiting), s.freeSlots(slots, used, order, ready, waiting)); line != "" {
 			out = append(out, line)
 		}
 	}
 	return out
+}
+
+// gateMinTasks is how many waiting tasks one unfinished dependency must hold, with as many members idle, before the manager's
+// live view names it (gateLine).
+const gateMinTasks = 3
+
+// gateLine names the unfinished task that most of the waiting work depends on, when it holds at least gateMinTasks tasks while at
+// least as many members are idle (free). In a 28-worker build the manager made fifteen tasks depend on the architect's contract;
+// twenty-six members sat idle for most of an hour while one model wrote it, and nothing in the manager's view said that the
+// dependencies, not the work, were what held them. Many such tasks need only a part of the contract (a type, a path), which the
+// task's description can state, or a first slice of it that can land early. "" when nothing is held that way.
+func gateLine(snap *Snapshot, free int) string {
+	if free < gateMinTasks {
+		return ""
+	}
+	held := map[string][]string{}
+	for _, t := range snap.Tasks {
+		if t.Status != StatusTodo || t.Owner != "" {
+			continue
+		}
+		if ok, dep := depsDone(snap, t); !ok && dep.Status != StatusFailed {
+			held[dep.ID] = append(held[dep.ID], t.ID)
+		}
+	}
+	gate, n := "", 0
+	for id, ts := range held {
+		if len(ts) > n || len(ts) == n && id < gate {
+			gate, n = id, len(ts)
+		}
+	}
+	if n < gateMinTasks {
+		return ""
+	}
+	g, _ := snap.Task(gate)
+	who := "nobody has started it"
+	if g.Owner != "" {
+		who = "held by " + safeToken(g.Owner, 24) + ", " + string(g.Status)
+	}
+	return fmt.Sprintf("%s (%s) holds %d waiting tasks (%s) while %d members are idle: for each that needs only part of %s, state that part in "+
+		"its description and drop the dependency (task revise id=<id> deps=[...] text=why), or split %s so the part they need lands first",
+		gate, who, n, joinNames(firstN(held[gate], 6)), free, gate, gate)
 }
 
 // emptyBoardAfter is how many requests the manager of a configured team makes in one run, with no open task on the board and no

@@ -22,6 +22,9 @@ const (
 	EventRolledBack   = "merge.rolled_back"
 	EventRejected     = "merge.rejected"
 	EventFastForward  = "merge.fast_forward"
+	// EventBatch is a batch of waiting submissions merged together and verified once (QueueOptions.MaxBatch): its
+	// tasks, the verdict, and on a failure that the batch is split and its parts retried.
+	EventBatch = "merge.batch"
 )
 
 // Event is one thing the workspace layer did, in a form independent of the

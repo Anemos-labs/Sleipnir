@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -925,5 +926,67 @@ func TestTheLiveViewNamesFreeSlots(t *testing.T) {
 	m.mu.Unlock()
 	if strings.Contains(got, "slot free") {
 		t.Errorf("live view lines %q name a free slot at the writer limit", got)
+	}
+}
+
+// One unfinished task that most of the waiting work depends on is named, with the idle count, once enough members wait.
+func TestGateLineNamesTheTaskThatHoldsTheWaitingWork(t *testing.T) {
+	b := NewBoard(nil)
+	gate, _ := b.CreateTask("mgr", TaskSpec{Title: "contract", Kind: TaskKindPlan})
+	if err := b.Assign("mgr", "ar-1", gate.ID); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 4 {
+		if _, err := b.CreateTask("mgr", TaskSpec{Title: "part " + strconv.Itoa(i), Deps: []string{gate.ID}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	line := gateLine(b.Snapshot(), 10)
+	for _, want := range []string{gate.ID + " (held by ar-1, doing) holds 4 waiting tasks", "while 10 members are idle", "task revise"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("line %q does not say %q", line, want)
+		}
+	}
+	if gateLine(b.Snapshot(), 2) != "" {
+		t.Fatal("a team with few idle members is not told")
+	}
+}
+
+// A view whose staffing lines are already full still carries the line that names the task holding the waiting work: it says why
+// the others wait.
+func TestStaffingLinesKeepTheGateLineWhenFull(t *testing.T) {
+	cfg := Config{MaxWorkers: 12, MaxWriters: 8, Team: []string{"backend", "backend", "backend", "devops", "docs", "tester", "frontend", "scout"}}
+	r := newRVRigWith(t, cfg, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "noted"} }, nil)
+	var idle []string
+	for i, role := range []string{"backend", "backend", "backend", "devops", "docs"} {
+		id, err := r.sw.Spawn(SpawnReq{Role: role, Title: role + " warm-up " + strconv.Itoa(i), By: "mgr"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		idle = append(idle, id)
+	}
+	for _, id := range idle {
+		rvWait(t, id+" idle", func() bool { return r.idle(id) })
+	}
+	gate, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "contract", Role: "scout"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 3 {
+		if _, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "part " + strconv.Itoa(i), Role: "backend", Deps: []string{gate.ID}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, role := range []string{"backend", "devops", "docs", "tester", "frontend"} {
+		if _, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: role + " ready work", Role: role}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	lines := r.sw.staffingLines(r.sw.Board.Snapshot())
+	if len(lines) <= maxStaffingLines+1 {
+		t.Fatalf("setup: the staffing lines are not full: %q", lines)
+	}
+	if !strings.Contains(strings.Join(lines, "\n"), gate.ID+" (nobody has started it) holds 3 waiting tasks") {
+		t.Fatalf("the gate line was crowded out: %q", lines)
 	}
 }

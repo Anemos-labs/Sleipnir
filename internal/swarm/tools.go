@@ -24,7 +24,8 @@ import (
 // provider's tool-schema cache shared); who may use what is enforced at run
 // time, from the role and agent id the harness put in the call's Env.
 func (s *Swarm) Tools() []tools.Tool {
-	return []tools.Tool{&taskTool{s}, &mailTool{s}, &noteTool{s}, &spawnTool{s}, &waitTool{s}, &approveTool{s}, &poolTool{s}}
+	return []tools.Tool{unsentTool{&taskTool{s}, s}, unsentTool{&mailTool{s}, s}, unsentTool{&noteTool{s}, s}, unsentTool{&spawnTool{s}, s},
+		&waitTool{s}, &approveTool{s}, unsentTool{&poolTool{s}, s}}
 }
 
 // refuseService is the answer a service agent (the mailman) gets from every swarm
@@ -102,7 +103,7 @@ func (t *taskTool) Spec() core.ToolSpec {
 		Name:         "task",
 		NoTreeWrites: true, // tree mutations use the verified integration bridge
 		Description: "Shared task board. Manager: deliver (text=commit message) verifies direct changes and commits the integrated result to the original checkout without creating a task; then use bash for push and PR commands. Manager: revise (id, text=reason, optional title, description, role, kind, files, deps) repairs a task in place (role= moves a top-level task to another role); resolve (id, text=explanation) completes work no longer needed. Pool leaders: create with parent=id (inherits the parent's kind unless specified) and accept their child tasks. Actions: list, get (id: full task and agreement), claim (id), update (id, text = one-line status), " +
-			"done (id, text = one-line result, optional agreement = full shared contract, at most 16000 bytes/400 lines, optional assumptions = choices you made that the task left open, one line each, at most 8, optional commit = the message of the commit that records your change, in the project's commit convention (Conventional Commits, type(scope): summary, when it has none), saying what the code now does and why, never task ids or agent names: the harness verifies the work before review). Accepted agreements are inherited by dependent tasks and preserved through compaction. " +
+			"done (id, text = one-line result, optional agreement = full shared contract, any length (dependent tasks get its opening and read the rest with task get), optional assumptions = choices you made that the task left open, one line each, at most 8, optional commit = the message of the commit that records your change, in the project's commit convention (Conventional Commits, type(scope): summary, when it has none), saying what the code now does and why, never task ids or agent names: the harness verifies the work before review). Accepted agreements are inherited by dependent tasks and preserved through compaction. " +
 			"block (id, text = reason, optional target = the id of the task it waits for), resume (id), " +
 			"handover (id, text = a short summary for your successor: what is done, what is left, what you learned; the harness gives your task, your work and the summary to a fresh worker of your role; the manager may hand over a worker's task). Manager only: create (title, description, role, deps, files = scope, kind = work or plan; a plan's deliverable is an agreement, not code: its owner changes no file while it plans; rigor = plan adds a plan task the work waits for and inherits, rigor = reviewed also a reviewer's check of that plan, for work that is risky or hard to undo), " +
 			"update files (amend the scope), accept (id: the task is done only after the harness's check), reject (id, text = feedback the worker can act on alone: what is wrong and how you saw it, what to keep, what will show it is fixed) or reopen, " +
@@ -789,11 +790,11 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 				p.Inspected = nil
 				return nil
 			})
-			s.wakePool(task.ID, "The manager rejected the combined result: "+cleanBlockLines(in.Text, maxDescRunes, 0)+"\nRepair existing children and reconcile again.")
+			s.wakePool(task.ID, "The manager rejected the combined result: "+cleanBlockLines(in.Text, descInlineRunes, 0)+"\nRepair existing children and reconcile again.")
 		}
 		// The whole feedback, lines kept: the task's line holds only its first words, and a brief cut short loses what to keep and
 		// how the fix is proved, which is what spares the worker a second round.
-		s.notify(owner.id, "request", fmt.Sprintf("%s was sent back by the manager. Fix it, then call task done again. The feedback:\n%s", in.ID, cleanBlockLines(in.Text, maxDescRunes, 0)))
+		s.notify(owner.id, "request", fmt.Sprintf("%s was sent back by the manager. Fix it, then call task done again. The feedback:\n%s", in.ID, cleanBlockLines(in.Text, descInlineRunes, 0)))
 		return text("%s sent back to %s with feedback", in.ID, task.Owner)
 	default: // fail
 		if s.cfg.PersistentPools {

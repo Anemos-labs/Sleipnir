@@ -176,6 +176,14 @@ func TestOutOfScopeSubmissionIsRejectedBackToTheWorker(t *testing.T) {
 	r := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 4}, verify: true}, sc.fn())
 	r.sw.StartManager()
 	r.mustSpawn("backend", "edit a", "a.txt")
+	// stray.txt is claimed by another task in flight: a file nobody claims would merge (TestUnclaimedFileOutsideTheScopeMerges)
+	other, err := r.sw.Board.CreateTask("mgr", TaskSpec{Title: "stray owner", Files: []string{"stray.txt"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.Assign("mgr", "ts-9", other.ID); err != nil {
+		t.Fatal(err)
+	}
 	r.waitStatus("T1", StatusReview)
 	if !r.prov.sawEver("outside its scope: stray.txt (added)") {
 		t.Fatal("the worker was not told which file left its scope, and that it added it")
@@ -195,6 +203,31 @@ func TestOutOfScopeSubmissionIsRejectedBackToTheWorker(t *testing.T) {
 	}
 	if got := readText(t, r.repo+"/a.txt"); got != "alpha edited\n" {
 		t.Fatalf("a.txt = %q", got)
+	}
+}
+
+// A file outside the task's scope that no other task in flight claims (a shared test helper, a .gitignore) is written and
+// merged with the task: each writer has a tree of its own, so it can collide with nobody's work but textually.
+func TestUnclaimedFileOutsideTheScopeMerges(t *testing.T) {
+	sc := script{
+		"be-1": {
+			act(writeCall("a.txt", "alpha edited\n"), writeCall("shared_test_helper.txt", "helper\n")),
+			act(doneCall("T1", "edited a and the shared helper")),
+		},
+	}
+	r := newIsoRig(t, isoOpts{cfg: Config{MaxWriters: 4}, verify: true}, sc.fn())
+	r.sw.StartManager()
+	r.mustSpawn("backend", "edit a", "a.txt")
+	r.waitStatus("T1", StatusReview)
+	if st := r.q.Status(); st.Rejected != 0 || st.Merged != 1 {
+		t.Fatalf("queue: %+v", st)
+	}
+	if res := r.accept("T1"); res.IsError {
+		t.Fatal(res.Text)
+	}
+	r.finish()
+	if got := readText(t, r.repo+"/shared_test_helper.txt"); got != "helper\n" {
+		t.Fatalf("the unclaimed file did not land: %q", got)
 	}
 }
 
@@ -844,10 +877,18 @@ func TestIsolatedLeasesNeverBlockButConfineAndAdvise(t *testing.T) {
 	if len(al) != 1 || al[0].Kind != "lease" || al[0].Text != "be-1, be-2 edit the same file in separate trees; expect a merge conflict" {
 		t.Fatalf("alerts: %+v", al)
 	}
-	// Scope is judged on the path inside the writer's own tree.
+	// Scope is judged on the path inside the writer's own tree. A file outside it that no other task in flight claims is
+	// free to change: the trees are separate and the merge queue settles a textual overlap.
+	if err := l.BeforeWrite("be-1", "/trees/be-1/docs/a.md"); err != nil {
+		t.Fatalf("an unclaimed file outside the scope was refused: %v", err)
+	}
+	docs, _ := b.CreateTask("mgr", TaskSpec{Title: "docs", Files: []string{"docs/**"}})
+	if err := b.Assign("mgr", "be-2", docs.ID); err != nil {
+		t.Fatal(err)
+	}
 	err := l.BeforeWrite("be-1", "/trees/be-1/docs/a.md")
 	if err == nil || !strings.Contains(err.Error(), "outside the scope of your task") {
-		t.Fatalf("scope: %v", err)
+		t.Fatalf("a file another task in flight claims: %v", err)
 	}
 	for _, p := range []string{"/trees/be-2/src/x.go", "/repo/src/x.go", "/trees/be-1/../be-2/src/x.go"} {
 		err := l.BeforeWrite("be-1", p)

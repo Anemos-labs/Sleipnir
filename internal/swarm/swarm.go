@@ -43,12 +43,14 @@ type Config struct {
 	// wakeups bypass admission but count in later checks. Read-only roles and
 	// isolated worktrees are exempt from this limit.
 	MaxWriters int
-	// RPM/MaxConcurrent feed the shared request governor.
-	RPM           int
-	MaxConcurrent int
-	Hot           HotConfig
-	Router        RouterConfig
-	LeaseTTL      time.Duration
+	// RPM/MaxConcurrent feed the shared request governor. ModelConcurrency caps the requests in flight to one model
+	// (its key is agent.LimiterKey: "provider/model"); a model it does not name has no cap of its own.
+	RPM              int
+	MaxConcurrent    int
+	ModelConcurrency map[string]int
+	Hot              HotConfig
+	Router           RouterConfig
+	LeaseTTL         time.Duration
 	// AffinityShards spreads agents over provider engines (see agent.Config).
 	AffinityShards int
 	// BudgetUSD caps total spend across the swarm, retired agents included (0 =
@@ -363,7 +365,9 @@ type Swarm struct {
 	// agents to close first); the totals count them as members.
 	retiring map[*member]struct{}
 
-	verifySem               chan struct{}
+	verifySem chan struct{}
+	// unsent keeps each agent's refused deliveries for its live view (unsent.go).
+	unsent                  unsentBook
 	verifyRan, verifyFailed atomic.Int32 // runs of the verify command, and those that failed (VerifyRuns)
 	hseq                    atomic.Int64
 	budgetOnce              atomic.Bool
@@ -514,6 +518,7 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 		roleLay: map[string]*kv.Layer{}, hidden: map[string]bool{}, lastSeen: map[string]*Snapshot{}, shared: deps.Shared,
 		verifySem: make(chan struct{}, cfg.MaxVerifies), merged: map[string]mergeRec{}, bounces: map[string]int{}, treeAgents: map[string]bool{}}
 	s.stalls.init()
+	s.unsent.now = deps.Now
 	s.handoffs = map[string]handoffRec{}
 	s.poolReserved = map[string]string{}
 	s.Board = NewBoard(deps.Events)
@@ -535,7 +540,11 @@ func New(cfg Config, deps Deps, roles Roles) *Swarm {
 		// One shared tree: a worker's shell is held to its task's scope as its file tools are (Leases.ShellWriteCheck).
 		c.SetWriteCheck(s.Leases.ShellWriteCheck)
 	}
-	s.Gov = NewGovernor(GovernorConfig{RPM: cfg.RPM, MaxConcurrent: cfg.MaxConcurrent, Admit: s.budgetErr,
+	var laneConc func(string) int
+	if len(cfg.ModelConcurrency) > 0 {
+		laneConc = func(key string) int { return cfg.ModelConcurrency[key] }
+	}
+	s.Gov = NewGovernor(GovernorConfig{RPM: cfg.RPM, MaxConcurrent: cfg.MaxConcurrent, LaneConcurrent: laneConc, Admit: s.budgetErr,
 		OnEvent: func(action string, data map[string]any) {
 			data["action"] = action
 			s.emit(events.TypeGovernor, data)
@@ -965,7 +974,11 @@ func taskCard(t Task, agentID string, pin bool) string {
 		var sb strings.Builder
 		fmt.Fprintf(&sb, "You are %s. Your assignment is task %s: %s\n", agentID, t.ID, title)
 		if d := cleanDesc(t.Desc); d != "" {
-			sb.WriteString(d + "\n")
+			head, rest := inlineHead(d, descInlineRunes)
+			sb.WriteString(head + "\n")
+			if rest > 0 {
+				fmt.Fprintf(&sb, "(the description goes on for %d more characters: task get %s shows all of it)\n", rest, t.ID)
+			}
 		}
 		if len(t.Files) > 0 {
 			files := make([]string, 0, len(t.Files))

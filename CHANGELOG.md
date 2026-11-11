@@ -7,6 +7,46 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The plan tool no longer refuses a step over 160 characters: it shortens it at
+  a word and keeps it. A manager's plan may hold up to 80 steps (an agent's own
+  plan stays at 24), so a large team's manager no longer spends its first calls
+  cutting its plan down.
+- Large teams scale. Four limits held every team at about the throughput of
+  fifteen workers, whatever its size:
+  - The worktree merge queue verified each submission on its own, so a team
+    landed at most one task per verification. Submissions that wait are now
+    merged together and verified once (`swarm.merge_batch`, default 8); a batch
+    that fails is split in halves and retried, so a bad submission is still
+    sent back alone and the others land.
+  - One request governor paced every model: a 429 from one endpoint paused
+    and slowed the whole team. Throttling is now kept per model, a throttled
+    model does not hold up requests to the others, `swarm.model_concurrency`
+    caps one model's requests, and the in-flight cap defaults to the team's
+    size plus four (at least 24) instead of 24.
+  - In a worktree run, a file outside a task's scope that no other task in
+    flight claims (a shared test helper, a `.gitignore`) is written and merged
+    with the task instead of being refused; a file that work in flight claims
+    is refused as before.
+  - A refused mail, task, note, spawn or pool proposal stays at the top of the
+    agent's live view as `NOT SENT` until it is retried successfully. Mail, task
+    descriptions and agreements are no longer refused for their length (1 MiB
+    is a ceiling for memory only), and the manager is not held to the
+    per-sender mail rate. A prompt carries the opening of a long description
+    (16,000 characters) or agreement (24,000 bytes each, 48,000 in all) and
+    says that `task get` shows the rest: an architect's 22,000-byte contract
+    was refused twice at 16,000 while fifteen tasks waited on it. `swarm.max_verifies` sets
+    the workers' concurrent verify gates.
+  - A pool member's live view says where each of its pools stands and the
+    one step that is the member's own now.
+  - A native executable or compiled object a build wrote into a worker's tree
+    (ELF, Mach-O, PE, a Java class) is left out of its commit and stays in the
+    tree, untracked.
+  - The manager's live view names the unfinished task that holds most of the
+    waiting work while members sit idle, and how to loosen it.
+  The task tool's description changes (agreements of any length), so the tool
+  prefix is cached anew once; the live view changes only when it has one of
+  the new lines.
+
 - A built-in skill's own script can run in a run with nobody to ask. Built-in
   skills are unpacked under the state directory, whose write rule asks in every
   mode, and `node <skill>/vulns.mjs` counted as a possible write to that
