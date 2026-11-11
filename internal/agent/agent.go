@@ -1109,9 +1109,10 @@ func (a *Agent) outputLimit() int {
 	return a.cfg.Params.MaxTokens
 }
 
-// requestOutputLimit is outputLimit for the next main request: a raised limit is lowered to the room the latest prompt leaves in a
-// known window (less a twentieth of it, for what the next prompt adds), so that the prompt and the limit still fit in it; never
-// under Params.MaxTokens.
+// requestOutputLimit is outputLimit for the next main request: a raised limit is lowered to the room the prompt about to be sent
+// leaves in a known window (the larger of the provider's count of the latest prompt and the estimate of this one, less a
+// twentieth of the window for the estimate's error), so that the prompt and the limit still fit in it; never under
+// Params.MaxTokens.
 func (a *Agent) requestOutputLimit() int {
 	base, limit := a.cfg.Params.MaxTokens, a.outputLimit()
 	w := a.cfg.Model.ContextTokens
@@ -1119,7 +1120,7 @@ func (a *Agent) requestOutputLimit() int {
 		return limit
 	}
 	a.mu.Lock()
-	in := a.promptTokens
+	in := max(a.promptTokens, a.plannerStateLocked().PromptTokens)
 	a.mu.Unlock()
 	return max(base, min(limit, w-in-w/20))
 }

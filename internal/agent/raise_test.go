@@ -76,15 +76,10 @@ func TestARaisedLimitLeavesThePromptItsRoom(t *testing.T) {
 	m.ContextTokens = 4000
 	var mu sync.Mutex
 	var limits []int
-	in := 0 // the prompt of the first request, as the second is sent
-	var r *rig
-	r = newRig(t, rigOpts{noCompact: true, ceiling: 1 << 20, model: &m}, func(c *mock.Call) mock.Reply {
+	r := newRig(t, rigOpts{noCompact: true, ceiling: 1 << 20, model: &m}, func(c *mock.Call) mock.Reply {
 		mu.Lock()
 		defer mu.Unlock()
 		limits = append(limits, maxTokensOf(t, c))
-		if len(limits) == 2 {
-			in = r.agent.PromptTokens()
-		}
 		if len(limits) == 1 {
 			return mock.Reply{Text: "cut", Finish: "length"}
 		}
@@ -93,7 +88,36 @@ func TestARaisedLimitLeavesThePromptItsRoom(t *testing.T) {
 	if _, err := r.agent.Run(context.Background(), "solve it"); err != nil {
 		t.Fatal(err)
 	}
-	if want := max(512, 4000-in-200); in == 0 || len(limits) != 2 || limits[1] != want || limits[1] >= 1<<20 {
-		t.Fatalf("limits asked %v (prompt %d tokens), want the second to be %d: the room the window leaves", limits, in, want)
+	last := r.agent.PromptTokens() // the provider's count of the second request
+	if len(limits) != 2 || limits[1] <= 512 || limits[1]+last > m.ContextTokens {
+		t.Fatalf("limits asked %v with a second prompt of %d tokens: want a raised limit that still fits the %d-token window", limits, last, m.ContextTokens)
+	}
+}
+
+// The room is that of the prompt about to be sent, not the last one: a large tool result between the two takes its share.
+func TestARaisedLimitLeavesRoomForWhatTheLastToolAdded(t *testing.T) {
+	m, _ := cost.Defaults().Lookup("mock-1")
+	m.Cache = cost.OpenAICacheModel()
+	m.ContextTokens = 6000
+	var mu sync.Mutex
+	var limits []int
+	r := newRig(t, rigOpts{noCompact: true, ceiling: 1 << 20, model: &m}, func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		defer mu.Unlock()
+		limits = append(limits, maxTokensOf(t, c))
+		switch len(limits) {
+		case 1:
+			return mock.Reply{Text: "cut", Finish: "length"}
+		case 2:
+			return mock.Reply{Text: "building", ToolCalls: []mock.ToolCall{{ID: "call_1", Name: "big", Args: `{}`}}}
+		}
+		return mock.Reply{Text: "done."}
+	})
+	if _, err := r.agent.Run(context.Background(), "solve it"); err != nil {
+		t.Fatal(err)
+	}
+	last := r.agent.PromptTokens() // the provider's count of the request sent after the tool result
+	if len(limits) != 3 || limits[2]+last > m.ContextTokens {
+		t.Fatalf("limits asked %v with a last prompt of %d tokens: the third request does not fit its %d-token window", limits, last, m.ContextTokens)
 	}
 }
