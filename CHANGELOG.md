@@ -7,6 +7,14 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- When the automatic restarts of a pool member that holds no task of its own
+  run out, the manager's line names the pool that waits on it, with the mail
+  that wakes the member and the `pool action=excuse` that lets the pool go on
+  without it.
+- The web Memory page's notes `PUT` keeps a note whole when the page sends it
+  back as shown (cut when long, control and format characters removed): a
+  save that removes or edits another note no longer writes the shown form
+  over a note written by hand.
 - A tool result over the 60,000-character cap of one result is saved whole
   behind a recall handle when its tool did not save it, and the cut result
   names the handle: what the cut leaves out (the middle of a long memory list)

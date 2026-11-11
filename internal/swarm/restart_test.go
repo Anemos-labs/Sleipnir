@@ -685,3 +685,22 @@ func TestAPoolChildTheParentWaitsOnStaysItsMembersAfterAnOutage(t *testing.T) {
 		t.Fatalf("%s = %s/%s after an outage, want doing and be-2's", child.ID, c.Status, c.Owner)
 	}
 }
+
+// A pool member without a task of its own whose restarts run out is named to the manager as a member its pool waits on, with the
+// mail that wakes it and the excuse that lets the pool go on without it: a generic "check the task list" line showed nothing.
+func TestAPoolMemberWithoutATaskWhoseRestartsRunOutIsNamedToTheManager(t *testing.T) {
+	clock := newFakeClock()
+	r, parent := poolRestartRig(t, clock, func(c *rvCall) bool { return c.Agent == "be-3" })
+	member := "be-3"
+	for n := 0; n < maxAutoRestarts; n++ {
+		rvWait(t, "a failed run with its restart scheduled", func() bool { return r.idle(member) && scheduledOf(r, member) })
+		clock.Advance(restartBackoff << n)
+		r.sw.superviseOnce(clock.Now())
+		rvWait(t, "the restarted run to fail", func() bool { _, f := ends(r, member); return f == n+2 })
+	}
+	want := "It is a member of pool " + parent.ID + ", which waits on it"
+	rvWait(t, "the manager's line", func() bool { return mailSent(r, want) == 1 })
+	if mailSent(r, "pool action=excuse id="+parent.ID+" member="+member) != 1 || mailSent(r, "does not restart it again") != 1 {
+		t.Fatal("the line does not give the excuse or say the restarts ran out")
+	}
+}

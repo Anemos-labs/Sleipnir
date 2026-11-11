@@ -272,3 +272,22 @@ func TestAnInstructionFileOfEscapedTextUpToTheLimitIsSaved(t *testing.T) {
 		t.Fatalf("SLEIPNIR.md was not saved whole: %d of %d bytes (%v)", len(b), len(text), err)
 	}
 }
+
+// A note written by hand that the page shows cut or cleaned is saved again whole when the page sends it back unchanged: removing
+// another note does not write the shown form over it.
+func TestMemoryNotesTheyShowCutAreKeptWholeOnASave(t *testing.T) {
+	e := memEnv(t)
+	long := "N0 " + strings.Repeat("😀", memtool.MaxNoteRunes+2000)
+	fmtd := "N1 a​note with a format character"
+	write(t, filepath.Join(e.home, ".sleipnir", "MEMORY.md"), "Notes the agent saved with its memory tool.\n- "+long+"\n- "+fmtd+"\n- N2 a short note\n")
+	var v wire.MemoryView
+	e.ok(http.MethodGet, "/api/sessions/t1/memory", nil, nil, &v)
+	if len(v.Notes.Notes) != 3 || v.Notes.Notes[0] == long || v.Notes.Notes[1] == fmtd {
+		t.Fatalf("the view does not show the long and the formatted notes cleaned: %d notes", len(v.Notes.Notes))
+	}
+	e.ok(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: v.Notes.Notes[:2], Version: v.Notes.Version}, nil, &v)
+	b, err := os.ReadFile(filepath.Join(e.home, ".sleipnir", "MEMORY.md"))
+	if err != nil || !strings.Contains(string(b), long) || !strings.Contains(string(b), fmtd) || strings.Contains(string(b), "N2") {
+		t.Fatalf("the save did not keep the notes it left whole (%v):\n%.300s", err, b)
+	}
+}
