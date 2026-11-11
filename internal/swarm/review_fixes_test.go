@@ -204,7 +204,7 @@ func TestUnsentKeepsADeliverAndSkipsACallWithoutAnAgent(t *testing.T) {
 }
 
 // {dirs} covers what the tree changed outside the task's scope, but not a lockfile a build rewrote; when the changes cannot
-// be listed it covers the whole tree.
+// be listed it covers the whole tree, at the merge submission and at the worker gate alike.
 func TestVerifyFilesAddsOutsideChangesButNotLockfiles(t *testing.T) {
 	r := newIsoRig(t, isoOpts{dirsVerify: true, files: map[string]string{"pkg/a.txt": "a\n", "lib/b.txt": "b\n"}}, script{}.fn())
 	ctx := context.Background()
@@ -226,7 +226,14 @@ func TestVerifyFilesAddsOutsideChangesButNotLockfiles(t *testing.T) {
 	if err := tree.Remove(ctx, true); err != nil {
 		t.Fatal(err)
 	}
-	if got := r.sw.verifyFiles(ctx, m, task); got != nil {
-		t.Fatalf("verifyFiles of a tree whose changes cannot be listed = %q, want nil (the whole tree)", got)
+	files := r.sw.verifyFiles(ctx, m, task)
+	if cmd := ExpandVerify(r.sw.cfg.VerifyCmd, tree.Path, files); cmd != "check-dirs ./..." {
+		t.Fatalf("the merge submission's command for a tree whose changes cannot be listed: %q", cmd)
+	}
+	// the worker gate does not narrow it to what git status lists
+	var ran string
+	r.sw.cfg.Verify = func(_ context.Context, _, cmd string) (string, int, error) { ran = cmd; return "ok", 0, nil }
+	if vr := r.sw.runVerify(ctx, r.repo, files); !vr.ok || ran != "check-dirs ./..." {
+		t.Fatalf("the worker gate ran %q (%+v)", ran, vr)
 	}
 }
