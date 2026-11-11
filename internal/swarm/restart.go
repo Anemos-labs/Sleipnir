@@ -109,11 +109,11 @@ func (s *Swarm) planRestart(m *member, rs *runState, tasks map[string]uint64, ki
 	if !ok || rs.stopped || s.alive() != nil || s.startErr() != nil || s.wk.heldNow() {
 		return nil, 0
 	}
-	if openPoolOf(s.Board.Snapshot(), m.id) == "" && s.outageElsewhere(m, err) {
+	if !poolWork(s.Board.Snapshot(), m.id, tasks) && s.outageElsewhere(m, err) {
 		// Its model's endpoint is failing and a member of its role runs on another model: the work goes back to the manager, whose
 		// assignments go to that member (outageSteer), rather than to a restart on the model that just failed. A team waited half
-		// an hour on a worker the harness restarted again and again on a model the gateway kept cutting off. A member of an open
-		// pool is not handed back: its pool waits on it, so it is restarted in the pool below, and once its restarts run out the
+		// an hour on a worker the harness restarted again and again on a model the gateway kept cutting off. Pool work (poolWork) is
+		// not handed back: its pool waits on it, so it is restarted in the pool below, and once its restarts run out the
 		// manager is asked to resume or excuse it.
 		rs.handBack = true
 		return nil, 0
@@ -158,6 +158,20 @@ func (s *Swarm) planRestart(m *member, rs *runState, tasks map[string]uint64, ki
 		return nil, n
 	}
 	return &pendingRestart{due: s.deps.Now().Add(restartBackoff << n), n: n + 1, tasks: keep, pool: pool, why: why, cause: cause}, 0
+}
+
+// poolWork reports whether agent's run was on pool work: it is a member of an open pool, or a task it held is a pool task or a
+// pool's child (whose parent may be blocked on it, so openPoolOf does not see the pool).
+func poolWork(snap *Snapshot, agent string, tasks map[string]uint64) bool {
+	if openPoolOf(snap, agent) != "" {
+		return true
+	}
+	for id := range tasks {
+		if t, ok := snap.Task(id); ok && (t.Pool != nil || t.Parent != "") {
+			return true
+		}
+	}
+	return false
 }
 
 // openPoolOf is the open pool (a pool task in doing) that agent is a member of, or "".
