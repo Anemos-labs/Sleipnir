@@ -110,7 +110,8 @@ func (s *service) handleMemoryNotes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	prev, _ := memtool.ReadNotes(p) // what the file breaks already does not stop an edit that leaves it no worse
-	notes, err := memtool.CheckEdit(prev, body.Notes)
+	exact, kept := exactNotes(prev, body.Notes)
+	notes, err := memtool.CheckEditKeeping(prev, exact, kept)
 	if err != nil {
 		reply(w, nil, fail(http.StatusBadRequest, "bad_request", err.Error()))
 		return
@@ -220,6 +221,30 @@ func projectNotesPath(tc *tabCtx) (string, string) {
 // lessonsPath is the lesson memory's file of home, as the session opens it.
 func lessonsPath(home string) string { return filepath.Join(session.StateRoot(home), "lessons.json") }
 
+// shownNote is a note as the Memory page shows it (and so sends it back).
+func shownNote(n string) string { return provider.SanitizeText(n, memtool.MaxNoteRunes*4) }
+
+// exactNotes puts back, in a list the page sent, the exact text of each note it left as shown, and marks it kept: the page has a
+// note's display form (shownNote: control and format characters out, white space collapsed, cut when long), and a save that
+// changed another note would otherwise write that form over the note's own text. Each of prev's notes is put back at most once,
+// in order, so notes that look the same each keep their own text and a list of copies of one shown form costs no more than prev.
+func exactNotes(prev, sent []string) ([]string, []bool) {
+	byShown := map[string][]int{}
+	for i, n := range prev {
+		d := shownNote(n)
+		byShown[d] = append(byShown[d], i)
+	}
+	out, kept := make([]string, len(sent)), make([]bool, len(sent))
+	for i, n := range sent {
+		out[i] = n
+		if q := byShown[n]; len(q) > 0 {
+			out[i], kept[i] = prev[q[0]], true
+			byShown[n] = q[1:]
+		}
+	}
+	return out, kept
+}
+
 // memoryView reads everything the Memory page shows for a tab.
 func (s *service) memoryView(tc *tabCtx) wire.MemoryView {
 	home := s.homeOf(tc)
@@ -234,7 +259,7 @@ func (s *service) memoryView(tc *tabCtx) wire.MemoryView {
 	v.Notes = wire.MemoryNotes{Path: s.display(np), Notes: []string{}, On: on(plugin.MemoryTool), Max: memtool.MaxNotes, MaxLen: memtool.MaxNoteRunes}
 	v.Notes.Version, _ = fileVersion(raw, rerr)
 	for _, n := range notes {
-		v.Notes.Notes = append(v.Notes.Notes, provider.SanitizeText(n, memtool.MaxNoteRunes*4))
+		v.Notes.Notes = append(v.Notes.Notes, shownNote(n))
 	}
 
 	if tc.root != "" {
@@ -242,7 +267,7 @@ func (s *service) memoryView(tc *tabCtx) wire.MemoryView {
 		pn := &wire.MemoryNotes{Path: filepath.ToSlash(memory.ProjectNotes), Notes: []string{}, On: on(plugin.MemoryTool), Max: memtool.MaxNotes, MaxLen: memtool.MaxNoteRunes}
 		pn.Version, _ = fileVersion(raw, rerr)
 		for _, n := range notes {
-			pn.Notes = append(pn.Notes, provider.SanitizeText(n, memtool.MaxNoteRunes*4))
+			pn.Notes = append(pn.Notes, shownNote(n))
 		}
 		v.Project = pn
 		v.Lore = s.memoryLore(home, tc.root, on(plugin.MemoryTool))

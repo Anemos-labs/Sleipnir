@@ -272,3 +272,95 @@ func TestAnInstructionFileOfEscapedTextUpToTheLimitIsSaved(t *testing.T) {
 		t.Fatalf("SLEIPNIR.md was not saved whole: %d of %d bytes (%v)", len(b), len(text), err)
 	}
 }
+
+// A note written by hand that the page shows cut or cleaned is saved again whole when the page sends it back unchanged: removing
+// another note does not write the shown form over it.
+func TestMemoryNotesTheyShowCutAreKeptWholeOnASave(t *testing.T) {
+	e := memEnv(t)
+	long := "N0 " + strings.Repeat("😀", memtool.MaxNoteRunes+2000)
+	fmtd := "N1 a​note with a format character"
+	write(t, filepath.Join(e.home, ".sleipnir", "MEMORY.md"), "Notes the agent saved with its memory tool.\n- "+long+"\n- "+fmtd+"\n- N2 a short note\n")
+	var v wire.MemoryView
+	e.ok(http.MethodGet, "/api/sessions/t1/memory", nil, nil, &v)
+	if len(v.Notes.Notes) != 3 || v.Notes.Notes[0] == long || v.Notes.Notes[1] == fmtd {
+		t.Fatalf("the view does not show the long and the formatted notes cleaned: %d notes", len(v.Notes.Notes))
+	}
+	e.ok(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: v.Notes.Notes[:2], Version: v.Notes.Version}, nil, &v)
+	b, err := os.ReadFile(filepath.Join(e.home, ".sleipnir", "MEMORY.md"))
+	if err != nil || !strings.Contains(string(b), long) || !strings.Contains(string(b), fmtd) || strings.Contains(string(b), "N2") {
+		t.Fatalf("the save did not keep the notes it left whole (%v):\n%.300s", err, b)
+	}
+}
+
+// Notes left as shown keep their exact bytes (an escape sequence, repeated spaces), notes that look the same keep their own
+// text, and a list of many copies of one shown form puts the note behind it back once.
+func TestMemoryNotesLeftAsShownKeepTheirBytes(t *testing.T) {
+	e := memEnv(t)
+	esc := "deploy \x1b[31mproduction  now"
+	zw, plain := "a​b", "ab"
+	write(t, filepath.Join(e.home, ".sleipnir", "MEMORY.md"), "Notes the agent saved with its memory tool.\n- "+esc+"\n- "+zw+"\n- "+plain+"\n- N3 to remove\n")
+	var v wire.MemoryView
+	e.ok(http.MethodGet, "/api/sessions/t1/memory", nil, nil, &v)
+	if len(v.Notes.Notes) != 4 {
+		t.Fatalf("read %d notes", len(v.Notes.Notes))
+	}
+	sent := append([]string{}, v.Notes.Notes[:3]...)
+	for range 1000 {
+		sent = append(sent, v.Notes.Notes[1]) // copies of the shown "ab"
+	}
+	e.ok(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: sent, Version: v.Notes.Version}, nil, &v)
+	b, err := os.ReadFile(filepath.Join(e.home, ".sleipnir", "MEMORY.md"))
+	got := string(b)
+	if err != nil || !strings.Contains(got, "- "+esc+"\n") || !strings.Contains(got, "- "+zw+"\n") || !strings.Contains(got, "- "+plain+"\n") || strings.Contains(got, "N3") {
+		t.Fatalf("the save did not keep each note's own text (%v):\n%q", err, got)
+	}
+	if n := strings.Count(got, "\n- "); n != 3 {
+		t.Fatalf("%d notes saved, want 3:\n%q", n, got)
+	}
+}
+
+// Stored notes that differ only in case or spacing are all kept by a save that leaves them as they are, and a new note that
+// repeats one of them is not added.
+func TestMemoryNotesThatDifferOnlyInCaseAreAllKept(t *testing.T) {
+	e := memEnv(t)
+	write(t, filepath.Join(e.home, ".sleipnir", "MEMORY.md"), "Notes the agent saved with its memory tool.\n- Deploy now\n- deploy now\n- N2 to remove\n")
+	var v wire.MemoryView
+	e.ok(http.MethodGet, "/api/sessions/t1/memory", nil, nil, &v)
+	if len(v.Notes.Notes) != 3 {
+		t.Fatalf("read %d notes", len(v.Notes.Notes))
+	}
+	sent := append(append([]string{}, v.Notes.Notes[:2]...), "DEPLOY NOW")
+	e.ok(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: sent, Version: v.Notes.Version}, nil, &v)
+	b, err := os.ReadFile(filepath.Join(e.home, ".sleipnir", "MEMORY.md"))
+	got := string(b)
+	if err != nil || !strings.Contains(got, "- Deploy now\n") || !strings.Contains(got, "- deploy now\n") || strings.Contains(got, "DEPLOY") || strings.Contains(got, "N2") {
+		t.Fatalf("the save did not keep both stored notes and only them (%v):\n%q", err, got)
+	}
+}
+
+// Many copies of a large note's shown form restore the note behind it once: the other copies stay the short shown text, so a
+// small request cannot make the save clean and check the large note again for each copy.
+func TestALargeNoteIsRestoredOnceForManyCopiesOfItsShownForm(t *testing.T) {
+	big := "a" + strings.Repeat("​", 80000)
+	shown := shownNote(big)
+	if shown == big || len(shown) > 64 {
+		t.Fatalf("the large note is not shown short: %d bytes", len(shown))
+	}
+	sent := make([]string, 30000)
+	for i := range sent {
+		sent[i] = shown
+	}
+	out, kept := exactNotes([]string{big}, sent)
+	restored, keptN := 0, 0
+	for i := range out {
+		if out[i] == big {
+			restored++
+		}
+		if kept[i] {
+			keptN++
+		}
+	}
+	if restored != 1 || keptN != 1 || !kept[0] {
+		t.Fatalf("the large note was restored %d times (%d kept), want once, for the first copy", restored, keptN)
+	}
+}
