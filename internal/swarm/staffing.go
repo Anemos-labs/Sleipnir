@@ -728,7 +728,7 @@ func (s *Swarm) staffingLines(snap *Snapshot) []string {
 			}
 		}
 	}
-	if line := gateLine(snap, free); line != "" && len(out) < maxStaffingLines+1 {
+	if line := gateLine(snap, free); line != "" { // one line at most, and the one that says why the others wait
 		out = append(out, line)
 	}
 	if roleLines+len(q) < maxStaffingLines && openTask(snap) {

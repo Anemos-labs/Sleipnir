@@ -157,3 +157,19 @@ func inlineHead(s string, max int) (head string, rest int) {
 	}
 	return strings.TrimRight(string(r[:cut]), " \n"), len(r) - cut
 }
+
+// inlineHeadBytes is inlineHead with limit in bytes, cut on a rune boundary: the head of s within limit bytes, cut at the last line
+// break in its second half when there is one, and how many runes of s are left out. With limit below one rune the head is empty.
+func inlineHeadBytes(s string, limit int) (head string, rest int) {
+	if len(s) <= limit {
+		return s, 0
+	}
+	cut := max(0, limit)
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	if i := strings.LastIndexByte(s[:cut], '\n'); i >= cut/2 && i > 0 {
+		cut = i
+	}
+	return strings.TrimRight(s[:cut], " \n"), utf8.RuneCountInString(s[cut:])
+}

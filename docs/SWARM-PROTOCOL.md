@@ -652,6 +652,11 @@ ephemeral: delivered into the recipient's next turn, cached for a few turns, com
   mail had arrived. So each refusal is also kept at the top of the agent's live view as `NOT SENT: ...` (what was refused, how long
   ago, why) until the agent does the same thing successfully (a mail to the same recipient, a create, a done of the same task) or
   twenty minutes pass; at most four are shown.
+* **A pool member's next step is in its view.** Each member's live view has one line per open pool it is in: the phase, the
+  revision, who has voted, and the one action that is the reader's own now (the leader proposes, members wait for the proposal
+  or agree to the revision they read, the leader executes and assigns children, a member works on its child, every member
+  inspects and confirms). Without it, members worked out their place in the pool again at every turn and called actions the
+  pool did not have.
 * **Bounded inbox.** An agent's inbox holds at most 12 waiting messages; further mail is coalesced per sender and kind
   into one digest that goes in when the inbox has drained, so a manager between turns cannot be buried.
 * **Optional mailman mode** (`swarm.mailman`, `--mailman`, default off): worker mail takes a detour that pays off when many

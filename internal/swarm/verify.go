@@ -120,7 +120,31 @@ func (s *Swarm) gateFor(ctx context.Context, t Task, m *member, dir string) (ver
 		return verifyResult{infra: true, err: err}, dir
 	}
 	defer release()
-	return s.verifyFor(ctx, t, at, t.Files), at
+	files := t.Files
+	if at == dir {
+		files = s.verifyFiles(ctx, m, t)
+	}
+	return s.verifyFor(ctx, t, at, files), at
+}
+
+// verifyFiles is what {dirs} covers for task t in member m's own tree: the task's scope and, in an isolated run, the files
+// the tree changed outside it (a file no task claims may be written there, see leases.go), so a changed package is
+// checked. Without a scope, or when the tree's changes cannot be listed, it is the scope as it is.
+func (s *Swarm) verifyFiles(ctx context.Context, m *member, t Task) []string {
+	if len(t.Files) == 0 || m == nil || m.tree == nil || !strings.Contains(s.cfg.VerifyCmd, verifyDirsToken) {
+		return t.Files
+	}
+	changed, err := m.tree.Changed(ctx)
+	if err != nil {
+		return t.Files
+	}
+	files := t.Files
+	for _, rel := range changed {
+		if !inScope(t.Files, rel) {
+			files = append(slices.Clone(files), rel)
+		}
+	}
+	return files
 }
 
 // EventVerifyRun is the log event of one run of the verification gate: {task, rev,
@@ -487,13 +511,23 @@ func CombineVerify(template string) func(dir string, subs []workspace.Submission
 			return template, true
 		}
 		var files []string
+		wide := ExpandVerify(template, dir, nil)
+		narrow := true // every member's own command is narrower than the whole tree
 		for _, s := range subs {
 			if len(s.VerifyScope) == 0 {
 				return "", false
 			}
+			if s.VerifyCmd == "" || s.VerifyCmd == wide {
+				narrow = false
+			}
 			files = append(files, s.VerifyScope...)
 		}
-		return ExpandVerify(template, dir, files), true
+		cmd := ExpandVerify(template, dir, files)
+		if narrow && cmd == wide {
+			// a union too wide for {dirs} is the whole tree, which can fail on work none of them touched
+			return "", false
+		}
+		return cmd, true
 	}
 }
 

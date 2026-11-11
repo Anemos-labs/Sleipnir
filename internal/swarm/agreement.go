@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/anemos-labs/sleipnir/internal/kv"
 )
 
 const (
@@ -93,7 +95,7 @@ func agreementCard(agreements []TaskAgreement) string {
 			fmt.Fprintf(&out, "Agreement %s: %d characters, not shown here: task get %s shows it\n", id, len([]rune(text)), id)
 			continue
 		}
-		head, rest := inlineHead(text, min(agreementInlineBytes, left))
+		head, rest := inlineHeadBytes(text, min(agreementInlineBytes, left))
 		left -= len(head)
 		fmt.Fprintf(&out, "Agreement %s:\n%s\n", id, head)
 		if rest > 0 {
@@ -165,7 +167,8 @@ func (s *Swarm) claimCheck(agent string, role Role) TaskCheck {
 		if s.isolated() && !role.ReadOnly {
 			card += isolationCard(s.integrationRef())
 		}
-		if len(card) > maxClaimedAssignmentBytes {
+		// measured as the notes keep it (kv.EscapeUntrusted), which compaction holds to its assignment bound
+		if len(kv.EscapeUntrusted(card)) > maxClaimedAssignmentBytes {
 			return fmt.Errorf("assignment context exceeds %d bytes: finish an owned task or assign another worker", maxClaimedAssignmentBytes)
 		}
 		return nil

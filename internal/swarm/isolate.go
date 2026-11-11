@@ -98,6 +98,7 @@ const isolationCardText = "\nIsolation: your working directory is a private git 
 	"Other agents cannot see your uncommitted files and you do not see theirs until they are merged. " +
 	"The harness does the version control: when you call task done it commits your work, merges it into the shared integration branch and runs the verifier on the result; " +
 	"if that conflicts, fails, or leaves your scope, the task comes back to you with the details and your tree is brought up to date. " +
+	"Outside your scope you may also change a file that no other task in progress claims (a shared test helper, a .gitignore), within your parent task's scope if it has one; a file another task claims is refused. " +
 	"Do not run git fetch, pull, merge, rebase, cherry-pick or commit, and do not check out other branches. " +
 	"Work the manager accepted from your teammates is in your tree when you are given your next task. " +
 	"If you need work another agent has not merged yet, block your task and say what you need: when the manager resumes it your tree is brought up to date. " +
@@ -370,8 +371,9 @@ func (s *Swarm) integrate(ctx context.Context, m *member, t Task, message string
 		return s.notCommitted(ctx, err)
 	}
 	scope, enforce, carried := s.treeScope(m.id, t)
+	vfiles := s.verifyFiles(ctx, m, t)
 	res, err := iso.Queue.Submit(ctx, workspace.Submission{
-		Agent: m.id, Tree: m.tree, Task: subject, VerifyCmd: ExpandVerify(s.cfg.VerifyCmd, m.dir, t.Files), VerifyScope: t.Files, Message: message,
+		Agent: m.id, Tree: m.tree, Task: subject, VerifyCmd: ExpandVerify(s.cfg.VerifyCmd, m.dir, vfiles), VerifyScope: vfiles, Message: message,
 		Scope: scope, EnforceScope: enforce, Refuse: s.submitRefusal(m.role, t),
 		AllowOutside: func(rel string) bool { return Unclaimed(s.Board.Snapshot(), m.id, rel) },
 	})

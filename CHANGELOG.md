@@ -32,6 +32,8 @@ they do not indicate whether a change has been released.
     says that `task get` shows the rest: an architect's 22,000-byte contract
     was refused twice at 16,000 while fifteen tasks waited on it. `swarm.max_verifies` sets
     the workers' concurrent verify gates.
+  - A pool member's live view says where each of its pools stands and the
+    one step that is the member's own now.
   - The manager's live view names the unfinished task that holds most of the
     waiting work while members sit idle, and how to loosen it.
   The task tool's description changes (agreements of any length), so the tool

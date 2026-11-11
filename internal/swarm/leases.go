@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
 
 // Leases is the swarm's tools.Guard. It does three jobs before a write happens:
@@ -490,7 +491,7 @@ func (l *Leases) checkScopeAt(agent, path, rel string, relOK bool) error {
 		return fmt.Errorf("%s is inside the scope of your task but outside the scope of its parent %s (%s). Edit only inside both; if the task needs more, ask the manager (mail)",
 			displayPath(path), parent.ID, strings.Join(shownScopes(parent.Files), ", "))
 	}
-	if relOK && l.isolatedNow() && l.unclaimed(agent, rel) {
+	if relOK && l.isolatedNow() && l.unclaimed(agent, rel) && !l.outsideParent(agent, rel) {
 		// A tree of its own: a file no other task in flight claims cannot collide with anyone's work but textually, and
 		// the merge queue settles that. Shared files (a test helper, a .gitignore, a go.mod) are what many tasks need
 		// and none owns; refusing them sent workers to the manager for a scope change, one mail at a time.
@@ -535,6 +536,25 @@ func shownScopes(scopes []string) []string {
 // parentRefuses reports the parent whose scope refuses rel when no task agent is doing allows it: rel lies in a task's scope,
 // and, for a pool child whose parent declares a scope, in the parent's too. A child's scope lies inside its parent's by the paths
 // it names (scopeContains); one that names a directory must not reach below it out of the parent's area.
+// outsideParent reports whether rel lies outside the declared scope of the parent of a task agent is doing, other than a
+// dependency lockfile: the merge queue refuses such a path for that child (submitRefusal), so a write to it is not free even
+// when no task claims it.
+func (l *Leases) outsideParent(agent, rel string) bool {
+	if workspace.IsLockfile(rel) {
+		return false
+	}
+	snap := l.board.Snapshot()
+	for _, t := range snap.Tasks {
+		if t.Pool != nil || t.Owner != agent || t.Status != StatusDoing || t.Parent == "" {
+			continue
+		}
+		if p, ok := snap.Task(t.Parent); ok && len(p.Files) > 0 && !inScope(p.Files, rel) {
+			return true
+		}
+	}
+	return false
+}
+
 func (l *Leases) parentRefuses(agent, rel string) (Task, bool) {
 	snap := l.board.Snapshot()
 	var refusing Task
