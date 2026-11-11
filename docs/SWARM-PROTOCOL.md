@@ -569,11 +569,12 @@ context for new, reused, and claiming workers. They survive private compaction
 and event-log recovery; they do not depend on the live note buffer. Task data
 cannot grant permissions or override user instructions.
 
-Each agreement is limited to 16,000 UTF-8 bytes and 400 lines. Combined inherited
-agreements are limited to 48,000 bytes including labels; excessive submissions
+Each agreement is limited to 40,000 UTF-8 bytes and 1,000 lines (a planning task may not write files, so its agreement must
+have room for a real contract). Combined inherited
+agreements are limited to 120,000 bytes including labels; excessive submissions
 or assignments are rejected with guidance instead of silently truncating a
 contract. Tasks assigned to one worker, including blocked work and worktree
-instructions, must fit 96,000 bytes of assignment text. Compaction preserves
+instructions, must fit 200,000 bytes of assignment text. Compaction preserves
 harness assignments up to a fixed 100,000-byte bound, independently of token
 estimator calibration. Human instruction token limits remain separate.
 
@@ -610,15 +611,15 @@ ephemeral: delivered into the recipient's next turn, cached for a few turns, com
 * **Typed**: `info` (no reply expected), `request`, `blocker`, `answer`, `contract` (an interface changed).
 * **No broadcast, no self-mail, known recipients only** (`to: manager` resolves to the manager).
 * **Bounded inline, kept whole**: 600 characters of mail that asks for something (`request`, `blocker`) and 1,200 of
-  mail that carries content (`info`, `answer`, `contract`) reach the recipient's thread. A longer message, up to 24,000
+  mail that carries content (`info`, `answer`, `contract`) reach the recipient's thread. A longer message, up to 48,000
   characters, is not refused or cut: its opening is delivered with a harness note of how much follows, and the sender or
   the recipient reads the whole, line breaks kept, with `mail read=<id>`. Mail coalesced while an inbox was full, and
   parcels a mailman digested from their opening, are kept whole as well, and the digest names their ids. The router keeps
-  these messages within 8 MiB, forgetting the oldest first. 8 messages per minute per sender, 3 per minute per
+  these messages within 8 MiB, forgetting the oldest first. 8 messages per minute per sender (the manager, who coordinates the whole team, is not held to it), 3 per minute per
   sender->recipient pair, identical text to one recipient deduplicated for 5 minutes; over-limit errors are written for
-  the sending model and say what to do instead (use `note`, wait, or fold messages). A message over 24,000 characters is
+  the sending model and say what to do instead (use `note`, wait, or fold messages). A message over 48,000 characters is
   refused with its length, how far over it is, a target below the limit, and where long content lasts: a file in the
-  sender's task scope, or the agreement submitted with `task done` (at most 16,000 bytes, read with `task get`,
+  sender's task scope, or the agreement submitted with `task done` (at most 40,000 bytes, read with `task get`,
   inherited by dependent tasks). The
   router's bookkeeping is swept, so it does not grow with the number of agents or messages that ever existed.
 * **Framed by the harness.** A delivered message is one line: a harness-written header (`[mail <id> <kind> from
@@ -645,6 +646,11 @@ ephemeral: delivered into the recipient's next turn, cached for a few turns, com
   while the worker ran, or as it finished): the harness knows who wrote what is still unread, and restarts a worker for the
   manager's or its own mail without the bound, for another worker's only within it. Held mail is read by the next run of any
   cause.
+* **A refusal is not forgotten.** A mail, a task create, update or done, a note, a spawn or a pool proposal that the harness
+  refuses comes back as a tool error, once, in the middle of a turn, and models read past it: a worker went on as if its refused
+  mail had arrived. So each refusal is also kept at the top of the agent's live view as `NOT SENT: ...` (what was refused, how long
+  ago, why) until the agent does the same thing successfully (a mail to the same recipient, a create, a done of the same task) or
+  twenty minutes pass; at most four are shown.
 * **Bounded inbox.** An agent's inbox holds at most 12 waiting messages; further mail is coalesced per sender and kind
   into one digest that goes in when the inbox has drained, so a manager between turns cannot be buried.
 * **Optional mailman mode** (`swarm.mailman`, `--mailman`, default off): worker mail takes a detour that pays off when many
@@ -841,7 +847,12 @@ timeout exceptions. The gate does not confirm a server cache write. Reuse depend
 independent slots or replicas may still need cold prefills. The **governor** admits requests by priority (manager > workers > background compaction, first come
 first served within a priority, with aging so background work is never starved) within the requests-per-minute budget,
 honours `Retry-After` up to a ceiling (60 s: an endpoint cannot freeze the swarm), and adapts multiplicatively on 429s
-and additively on success; one burst of simultaneous 429s counts as one rate-limit episode.
+and additively on success; one burst of simultaneous 429s counts as one rate-limit episode. What an endpoint answers is kept
+per lane, a model on its endpoint: a 429 pauses and slows that model's requests only, and a waiter whose lane is paused or full
+does not hold up the waiters behind it of other models (with one swarm-wide pause, one overloaded model held every member of a
+30-worker team, whatever model it ran on). `swarm.model_concurrency` caps the requests in flight to one model; the in-flight cap
+of the whole swarm (`swarm.max_concurrent_requests`) defaults to the team's size and four more (manager, mailman, judge,
+compaction), and never below 24, so a large team does not queue for slots its endpoints could serve.
 
 ## 9. Compaction and epochs across agents
 
@@ -1141,7 +1152,12 @@ refused path is told to stop at the third and stopped at the tenth.
 
 **Leases become advisory.** Nobody can block anybody, so the writer cap and the scope-overlap refusal are lifted. Two writers
 touching the same repository-relative path raise the usual alert, which names the agents and never the file, and warns of a
-merge conflict. A scope still says which files a task may touch, and the merge queue enforces it on the commit. A dependency
+merge conflict. A scope still says which files a task may touch, and the merge queue enforces it on the commit, against the
+files other work in flight claims: a file outside the task's scope that no other task held by another agent and doing or blocked
+names in its scope (nor a pool parent the agent is not a member of) is written and merged with the task. A shared test helper, a
+`.gitignore` or a module file that many tasks need and none owns was refused to each of them in turn, and every refusal cost a
+mail to the manager and a scope change; in a tree of its own such a file can collide with nobody but textually, and the queue
+settles that as a conflict. A file that work in flight does claim is refused as before, at the write and at the merge. A dependency
 lockfile that a build tool regenerates (`Cargo.lock`, `package-lock.json`, `npm-shrinkwrap.json`, `pnpm-lock.yaml`,
 `yarn.lock`, `bun.lockb`, `go.sum`, `poetry.lock`, `uv.lock`, `Gemfile.lock`, `composer.lock`, at any depth) does not count
 against either the task's own scope or a pool parent's scope: a documentation task that ran `cargo` still merges with the `Cargo.lock` the run rewrote. The lockfile is
@@ -1154,6 +1170,18 @@ had to be merged by hand.
 
 **`done` continues into the queue** (section 4). The harness commits the tree and submits it; the queue is serial, merges onto
 the integration tip and runs the verifier (`--verify`) on the merged result, and moves the integration branch only if it passes.
+
+**Submissions that wait are verified together.** The queue is serial and the verifier dominates its time, so verifying each
+submission on its own caps a team at one merge per verification, however many writers it has: a 30-worker team with a
+three-minute verifier landed about twenty tasks an hour and its workers waited in the queue. When several submissions are waiting
+as the queue's turn comes, up to `swarm.merge_batch` (8) of them, in arrival order, are merged onto the tip one after another and
+the combined result is verified once. A pass lands them all (each keeps its own merge commit, and the branch moves once, to the
+verified tip); a failure leaves the tip as it was and splits the batch in halves that are tried again in order, down to a single
+submission, which is judged exactly as without batching. So a bad submission is still sent back with the verifier's output, and the
+good ones land without it. Submissions are batched when their verify commands are the same, or when `{dirs}` expands to different
+directories for each: the batch then runs the command over the union of their scopes (a submission of a task with no scope is not
+combined that way). Nothing a batch that was split did is counted or logged; its parts are. `merge.batch` records each batch: its
+tasks, how many merged, and whether it passed or was split.
 
 The harness's commit of a worker's tree (at `done`, at a handover, and when `sessions prune` salvages edits) records every
 change except untracked files inside a dependency store: a directory named `node_modules`, `bower_components`, `.next`,

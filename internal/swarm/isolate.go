@@ -371,8 +371,9 @@ func (s *Swarm) integrate(ctx context.Context, m *member, t Task, message string
 	}
 	scope, enforce, carried := s.treeScope(m.id, t)
 	res, err := iso.Queue.Submit(ctx, workspace.Submission{
-		Agent: m.id, Tree: m.tree, Task: subject, VerifyCmd: ExpandVerify(s.cfg.VerifyCmd, m.dir, t.Files), Message: message,
+		Agent: m.id, Tree: m.tree, Task: subject, VerifyCmd: ExpandVerify(s.cfg.VerifyCmd, m.dir, t.Files), VerifyScope: t.Files, Message: message,
 		Scope: scope, EnforceScope: enforce, Refuse: s.submitRefusal(m.role, t),
+		AllowOutside: func(rel string) bool { return Unclaimed(s.Board.Snapshot(), m.id, rel) },
 	})
 	if err != nil {
 		if ctx.Err() != nil {

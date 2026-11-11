@@ -1251,6 +1251,15 @@ func (s *Session) build(ctx context.Context) error {
 	}
 	if v := s.cfg.Swarm.MaxConcurrentRequests; v > 0 {
 		sc.MaxConcurrent = v
+	} else {
+		// The default cap must not be below the team: every worker, the manager, the mailman and the judge each hold
+		// one request at a time, often for minutes, and a 32-worker team under a cap of 24 kept eight members waiting
+		// for a slot whatever the endpoints could take. Throttling is the governor's per-model lanes' job.
+		sc.MaxConcurrent = max(sc.MaxConcurrent, sc.MaxWorkers+4)
+	}
+	sc.ModelConcurrency = s.cfg.Swarm.ModelConcurrency
+	if v := s.cfg.Swarm.MaxVerifies; v > 0 {
+		sc.MaxVerifies = v
 	}
 	if v := s.cfg.Cache.AffinityShards; v > 0 {
 		sc.AffinityShards = v

@@ -7,10 +7,13 @@ import (
 )
 
 const (
-	maxAgreementBytes          = 16000
-	maxAgreementLines          = 400
-	maxInheritedAgreementBytes = 48000
-	maxClaimedAssignmentBytes  = 96000
+	// An agreement is the one durable artifact a planning task delivers (it may not write files), so it has room for a
+	// real contract: an architect's 22,000-byte contract for a 28-worker build was refused twice at 16,000 while fifteen
+	// tasks waited on it.
+	maxAgreementBytes          = 40000
+	maxAgreementLines          = 1000
+	maxInheritedAgreementBytes = 120000
+	maxClaimedAssignmentBytes  = 200000
 )
 
 // TaskAgreement is an accepted prerequisite's contract, copied into an assignment.

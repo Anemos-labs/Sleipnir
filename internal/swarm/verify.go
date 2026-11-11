@@ -477,6 +477,26 @@ const verifyDirsToken = "{dirs}"
 // maxVerifyDirs bounds how many directories {dirs} lists; a scope wider than that is the whole tree.
 const maxVerifyDirs = 40
 
+// CombineVerify is workspace.QueueOptions.CombineVerify for a verify command template (the --verify value): a batch of
+// submissions whose commands are the template expanded for different scopes is verified once over the union of their
+// scopes. A submission that had no scope was checked over what its tree changed, which the union cannot name, so such a
+// batch is not combined (submissions with the same expanded command still share one run).
+func CombineVerify(template string) func(dir string, subs []workspace.Submission) (string, bool) {
+	return func(dir string, subs []workspace.Submission) (string, bool) {
+		if !strings.Contains(template, verifyDirsToken) {
+			return template, true
+		}
+		var files []string
+		for _, s := range subs {
+			if len(s.VerifyScope) == 0 {
+				return "", false
+			}
+			files = append(files, s.VerifyScope...)
+		}
+		return ExpandVerify(template, dir, files), true
+	}
+}
+
 // ExpandVerify replaces {dirs} in a verify command with the directories the task's scope covers,
 // as words a shell (or cmd) reads as they are: `go test {dirs}` becomes `go test ./p01 ./p05`.
 //

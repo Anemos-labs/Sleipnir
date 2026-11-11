@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -925,5 +926,28 @@ func TestTheLiveViewNamesFreeSlots(t *testing.T) {
 	m.mu.Unlock()
 	if strings.Contains(got, "slot free") {
 		t.Errorf("live view lines %q name a free slot at the writer limit", got)
+	}
+}
+
+// One unfinished task that most of the waiting work depends on is named, with the idle count, once enough members wait.
+func TestGateLineNamesTheTaskThatHoldsTheWaitingWork(t *testing.T) {
+	b := NewBoard(nil)
+	gate, _ := b.CreateTask("mgr", TaskSpec{Title: "contract", Kind: TaskKindPlan})
+	if err := b.Assign("mgr", "ar-1", gate.ID); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 4 {
+		if _, err := b.CreateTask("mgr", TaskSpec{Title: "part " + strconv.Itoa(i), Deps: []string{gate.ID}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	line := gateLine(b.Snapshot(), 10)
+	for _, want := range []string{gate.ID + " (held by ar-1, doing) holds 4 waiting tasks", "while 10 members are idle", "task revise"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("line %q does not say %q", line, want)
+		}
+	}
+	if gateLine(b.Snapshot(), 2) != "" {
+		t.Fatal("a team with few idle members is not told")
 	}
 }

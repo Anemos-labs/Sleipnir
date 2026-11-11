@@ -373,7 +373,8 @@ func (s *Session) buildIsolation(ctx context.Context) (*swarm.Isolation, error) 
 			}
 		}
 	}
-	q, err := workspace.NewQueue(ctx, mgr, workspace.QueueOptions{VerifyCmd: s.opts.Verify, Verify: s.queueVerifier(), Resume: p.resume != nil, OnEvent: onEvent})
+	q, err := workspace.NewQueue(ctx, mgr, workspace.QueueOptions{VerifyCmd: s.opts.Verify, Verify: s.queueVerifier(), Resume: p.resume != nil, OnEvent: onEvent,
+		CombineVerify: swarm.CombineVerify(s.opts.Verify), MaxBatch: s.mergeBatch()})
 	if err != nil {
 		if errors.Is(err, workspace.ErrNoCommits) {
 			return nil, errors.New("worktree isolation starts every tree from a commit, and the repository has none yet: commit the project first")
@@ -730,4 +731,12 @@ func inside(dir, p string) bool {
 		return false
 	}
 	return rel == "." || filepath.IsLocal(rel)
+}
+
+// mergeBatch is the merge queue's QueueOptions.MaxBatch: swarm.merge_batch, else the queue's default.
+func (s *Session) mergeBatch() int {
+	if s.cfg == nil {
+		return 0
+	}
+	return s.cfg.Swarm.MergeBatch
 }

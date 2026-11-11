@@ -46,7 +46,7 @@ const (
 // rendering of the board, so what one agent can add is what every agent pays for.
 const (
 	maxTitleRunes  = 160
-	maxDescRunes   = 12000 // a description is shown to its owner and read with task get, not on every agent's board
+	maxDescRunes   = 24000 // a description is shown to its owner and read with task get, not on every agent's board
 	maxRoleRunes   = 32
 	maxTaskDeps    = 16
 	maxLineRunes   = 140

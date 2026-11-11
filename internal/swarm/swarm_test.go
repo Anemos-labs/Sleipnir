@@ -165,7 +165,7 @@ func TestRouterRules(t *testing.T) {
 	if _, err := r.Send("be-1", "fe-1", "", "fact 4"); err == nil || !strings.Contains(err.Error(), "several times") {
 		t.Fatalf("pair limit: %v", err)
 	}
-	if _, err := r.Send("be-1", "fe-1", "request", strings.Repeat("x", 24001)); err == nil || !strings.Contains(err.Error(), "message too long") {
+	if _, err := r.Send("be-1", "fe-1", "request", strings.Repeat("x", 48001)); err == nil || !strings.Contains(err.Error(), "message too long") {
 		t.Fatalf("length cap: %v", err)
 	}
 	if _, err := r.Send("be-1", "mgr", "shout", "hi"); err == nil {
@@ -480,5 +480,76 @@ func TestHotStaysBoundedWithFiftyAgents(t *testing.T) {
 	}
 	if !strings.Contains(v, "you: w-07") {
 		t.Fatal("identity missing")
+	}
+}
+
+// A 429 from one model pauses that model's lane only: requests to the team's other models go on.
+func TestGovernorThrottlesOnlyTheLaneThatAnswered429(t *testing.T) {
+	g := NewGovernor(GovernorConfig{RPM: 6000, Burst: 50})
+	rel, err := g.AcquireFor(context.Background(), "p/slow", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel(nil, &provider.Error{Kind: provider.ErrRateLimit, RetryAfter: 300 * time.Millisecond})
+	st := g.Stats()
+	if !st.Paused || len(st.PausedLanes) != 1 || st.PausedLanes[0] != "p/slow" {
+		t.Fatalf("stats after a 429: %+v", st)
+	}
+	start := time.Now()
+	other, err := g.AcquireFor(context.Background(), "p/fast", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other(nil, nil)
+	if took := time.Since(start); took > 100*time.Millisecond {
+		t.Fatalf("another model waited %v for the throttled one", took)
+	}
+	start = time.Now()
+	again, err := g.AcquireFor(context.Background(), "p/slow", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again(nil, nil)
+	if took := time.Since(start); took < 250*time.Millisecond {
+		t.Fatalf("the throttled model was admitted after only %v despite its Retry-After", took)
+	}
+}
+
+// A lane's own cap holds its requests without holding the other lanes' waiters queued behind them.
+func TestGovernorLaneConcurrencyCapDoesNotBlockOtherLanes(t *testing.T) {
+	g := NewGovernor(GovernorConfig{MaxConcurrent: 8, LaneConcurrent: func(k string) int {
+		if k == "p/small" {
+			return 1
+		}
+		return 0
+	}})
+	held, err := g.AcquireFor(context.Background(), "p/small", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := make(chan func(*core.Usage, error), 1)
+	go func() {
+		r, _ := g.AcquireFor(context.Background(), "p/small", 1)
+		second <- r
+	}()
+	time.Sleep(30 * time.Millisecond)
+	select {
+	case <-second:
+		t.Fatal("the lane's cap of one admitted a second request")
+	default:
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	big, err := g.AcquireFor(ctx, "p/big", 1) // queued behind the held small-lane waiter, but not held by it
+	if err != nil {
+		t.Fatalf("another lane waited behind the full one: %v", err)
+	}
+	big(nil, nil)
+	held(nil, nil)
+	select {
+	case r := <-second:
+		r(nil, nil)
+	case <-time.After(time.Second):
+		t.Fatal("a release did not admit the lane's waiter")
 	}
 }
