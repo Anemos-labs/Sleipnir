@@ -337,3 +337,30 @@ func TestMemoryNotesThatDifferOnlyInCaseAreAllKept(t *testing.T) {
 		t.Fatalf("the save did not keep both stored notes and only them (%v):\n%q", err, got)
 	}
 }
+
+// Many copies of a large note's shown form restore the note behind it once: the other copies stay the short shown text, so a
+// small request cannot make the save clean and check the large note again for each copy.
+func TestALargeNoteIsRestoredOnceForManyCopiesOfItsShownForm(t *testing.T) {
+	big := "a" + strings.Repeat("​", 80000)
+	shown := shownNote(big)
+	if shown == big || len(shown) > 64 {
+		t.Fatalf("the large note is not shown short: %d bytes", len(shown))
+	}
+	sent := make([]string, 30000)
+	for i := range sent {
+		sent[i] = shown
+	}
+	out, kept := exactNotes([]string{big}, sent)
+	restored, keptN := 0, 0
+	for i := range out {
+		if out[i] == big {
+			restored++
+		}
+		if kept[i] {
+			keptN++
+		}
+	}
+	if restored != 1 || keptN != 1 || !kept[0] {
+		t.Fatalf("the large note was restored %d times (%d kept), want once, for the first copy", restored, keptN)
+	}
+}
