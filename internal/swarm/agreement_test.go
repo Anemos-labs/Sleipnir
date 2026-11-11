@@ -437,6 +437,23 @@ func TestATaskGetByAnotherAgentPointsAtTheInheritedAgreements(t *testing.T) {
 }
 
 // A pointer stands only for an agreement its task still holds: one revised after the dependent inherited it is shown whole.
+// A card with no room left names the agreements it does not show on one line, however many there are: a task that inherits
+// thousands of agreements does not get a card that grows with them.
+func TestAgreementsWithoutRoomAreNamedOnOneBoundedLine(t *testing.T) {
+	big := strings.Repeat("x", agreementCardBytes)
+	in := []TaskAgreement{{Task: "T1", Text: big}}
+	for i := 2; i < 5000; i++ {
+		in = append(in, TaskAgreement{Task: fmt.Sprintf("T%d", i), Text: "y"})
+	}
+	card := agreementCard(in)
+	if len(card) > agreementCardBytes+agreementUnshownIDs*8+2000 {
+		t.Fatalf("the card is %d bytes", len(card))
+	}
+	if !strings.Contains(card, "more agreements are not shown here: T") || !strings.Contains(card, " more. task get <id> shows each") {
+		t.Fatalf("the card does not name what it leaves out:\n%s", card[len(card)-2000:])
+	}
+}
+
 func TestAnAgreementRevisedAfterItWasInheritedIsShownWhole(t *testing.T) {
 	sn := &Snapshot{Tasks: []Task{{ID: "T1", Agreement: "v2: the API answers XML"}, {ID: "T4", Agreement: "the store keeps UTC"}}}
 	got := agreementPointers(sn, []TaskAgreement{{Task: "T1", Text: "v1: the API answers JSON"}, {Task: "T4", Text: "the store keeps UTC"}})
@@ -460,7 +477,7 @@ func TestLongAgreementIsKeptWholeAndShownInPart(t *testing.T) {
 	if len(card) > agreementCardBytes+2000 {
 		t.Fatalf("the card is %d bytes", len(card))
 	}
-	for _, want := range []string{"task get " + p.ID + " shows all of it", "task get T99 shows all of it", "Agreement T97: 1 characters, not shown here: task get T97 shows it"} {
+	for _, want := range []string{"task get " + p.ID + " shows all of it", "task get T99 shows all of it", "more agreements are not shown here:", "T97. task get <id> shows each"} {
 		if !strings.Contains(card, want) {
 			t.Fatalf("the card does not say %q", want)
 		}

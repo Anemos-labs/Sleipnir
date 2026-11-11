@@ -54,6 +54,22 @@ func TestNormalizeKeepsLongStepsAndLongPlans(t *testing.T) {
 	}
 }
 
+// A saved plan the tool accepted before, when a step over the limit was shortened, still replays: its long step is cut to the
+// ceiling instead of the plan lost on resume.
+func TestASavedPlanWithAStepOverTheCeilingReplays(t *testing.T) {
+	saved := []Item{{Step: strings.Repeat("x", MaxStepRune+50), Status: Doing}, {Step: "b", Status: Doing}}
+	if _, err := Normalize(saved); err == nil {
+		t.Fatal("the plan tool accepted a step over the ceiling")
+	}
+	got, err := NormalizeSaved(saved, true)
+	if err != nil || len(got) != 2 || utf8.RuneCountInString(got[0].Step) != MaxStepRune {
+		t.Fatalf("replay: %v, %d steps", err, len(got))
+	}
+	if _, err := NormalizeSaved(saved, false); err == nil {
+		t.Fatal("a replayed agent's plan with two doing steps was accepted")
+	}
+}
+
 func TestLinesFrameAndStore(t *testing.T) {
 	items := []Item{{Step: "a", Status: Done}, {Step: "b", Status: Doing}, {Step: "c", Status: Pending}}
 	if got := Lines(items); got != "[x] 1. a\n[>] 2. b\n[ ] 3. c\n" {

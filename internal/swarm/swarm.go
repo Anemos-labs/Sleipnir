@@ -985,14 +985,16 @@ func taskCard(t Task, agentID string, pin bool) string {
 			for _, f := range t.Files {
 				files = append(files, cleanText(f, maxScopeLen))
 			}
+			// A scope may list a thousand entries: the card carries their opening and points to task get for the rest.
+			list := cardList(strings.Join(files, ", "), t.ID)
 			if t.Kind == TaskKindPlan {
-				sb.WriteString("Reference areas: " + strings.Join(files, ", ") + "\n")
+				sb.WriteString("Reference areas: " + list + "\n")
 			} else {
-				sb.WriteString("Scope: " + strings.Join(files, ", ") + " (edit only inside your scope: writes outside it are rejected; ask the manager to widen it)\n")
+				sb.WriteString("Scope: " + list + " (edit only inside your scope: writes outside it are rejected; ask the manager to widen it)\n")
 			}
 		}
 		if len(t.Deps) > 0 {
-			sb.WriteString("Depends on: " + cleanText(strings.Join(t.Deps, ", "), 120) + "\n")
+			sb.WriteString("Depends on: " + cardList(cleanText(strings.Join(t.Deps, ", "), 0), t.ID) + "\n")
 		}
 		sb.WriteString(agreementCard(t.Agreements))
 		if t.Kind == TaskKindPlan {

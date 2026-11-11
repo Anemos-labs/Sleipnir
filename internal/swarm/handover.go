@@ -147,7 +147,7 @@ func (s *Swarm) Handover(ctx context.Context, req HandoverReq) (HandoverResult, 
 	h := &handover{s: s, ctx: ctx, by: req.By, task: t, pm: pm, role: role, to: to, summary: summary}
 	res, err := h.run(shared)
 	if err != nil {
-		s.emitAs(req.By, events.TypeSwarmHandover, map[string]any{"phase": "abort", "task": t.ID, "rev": t.Rev, "from": pm.id, "to": to, "error": cleanText(err.Error(), 300)})
+		s.emitAs(req.By, events.TypeSwarmHandover, map[string]any{"phase": "abort", "task": t.ID, "rev": t.Rev, "from": pm.id, "to": to, "error": cleanText(err.Error(), maxErrorRunes)})
 		if cur, _ := s.Board.Snapshot().Task(t.ID); stopped && cur.Owner == pm.id && cur.Rev == t.Rev {
 			err = fmt.Errorf("%w; %s", err, s.abandonHandover(pm, prs, t)) // the task did not move
 		}
@@ -375,7 +375,7 @@ func handoverRecap(t Task, from, to, summary string, st handoverState) string {
 	} else {
 		fmt.Fprintf(&sb, "Work so far: the files are as %s left them; files it edited: %s.", from, list)
 		if st.lastCmd != "" {
-			sb.WriteString(" Its last test: " + cleanText(st.lastCmd, 160) + ".")
+			sb.WriteString(" Its last test: " + cleanText(st.lastCmd, maxReasonRunes) + ".")
 		}
 		sb.WriteString("\n")
 	}

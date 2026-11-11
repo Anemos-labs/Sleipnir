@@ -192,7 +192,7 @@ func (s *Swarm) StopAll(words string) StopReport {
 	s.emit(events.TypeSwarmStop, map[string]any{"phase": "stopped", "workers": rep.Workers, "canceled": rep.Canceled, "queued": rep.Queued, "turn": rep.Turn})
 	if id := s.ManagerID(); id != "" {
 		note := "[harness] The person stopped the team: " + strings.TrimPrefix(rep.Line(), "team stopped: ")
-		if w := cleanText(words, 300); w != "" {
+		if w := cleanText(words, maxReasonRunes); w != "" {
 			note += " Their words: \"" + w + "\"."
 		}
 		note += " Do not spawn, assign, reopen or wake workers while the team is stopped; if the person asks for more work, start only what they ask for."

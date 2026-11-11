@@ -421,10 +421,13 @@ Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side
   dependencies instead.
 * **What agents write is kept as written.** The board's bounds are ceilings for memory only (100000 tasks, 1000
   dependencies and 1000 scope entries per task, 16384 characters for a note, a status line, a result or an
-  assumption, 1 MiB for a description or a report), never a reason to refuse or cut what an agent meant to say. What
-  every agent's prompt carries is bounded by how it is shown instead: a title over 160 characters shows its opening, a
-  list of tasks shows the first 400 characters of a line, result or evidence with a pointer to `task get`, which shows
-  the task whole, and 48 pending notes are shown (8 per author, the oldest evicted). 8 alerts, which expire after 2
+  assumption, 1 MiB for a description or a report), set far above what agents write. Only input over a ceiling is
+  refused (a note, with where to put the detail instead) or cut (a report, to its first 1 MiB). What every agent's
+  prompt carries is bounded by how it is shown instead: a title over 160 characters shows its opening, a list of tasks
+  shows the first 400 characters of a line, result or evidence with a pointer to `task get`, which shows the task whole,
+  a note over 400 characters shows its opening with a pointer to `note read=<id>`, and 48 pending notes are shown (8
+  per author, the oldest evicted). Errors, refusal reasons and commands in tool results are shown whole, up to the
+  same 16384-character ceiling. 8 alerts, which expire after 2
   minutes and are cleared when the conflict ends.
 
 ## 4. Task lifecycle and harness-owned "done"
@@ -577,10 +580,10 @@ and event-log recovery; they do not depend on the live note buffer. Task data
 cannot grant permissions or override user instructions.
 
 An agreement is not refused for its length (a planning task may not write files, so its agreement must have room for a
-real contract); 1 MiB is a ceiling for memory only, and combined inherited agreements 4 MiB. The board keeps every
+real contract); 1 MiB is a ceiling for memory only, and combined inherited agreements 16 MiB. The board keeps every
 agreement whole. What a dependent's assignment card carries is bounded instead: the opening of each agreement up to
 24,000 bytes, cut at a line break, and 48,000 bytes for all of them, with a line saying how much more there is and that
-`task get` on the task that made it shows all of it. A task description is kept whole up to the same 1 MiB ceiling; its
+`task get` on the task that made it shows all of it; agreements past that bound are named on one line. A task description is kept whole up to the same 1 MiB ceiling; its
 owner's card carries the first 16,000 characters and points to `task get` for the rest. Tasks assigned to one worker,
 including blocked work and worktree instructions, must fit 200,000 bytes of assignment text. Compaction preserves
 harness assignments up to a fixed 100,000-byte bound, independently of token

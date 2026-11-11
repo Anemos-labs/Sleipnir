@@ -238,7 +238,7 @@ func (s *Swarm) afterResume(ctx context.Context, caller string, byManager bool, 
 	msg := "your tree now includes the work merged so far"
 	switch {
 	case err != nil:
-		msg = "the harness could not bring the merged work into your tree (" + cleanText(err.Error(), 160) + ")"
+		msg = "the harness could not bring the merged work into your tree (" + cleanText(err.Error(), maxErrorRunes) + ")"
 	case note != "":
 		msg = note
 	}
@@ -381,12 +381,12 @@ func (s *Swarm) integrate(ctx context.Context, m *member, t Task, message string
 		if ctx.Err() != nil {
 			return integration{interrupted: true}
 		}
-		s.emitAs(m.id, events.TypeTaskMerge, map[string]any{"task": t.ID, "outcome": "error", "error": cleanText(err.Error(), 300)})
+		s.emitAs(m.id, events.TypeTaskMerge, map[string]any{"task": t.ID, "outcome": "error", "error": cleanText(err.Error(), maxErrorRunes)})
 		return integration{infra: err}
 	}
 	data := map[string]any{"task": t.ID, "outcome": string(res.Outcome), "commit": res.After, "files": firstN(res.Files, 30)}
 	if res.Reason != "" {
-		data["reason"] = cleanText(res.Reason, 300)
+		data["reason"] = cleanText(res.Reason, maxReasonRunes)
 	}
 	s.emitAs(m.id, events.TypeTaskMerge, data)
 
@@ -418,13 +418,13 @@ func (s *Swarm) integrate(ctx context.Context, m *member, t Task, message string
 			if v.TimedOut {
 				why = "it timed out"
 			} else if v.Err != nil {
-				why = cleanText(v.Err.Error(), 120)
+				why = cleanText(v.Err.Error(), maxErrorRunes)
 			}
 			return integration{infra: fmt.Errorf("verification of the merged result did not finish: %s", why)}
 		}
 		return integration{bounce: s.verifyBounce(ctx, m, res.Verify)}
 	default:
-		reason := cleanText(res.Reason, 400)
+		reason := cleanText(res.Reason, maxReasonRunes)
 		if owners := s.ownersElsewhere(m.role, res.Files); len(owners) > 0 {
 			worker := article(owners[0]) + " " + joinWords(owners, "or") + " worker"
 			return integration{bounce: "Not done: the merge queue refused your work: " + reason +
@@ -542,9 +542,9 @@ func (s *Swarm) notCommitted(ctx context.Context, err error) integration {
 	case ctx.Err() != nil:
 		return integration{interrupted: true}
 	case errors.As(err, &tl), errors.As(err, &nr):
-		return integration{bounce: "Not done: your tree cannot be recorded: " + cleanText(err.Error(), 500)}
+		return integration{bounce: "Not done: your tree cannot be recorded: " + cleanText(err.Error(), maxErrorRunes)}
 	case errors.Is(err, gitx.ErrConflict):
-		return integration{bounce: "Not done: your tree still has unresolved conflict markers (" + cleanText(err.Error(), 300) +
+		return integration{bounce: "Not done: your tree still has unresolved conflict markers (" + cleanText(err.Error(), maxErrorRunes) +
 			"). Resolve them, run your checks, then call task done again."}
 	}
 	return integration{infra: err}
@@ -561,7 +561,7 @@ func (s *Swarm) conflictBounce(ctx context.Context, m *member, qc *workspace.Con
 	upd, err := m.tree.UpdateRecording(uctx, s.deps.Isolation.Queue.Tip(), s.wipMessage(m))
 	switch {
 	case err != nil:
-		sb.WriteString("The harness could not bring the integrated work into your tree (" + cleanText(err.Error(), 160) + "). ")
+		sb.WriteString("The harness could not bring the integrated work into your tree (" + cleanText(err.Error(), maxErrorRunes) + "). ")
 	case upd != nil:
 		sb.WriteString("The harness has merged the integration branch into your tree, so the conflict is there to resolve: ")
 		sb.WriteString(conflictHunks(upd))
@@ -599,15 +599,15 @@ func conflictHunks(c *workspace.Conflict) string {
 // result fails the verifier. Its tree is brought to the merged state, where the
 // failure reproduces.
 func (s *Swarm) verifyBounce(ctx context.Context, m *member, vr *workspace.VerifyResult) string {
-	cmd, code, out := cleanText(s.cfg.VerifyCmd, 80), -1, ""
+	cmd, code, out := cleanText(s.cfg.VerifyCmd, maxReasonRunes), -1, ""
 	if vr != nil {
-		cmd, code, out = cleanText(vr.Cmd, 80), vr.ExitCode, vr.Output
+		cmd, code, out = cleanText(vr.Cmd, maxReasonRunes), vr.ExitCode, vr.Output
 	}
 	uctx, cancel := context.WithTimeout(ctx, gitTimeout)
 	defer cancel()
 	state := "The integration branch is now merged into your tree: reproduce the failure there, fix it, and call task done again."
 	if upd, err := m.tree.UpdateRecording(uctx, s.deps.Isolation.Queue.Tip(), s.wipMessage(m)); err != nil {
-		state = "The harness could not bring the integration branch into your tree (" + cleanText(err.Error(), 160) + "); fix what the output points at and call task done again."
+		state = "The harness could not bring the integration branch into your tree (" + cleanText(err.Error(), maxErrorRunes) + "); fix what the output points at and call task done again."
 	} else if upd != nil {
 		state = "The integration branch is now merged into your tree and conflicts with your changes: " + conflictHunks(upd)
 	}
@@ -698,7 +698,7 @@ func (s *Swarm) noteVerifyWrote(cmd string, files []string) {
 	// notifyManager keeps 400 runes: bound the command and the list so the guidance after them survives.
 	list := cleanText(strings.Join(firstN(files, 3), ", ")+andMore(len(files)-3), 140)
 	s.notifyManager(fmt.Sprintf("A passing run of the verify command `%s` rewrote tracked files: %s. Have the command write that "+
-		"output outside the tree, or commit what it produces, rather than having workers discard it.", cleanText(cmd, 80), list))
+		"output outside the tree, or commit what it produces, rather than having workers discard it.", cleanText(cmd, maxReasonRunes), list))
 }
 
 // andMore is " and N more" for n > 0 left out of a list, "" otherwise.
@@ -850,7 +850,7 @@ func (s *Swarm) integrateLockedTip(ctx context.Context, commit bool, expectedTip
 	repo := iso.Manager.Repository()
 	d, err := repo.Diff(ctx, from, gitx.DiffOptions{To: rep.Tip, Renames: true, MaxFiles: 1 << 20, MaxPatchBytes: 64 << 20})
 	if err != nil {
-		return s.notApplied(rep, iso, "could not compute the result: "+cleanText(err.Error(), 200))
+		return s.notApplied(rep, iso, "could not compute the result: "+cleanText(err.Error(), maxErrorRunes))
 	}
 	changed := []string{}
 	for _, f := range d.Files {
@@ -911,7 +911,7 @@ func (s *Swarm) integrateLockedTip(ctx context.Context, commit bool, expectedTip
 	if s.deps.Snap != nil {
 		for _, p := range abs {
 			if err := s.deps.Snap.Before("integration", p); err != nil {
-				return s.notApplied(rep, iso, "could not record a checkpoint before changing "+cleanText(filepath.Base(p), 80)+": "+cleanText(err.Error(), 160))
+				return s.notApplied(rep, iso, "could not record a checkpoint before changing "+cleanText(filepath.Base(p), 80)+": "+cleanText(err.Error(), maxErrorRunes))
 			}
 		}
 	}
@@ -932,7 +932,7 @@ func (s *Swarm) integrateLockedTip(ctx context.Context, commit bool, expectedTip
 	rep.Applied = true
 	rep.Message = appliedMessage(rep, rep.Files, "")
 	if err := s.saveIntegration(); err != nil {
-		rep.Message += " The files were applied, but saving the recovery position failed: " + cleanText(err.Error(), 200)
+		rep.Message += " The files were applied, but saving the recovery position failed: " + cleanText(err.Error(), maxErrorRunes)
 	}
 	s.emit(events.TypeSwarmIntegration, map[string]any{"branch": rep.Branch, "tip": rep.Tip, "applied": true, "files": firstN(rep.Files, 50)})
 	return rep
@@ -1019,7 +1019,7 @@ func (s *Swarm) applyCommits(ctx context.Context, rep *IntegrationReport, iso *I
 	rep.Applied, rep.Committed = true, true
 	rep.Message = appliedMessage(rep, rep.Files, res.Branch)
 	if err := s.saveIntegration(); err != nil {
-		rep.Message += " The commits were applied, but saving the recovery position failed: " + cleanText(err.Error(), 200)
+		rep.Message += " The commits were applied, but saving the recovery position failed: " + cleanText(err.Error(), maxErrorRunes)
 	}
 	s.emit(events.TypeSwarmIntegration, map[string]any{"branch": rep.Branch, "tip": rep.Tip, "applied": true, "committed": true, "files": firstN(rep.Files, 50)})
 	return rep
@@ -1555,11 +1555,11 @@ func (s *Swarm) inheritDraft(ctx context.Context, m *member, t Task) string {
 	gctx, cancel := context.WithTimeout(ctx, gitTimeout)
 	defer cancel()
 	if _, err := pm.tree.Commit(gctx, wipCommitMessage(t)); err != nil {
-		return fmt.Sprintf("%s worked on %s before you, and the harness could not record its draft (%s); ask the manager before you start over.", pm.id, t.ID, cleanText(err.Error(), 160))
+		return fmt.Sprintf("%s worked on %s before you, and the harness could not record its draft (%s); ask the manager before you start over.", pm.id, t.ID, cleanText(err.Error(), maxErrorRunes))
 	}
 	head, err := pm.tree.Head(gctx)
 	if err != nil {
-		return fmt.Sprintf("%s worked on %s before you, and the harness could not find its recorded draft (%s); ask the manager before you start over.", pm.id, t.ID, cleanText(err.Error(), 160))
+		return fmt.Sprintf("%s worked on %s before you, and the harness could not find its recorded draft (%s); ask the manager before you start over.", pm.id, t.ID, cleanText(err.Error(), maxErrorRunes))
 	}
 	if had, err := m.tree.Repo().IsAncestor(gctx, head, "HEAD"); err != nil || had {
 		return ""
@@ -1570,14 +1570,14 @@ func (s *Swarm) inheritDraft(ctx context.Context, m *member, t Task) string {
 		files, err = pm.tree.Repo().ChangedPaths(gctx, base, head)
 	}
 	if err != nil {
-		return fmt.Sprintf("%s worked on %s before you and left a draft at commit %s, which the harness could not inspect (%s); merge it yourself before you start over.", pm.id, t.ID, short(head), cleanText(err.Error(), 160))
+		return fmt.Sprintf("%s worked on %s before you and left a draft at commit %s, which the harness could not inspect (%s); merge it yourself before you start over.", pm.id, t.ID, short(head), cleanText(err.Error(), maxErrorRunes))
 	}
 	if len(files) == 0 {
 		return "" // its branch holds only what is integrated
 	}
 	c, err := m.tree.UpdateRecording(gctx, head, s.wipMessage(m))
 	if err != nil {
-		return fmt.Sprintf("%s worked on %s before you and left a draft at commit %s, which the harness could not merge into your tree (%s); merge it yourself before you start over.", pm.id, t.ID, short(head), cleanText(err.Error(), 160))
+		return fmt.Sprintf("%s worked on %s before you and left a draft at commit %s, which the harness could not merge into your tree (%s); merge it yourself before you start over.", pm.id, t.ID, short(head), cleanText(err.Error(), maxErrorRunes))
 	}
 	list := make([]string, 0, 30)
 	for _, f := range firstN(files, 30) {

@@ -643,7 +643,7 @@ func (s *Swarm) syncPlanners(t Task) {
 		s.unreserve(m, rs)
 		switch {
 		case err != nil:
-			s.notify(id, "info", fmt.Sprintf("The harness could not bring the merged work into your tree before planning %s (%s): read the integration branch, or merge it into your tree before you implement.", t.ID, cleanText(err.Error(), 160)))
+			s.notify(id, "info", fmt.Sprintf("The harness could not bring the merged work into your tree before planning %s (%s): read the integration branch, or merge it into your tree before you implement.", t.ID, cleanText(err.Error(), maxErrorRunes)))
 		case note != "":
 			s.notify(id, "info", note+" Resolve them before you plan "+t.ID+".")
 		}
@@ -671,7 +671,7 @@ func (s *Swarm) wakeBlockedOnResolved(id, reason string) {
 			continue
 		}
 		s.notify(t.Owner, "info", fmt.Sprintf("%s, which %s waits on, was closed as no longer needed (%s): nothing will land for it. "+
-			"Block %s on the task that replaces it, or call task resume on %s if it can go on without it.", id, t.ID, cleanText(reason, 300), t.ID, t.ID))
+			"Block %s on the task that replaces it, or call task resume on %s if it can go on without it.", id, t.ID, cleanText(reason, maxReasonRunes), t.ID, t.ID))
 	}
 }
 
@@ -1386,7 +1386,7 @@ func pastTense(action string) string {
 // and reconciles again. A pool in any other phase, or one reconciled again while the gate ran, is not reset.
 func (s *Swarm) poolGateFailed(by string, t Task, vr verifyResult) *tools.Result {
 	if vr.infra {
-		return tools.Errorf("Not done yet: verification could not run (%v). Try again in a moment; if it keeps failing, block the task and tell the manager.", cleanText(vr.err.Error(), 200))
+		return tools.Errorf("Not done yet: verification could not run (%v). Try again in a moment; if it keeps failing, block the task and tell the manager.", cleanText(vr.err.Error(), maxErrorRunes))
 	}
 	tail, _ := tools.Truncate(vr.out, 3000)
 	rev := 0

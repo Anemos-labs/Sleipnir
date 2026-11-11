@@ -12,19 +12,31 @@ they do not indicate whether a change has been released.
   scripts. Members asked to check the combined result before confirming it were
   refused the very command that judges it.
 - Plan mode (read-only agents, and pool members before their child task) lets
-  a command write to the session's scratch directory (`$TMPDIR`): a reviewer
-  writing a config to validate there changed nothing in the project, and was
-  refused.
-- Limits on what agents write are ceilings for memory only, not reasons to
-  refuse or cut. A plan takes any number of steps of any length (it was 24 steps
-  of 160 characters). Notes, status lines, results, evidence and assumptions are
+  a command write to the session's scratch directory (`$TMPDIR`), `mkdir` and
+  `cp` there included: a reviewer writing a config to validate there changed
+  nothing in the project, and was refused. A scratch directory that holds the
+  project is not scratch: plan mode writes in the project stay refused.
+- Limits on what agents write are ceilings for memory only, set far above what
+  any agent writes, not reasons to refuse or cut. A plan takes up to 10000 steps
+  of up to 16384 characters (it was 24 steps of 160 characters); a saved plan
+  with a longer step still replays, the step cut to the ceiling. Notes, status lines, results, evidence and assumptions are
   kept up to 16384 characters (they were cut at 140 to 320, a note over 300 was
   refused), reports up to 1 MiB (16000), a task's dependencies and scope entries
   up to 1000 (16), the board up to 100000 tasks (1000), and the `memory` tool up
   to 1000 notes of 16384 characters (40 of 300). A list of tasks shows the first
   400 characters of each line, result or evidence and points to `task get`. A
   mailman digest longer than `MailmanDigestChars` is kept: that length is what
-  the mailman is asked for. Mail rates rise to 30 a minute per sender and 10 per
+  the mailman is asked for; one longer than the recipient's mail limit is
+  delivered like any long mail, its opening inline and the whole for
+  `mail read`. Only input over a ceiling is refused (a note, an agreement, a
+  plan step) or cut (a report over 1 MiB). A `task done` text is the task's
+  result whole (it was cut at 120 characters). An error, a refusal's reason or
+  a command named in a tool result is shown whole (they were cut at 80 to 400
+  characters), and a harness alert up to 2048 characters (160). A long team
+  note shows its opening on the live board and `note read=<id>` shows it whole.
+  An assignment card names its scope and dependencies up to 16000 characters
+  and points to `task get` for the rest (dependencies were cut at 120), and the
+  agreements it has no room for on one line. Mail rates rise to 30 a minute per sender and 10 per
   pair (8 and 3).
 - Large teams scale. Four limits held every team at about the throughput of
   fifteen workers, whatever its size:

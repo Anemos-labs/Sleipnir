@@ -460,7 +460,7 @@ func (s *Swarm) spawnReuse(req SpawnReq, files []string) (SpawnResult, error) {
 	start := reassignStart(s.Board.Snapshot(), m)
 	// A reused writer starts the new task from what has been merged since.
 	if note, err := s.syncTree(ctx, m); err != nil {
-		start.brief += "\n(The harness could not bring the merged work into your tree: " + cleanText(err.Error(), 160) + ". Merge the integration branch yourself before you start, or ask the manager.)"
+		start.brief += "\n(The harness could not bring the merged work into your tree: " + cleanText(err.Error(), maxErrorRunes) + ". Merge the integration branch yourself before you start, or ask the manager.)"
 	} else if note != "" {
 		start.brief += "\n" + note
 	}

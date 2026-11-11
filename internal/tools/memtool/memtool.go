@@ -42,7 +42,8 @@ import (
 )
 
 const (
-	// MaxNotes, MaxNoteRunes and MaxBytes are ceilings for memory only: a note is kept as the agent wrote it. (Notes the
+	// MaxNotes, MaxNoteRunes and MaxBytes are ceilings for memory only: a note is kept whole, on one line with its runs of
+	// whitespace collapsed, and never cut. (Notes the
 	// prompt cannot carry whole go the way of any long instructions section: the context policy archives the overflow.)
 	MaxNotes     = 1000
 	MaxNoteRunes = 1 << 14

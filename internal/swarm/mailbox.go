@@ -57,7 +57,7 @@ func (m Message) Format() string {
 		kind = m.Kind + " "
 	}
 	if m.Via != "" {
-		return fmt.Sprintf("[mail %s %svia %s from %s] %s", m.ID, kind, m.Via, strings.Join(m.Origins, ", "), m.Text)
+		return fmt.Sprintf("[mail %s %svia %s from %s] %s%s", m.ID, kind, m.Via, strings.Join(m.Origins, ", "), m.Text, m.continues())
 	}
 	return fmt.Sprintf("[mail %s %sfrom %s] %s%s", m.ID, kind, m.From, m.Text, m.continues())
 }

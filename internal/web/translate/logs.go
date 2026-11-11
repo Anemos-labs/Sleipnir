@@ -790,11 +790,7 @@ func (t *Translator) planCall(agent string, input json.RawMessage, ts float64, a
 	if json.Unmarshal(input, &in) != nil {
 		return
 	}
-	normalize := plan.Normalize
-	if agent == "mgr" {
-		normalize = plan.NormalizeDelegated
-	}
-	items, err := normalize(in.Items)
+	items, err := plan.NormalizeSaved(in.Items, agent == "mgr")
 	if err != nil {
 		return
 	}

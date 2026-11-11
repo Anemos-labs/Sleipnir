@@ -204,7 +204,12 @@ func RenderHot(s *Snapshot, agent, role string, isManager bool, cfg HotConfig, e
 		notes = notes[len(notes)-maxHotNotes:]
 	}
 	for _, n := range notes {
-		add(5, 4, "- #%d %s (%s)", n.ID, n.Text, n.From)
+		// A long note shows its opening, and how to read the rest: a whole one could be dropped from the view to fit.
+		text := n.Text
+		if head, rest := inlineHead(text, listedRunes); rest > 0 {
+			text = fmt.Sprintf("%s … (%d more characters: note read=%d)", head, rest, n.ID)
+		}
+		add(5, 4, "- #%d %s (%s)", n.ID, text, n.From)
 	}
 
 	// Assemble under budget: drop the highest priority numbers first (within one

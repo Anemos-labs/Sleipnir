@@ -162,7 +162,7 @@ func (t unsentTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, erro
 		return res, err
 	}
 	if res.IsError {
-		t.s.unsent.record(c.Env.Agent, key, what, cleanText(res.Text, 300))
+		t.s.unsent.record(c.Env.Agent, key, what, cleanText(res.Text, maxReasonRunes))
 	} else {
 		t.s.unsent.clear(c.Env.Agent, key)
 	}

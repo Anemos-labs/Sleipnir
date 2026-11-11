@@ -357,7 +357,7 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			// Work the checkout already has: the queue's tip is in its history (a dirty tree's sync still commits the draft).
 			had, _ := m.tree.Repo().IsAncestor(ctx, s.deps.Isolation.Queue.Tip(), "HEAD")
 			if note, err := s.syncTreeRecording(ctx, m, wip); err != nil {
-				return text("%s is yours, but the checkout could not receive integrated work: %s. Repair the checkout or ask the manager before implementing.", in.ID, cleanText(err.Error(), 200)), nil
+				return text("%s is yours, but the checkout could not receive integrated work: %s. Repair the checkout or ask the manager before implementing.", in.ID, cleanText(err.Error(), maxErrorRunes)), nil
 			} else if note != "" {
 				return text("%s is yours. %s Resolve these conflicts before implementing.", in.ID, note), nil
 			}
@@ -587,7 +587,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 	}
 	if vr, gdir := s.gateFor(ctx, task, m, c.Env.Cwd); !vr.ok {
 		if vr.infra {
-			return tools.Errorf("Not done yet: verification could not run (%v). Try again in a moment; if it keeps failing, block the task and tell the manager.", cleanText(vr.err.Error(), 200))
+			return tools.Errorf("Not done yet: verification could not run (%v). Try again in a moment; if it keeps failing, block the task and tell the manager.", cleanText(vr.err.Error(), maxErrorRunes))
 		}
 		cmd := ExpandVerify(s.cfg.VerifyCmd, gdir, task.Files)
 		next, applied := s.recordVerificationFailure(task, cmd, vr)
@@ -611,7 +611,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 			return &tools.Result{IsError: true, Text: notice}
 		}
 	}
-	result, report := oneLine(in.Text, 120), ""
+	result, report := oneLine(in.Text, maxResultRunes), ""
 
 	if readOnly {
 		result, report = readOnlyReport(task.ID, in.Text)
@@ -637,7 +637,7 @@ func (t *taskTool) done(ctx context.Context, c *tools.Call, in taskIn) *tools.Re
 		case out.interrupted:
 			return tools.Errorf("interrupted")
 		case out.infra != nil:
-			return tools.Errorf("Not done yet: the merge could not run (%v). Try again in a moment; if it keeps failing, block the task and tell the manager.", cleanText(out.infra.Error(), 200))
+			return tools.Errorf("Not done yet: the merge could not run (%v). Try again in a moment; if it keeps failing, block the task and tell the manager.", cleanText(out.infra.Error(), maxErrorRunes))
 		case out.bounce != "":
 			if s.cfg.MaxAttempts > 0 && s.countBounce(task) >= s.cfg.MaxAttempts {
 				return tools.Errorf("%s", s.giveUpMerge(m, task, firstLineOf(out.bounce, 100)))
@@ -731,7 +731,7 @@ func (t *taskTool) review(ctx context.Context, c *tools.Call, in taskIn) *tools.
 			}
 		} else if vr := s.verifyFor(ctx, task, c.Env.Cwd, task.Files); !vr.ok {
 			if vr.infra {
-				return tools.Errorf("%s was not accepted: verification could not run (%v). Retry, or reject it.", in.ID, cleanText(vr.err.Error(), 200))
+				return tools.Errorf("%s was not accepted: verification could not run (%v). Retry, or reject it.", in.ID, cleanText(vr.err.Error(), maxErrorRunes))
 			}
 			tail, _ := tools.Truncate(vr.out, 3000)
 			return &tools.Result{IsError: true, Text: fmt.Sprintf("%s was not accepted: verification `%s` failed (exit %d). Reject it with feedback, or fix it.%s\n%s",
@@ -941,9 +941,10 @@ func (t *noteTool) Spec() core.ToolSpec {
 		Description: "Record one true, durable fact for the team (a command, convention or gotcha), at most " + strconv.Itoa(maxNoteRunes) + " characters: a longer note is refused, not cut. It shows up on every agent's " +
 			"live board while it fits; older notes can be evicted. For a durable shared contract use task done agreement and dependent tasks. scope: shared (default) or role; " +
 			"a role note is also kept, when your task is accepted, for the agents of your role in later sessions of this project (a command, a trap, where a thing lives). " +
-			"A note stays on the board until newer notes push it out; withdraw=<id> takes back one of your own (a fact that turned out wrong).",
+			"A note stays on the board until newer notes push it out; withdraw=<id> takes back one of your own (a fact that turned out wrong); read=<id> shows a note whole.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"text":{"type":"string","description":"one fact, at most ` + strconv.Itoa(maxNoteRunes) + ` characters"},"scope":{"type":"string","enum":["shared","role"]},` +
-			`"withdraw":{"type":"integer","description":"the id of one of your own notes to take off the board (text and scope are then not needed)"}}}`),
+			`"withdraw":{"type":"integer","description":"the id of one of your own notes to take off the board (text and scope are then not needed)"},` +
+			`"read":{"type":"integer","description":"the id of a note on the board to read whole (the live board shows a long note's opening)"}}}`),
 	}
 }
 
@@ -952,11 +953,19 @@ func (t *noteTool) Run(_ context.Context, c *tools.Call) (*tools.Result, error) 
 		return r, nil
 	}
 	var in struct {
-		Text, Scope string
-		Withdraw    int
+		Text, Scope    string
+		Withdraw, Read int
 	}
-	if r := decodeOnly(c.Input, &in, "note takes text and scope to add a fact, or withdraw=<id> to take back one of your own notes"); r != nil {
+	if r := decodeOnly(c.Input, &in, "note takes text and scope to add a fact, withdraw=<id> to take back one of your own notes, or read=<id> to read a note whole"); r != nil {
 		return r, nil
+	}
+	if in.Read != 0 {
+		for _, n := range t.s.Board.Snapshot().Notes {
+			if n.ID == in.Read && (n.Scope != "role" || n.Role == c.Env.Role) {
+				return text("note #%d from %s:\n%s", n.ID, n.From, n.Text), nil
+			}
+		}
+		return tools.Errorf("note: no note #%d on the board for you (it may have been withdrawn or pushed out by newer notes)", in.Read), nil
 	}
 	if in.Withdraw != 0 {
 		if strings.TrimSpace(in.Text) != "" {
@@ -1614,7 +1623,7 @@ func diffSnapshots(a, b *Snapshot) []string {
 				line += " [" + listed(t.Evidence, t.ID) + "]"
 			}
 			if len(t.Assumptions) > 0 && t.Status == StatusReview {
-				line += " assumed: " + listed(strings.Join(t.Assumptions, "; "), t.ID)
+				line += " assumed: " + listedJoin(t.Assumptions, "; ", t.ID)
 			}
 			out = append(out, line)
 		case t.Status == StatusTodo && existed && (old.Status == StatusDoing || old.Status == StatusBlocked || old.Status == StatusReview):
@@ -1717,6 +1726,38 @@ func (s *Swarm) planNudge(agentID string) string {
 
 // listed is a task's line, result or evidence as a list of tasks shows it: whole when it is short, else its opening and a
 // pointer to task get, which shows it whole.
+// listedJoin is listed of parts joined by sep, without building the whole: a list renders every task in review, and a task
+// may hold a thousand long assumptions.
+func listedJoin(parts []string, sep, id string) string {
+	var b strings.Builder
+	rest := 0
+	for i, p := range parts {
+		if i > 0 {
+			p = sep + p
+		}
+		if rest > 0 || b.Len() > listedRunes*4 { // runes are at most 4 bytes: past this the head is complete
+			rest += utf8.RuneCountInString(p)
+			continue
+		}
+		b.WriteString(p)
+	}
+	if rest == 0 {
+		return listed(b.String(), id)
+	}
+	head, more := inlineHead(b.String(), listedRunes)
+	return fmt.Sprintf("%s … (%d more characters: task get %s)", head, more+rest, id)
+}
+
+// cardList is a list (a scope, dependencies) in an assignment card: whole up to descInlineRunes, else its opening and where
+// the rest is.
+func cardList(text, id string) string {
+	head, rest := inlineHead(text, descInlineRunes)
+	if rest == 0 {
+		return text
+	}
+	return fmt.Sprintf("%s … (%d more characters: task get %s shows the whole list)", head, rest, id)
+}
+
 func listed(text, id string) string {
 	head, rest := inlineHead(text, listedRunes)
 	if rest == 0 {

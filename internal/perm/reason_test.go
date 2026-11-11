@@ -92,13 +92,34 @@ func TestPlanModeWritesOnlyToTheScratchDirectory(t *testing.T) {
 	}
 	tmp, _ = filepath.EvalSymlinks(tmp)
 	e := f.engine(t, Config{Mode: ModePlan, Tmp: tmp})
-	for _, cmd := range []string{`cat > "$TMPDIR/ci.yaml" <<'X'` + "\na: 1\nX", "echo x > " + tmp + "/a"} {
+	for _, cmd := range []string{`cat > "$TMPDIR/ci.yaml" <<'X'` + "\na: 1\nX", "echo x > " + tmp + "/a", `mkdir -p "$TMPDIR/out"`, `cp "$TMPDIR/a" "$TMPDIR/b"`} {
 		if d := e.Check(context.Background(), f.request(bash(cmd))); !d.Allow {
 			t.Errorf("%s: %s", cmd, d.Reason)
 		}
 	}
 	if d := e.Check(context.Background(), f.request(bash("echo x > notes.txt"))); d.Allow {
 		t.Error("plan mode let a command write in the workspace")
+	}
+	for _, cmd := range []string{"mkdir build", `cp go.mod "$TMPDIR/x" && mkdir build`} {
+		if d := e.Check(context.Background(), f.request(bash(cmd))); d.Allow {
+			t.Errorf("plan mode allowed %s", cmd)
+		}
+	}
+}
+
+// A scratch directory that holds the project is no scratch directory: plan mode does not let a command write in the
+// project because its path is under the session's $TMPDIR.
+func TestPlanModeScratchThatHoldsTheProjectIsNotScratch(t *testing.T) {
+	f := newFixture(t)
+	parent, _ := filepath.EvalSymlinks(filepath.Dir(f.root))
+	e := f.engine(t, Config{Mode: ModePlan, Tmp: parent})
+	for _, cmd := range []string{"echo x > notes.txt", "mkdir build", "echo x > " + filepath.Join(f.root, "notes.txt")} {
+		if d := e.Check(context.Background(), f.request(bash(cmd))); d.Allow {
+			t.Errorf("plan mode allowed %s with the project inside $TMPDIR", cmd)
+		}
+	}
+	if d := e.Check(context.Background(), f.request(bash("echo x > "+filepath.Join(parent, "elsewhere.txt")))); !d.Allow {
+		t.Errorf("a write in $TMPDIR outside the project: %s", d.Reason)
 	}
 }
 

@@ -59,8 +59,12 @@ const (
 	maxAssumptions = 1000    // assumptions one submission may list
 	maxAssumeRunes = 1 << 14 // runes in one assumption
 	maxNoteRunes   = 1 << 14
-	listedRunes    = 400 // what a list of tasks shows of one task's line, result or evidence
-	maxAlertRunes  = 160
+	listedRunes    = 400     // what a list of tasks shows of one task's line, result or evidence
+	maxAlertRunes  = 1 << 11 // alerts are harness-written and few are kept; an alert cut at 160 lost the error the chat showed
+	// What a tool result tells an agent about an error, a refusal's reason or a command is shown whole, up to a
+	// ceiling for memory only: a git error cut at 160 characters hid the line that said what to fix.
+	maxErrorRunes  = 1 << 14
+	maxReasonRunes = 1 << 14
 	maxPendingEvts = 4096
 )
 

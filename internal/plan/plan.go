@@ -22,8 +22,9 @@ const (
 	Doing   = "doing"
 	Done    = "done"
 
-	// MaxSteps and MaxStepRune are ceilings for memory only. A plan holds as many steps as the work has, each as long as the
-	// agent writes it: a team's manager held to 24 steps of 160 characters spent its first calls cutting its plan down.
+	// MaxSteps and MaxStepRune are ceilings for memory only, far above what a plan needs: up to 10000 steps of up to 16384
+	// characters, each kept as the agent wrote it. A team's manager held to 24 steps of 160 characters spent its first calls
+	// cutting its plan down.
 	MaxSteps    = 10000
 	MaxStepRune = 1 << 14
 	// MaxEffort is the largest estimate a step keeps (hours); a larger one is read as this.
@@ -112,6 +113,23 @@ func Normalize(in []Item) ([]Item, error) { return normalize(in, true) }
 // steps are doing; one at a time") and could only mark finished work done or running work pending. A replay of a saved plan
 // (resume, the web view) uses it too, since the tool already judged what it saved.
 func NormalizeDelegated(in []Item) ([]Item, error) { return normalize(in, false) }
+
+// NormalizeSaved is for a replay of a plan the tool accepted before (resume, the web view): an older version shortened a step
+// over its limit and kept the plan, so a saved step over MaxStepRune is cut to it, and steps past MaxSteps are dropped, rather
+// than the saved plan lost. delegated is NormalizeDelegated's rule on doing steps.
+func NormalizeSaved(in []Item, delegated bool) ([]Item, error) {
+	if len(in) > MaxSteps {
+		in = in[:MaxSteps]
+	}
+	clipped := make([]Item, len(in))
+	for i, it := range in {
+		if r := []rune(it.Step); len(r) > MaxStepRune {
+			it.Step = string(r[:MaxStepRune-1]) + "…"
+		}
+		clipped[i] = it
+	}
+	return normalize(clipped, !delegated)
+}
 
 func normalize(in []Item, oneDoing bool) ([]Item, error) {
 	if len(in) == 0 {

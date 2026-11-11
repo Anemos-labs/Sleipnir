@@ -358,7 +358,7 @@ func (s *Swarm) docsTick(now time.Time) {
 				k.mu.Lock()
 				k.waiting = ""
 				if err != nil {
-					k.retryAt, k.waiting = now.Add(docsRetry), cleanText(err.Error(), 160)
+					k.retryAt, k.waiting = now.Add(docsRetry), cleanText(err.Error(), maxErrorRunes)
 				}
 				k.mu.Unlock()
 			}
@@ -400,7 +400,7 @@ func (s *Swarm) docsTick(now time.Time) {
 	task, err := s.Board.CreateTask("harness", TaskSpec{Title: DocsTaskTitle + " (" + docsSummary(batch) + ")", Desc: docsBrief(batch), Role: DocsRole, Files: s.docsScopeFor(batch)})
 	k.mu.Lock()
 	if err != nil {
-		k.retryAt, k.waiting = now.Add(docsRetry), cleanText(err.Error(), 160)
+		k.retryAt, k.waiting = now.Add(docsRetry), cleanText(err.Error(), maxErrorRunes)
 		k.mu.Unlock()
 		return
 	}
@@ -421,7 +421,7 @@ func (s *Swarm) docsTick(now time.Time) {
 	id, err := s.Spawn(SpawnReq{Role: DocsRole, Agent: agentID, TaskID: task.ID, By: "harness"})
 	if err != nil {
 		k.mu.Lock()
-		k.retryAt, k.waiting = now.Add(docsRetry), cleanText(err.Error(), 160)
+		k.retryAt, k.waiting = now.Add(docsRetry), cleanText(err.Error(), maxErrorRunes)
 		k.mu.Unlock()
 		return
 	}

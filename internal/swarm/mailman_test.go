@@ -776,7 +776,7 @@ func TestMailmanBounds(t *testing.T) {
 			if answered == 0 {
 				return rvReply{Tools: []rvToolCall{
 					{"mail", map[string]any{"to": "ghost-9", "text": "not a recipient"}},
-					{"mail", map[string]any{"to": "mgr", "text": strings.Repeat("long ", 200)}},
+					{"mail", map[string]any{"to": "mgr", "text": strings.Repeat("long ", 200) + "LONG-DIGEST-END"}},
 					{"mail", map[string]any{"to": "mgr", "text": "a second digest for the same recipient"}},
 				}}
 			}
@@ -795,6 +795,18 @@ func TestMailmanBounds(t *testing.T) {
 		}
 		if r.prov.sawEver("digest too long") {
 			t.Fatal("a digest longer than MailmanDigestChars was refused: the length asked for is not a limit")
+		}
+		// The digest is longer than the recipient's thread takes: its opening goes inline, and the whole, to its last
+		// words, is kept for mail read.
+		var digest struct{ ID, Frame string }
+		for _, e := range r.log.OfType(events.TypeMailDigest) {
+			_ = json.Unmarshal(e.Data, &digest)
+		}
+		if !strings.Contains(digest.Frame, "continues") || strings.Contains(digest.Frame, "LONG-DIGEST-END") {
+			t.Fatalf("the long digest was delivered whole or without a pointer to the rest: %q", digest.Frame)
+		}
+		if m, err := r.sw.Router.Read("mgr", digest.ID); err != nil || !strings.HasSuffix(m.Full, "LONG-DIGEST-END") {
+			t.Fatalf("mail read of the digest: %v, %q", err, m.Full)
 		}
 		for _, want := range []string{"no parcels for ghost-9 are waiting", "every recipient has its digest"} {
 			rvWait(t, "the mailman to be told "+want, func() bool { return r.prov.sawEver(want) })

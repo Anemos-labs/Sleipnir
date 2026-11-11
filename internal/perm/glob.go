@@ -174,6 +174,21 @@ func (rs *resolver) inTmp(real string) bool {
 	return rs.tmpReal != "" && real != "" && inside(rs.tmpReal, real)
 }
 
+// isScratch reports whether a resolved path is in the session's scratch directory and not in a workspace root that the
+// scratch directory holds: a session whose scratch directory is /work, for a project at /work/app, has no scratch
+// directory apart from the project, and plan mode's scratch writes would otherwise reach the project.
+func (rs *resolver) isScratch(real string) bool {
+	if !rs.inTmp(real) {
+		return false
+	}
+	for _, r := range rs.roots {
+		if r.real != rs.tmpReal && inside(rs.tmpReal, r.real) && inside(r.real, real) {
+			return false
+		}
+	}
+	return true
+}
+
 // isShipped reports whether an access resolves to a file inside a directory of code the harness ships. A link there that leads
 // elsewhere resolves to where it leads, so it does not count.
 func (rs *resolver) isShipped(a access) bool {
