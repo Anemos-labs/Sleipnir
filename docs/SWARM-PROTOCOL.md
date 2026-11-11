@@ -569,12 +569,13 @@ context for new, reused, and claiming workers. They survive private compaction
 and event-log recovery; they do not depend on the live note buffer. Task data
 cannot grant permissions or override user instructions.
 
-Each agreement is limited to 40,000 UTF-8 bytes and 1,000 lines (a planning task may not write files, so its agreement must
-have room for a real contract). Combined inherited
-agreements are limited to 120,000 bytes including labels; excessive submissions
-or assignments are rejected with guidance instead of silently truncating a
-contract. Tasks assigned to one worker, including blocked work and worktree
-instructions, must fit 200,000 bytes of assignment text. Compaction preserves
+An agreement is not refused for its length (a planning task may not write files, so its agreement must have room for a
+real contract); 1 MiB is a ceiling for memory only, and combined inherited agreements 4 MiB. The board keeps every
+agreement whole. What a dependent's assignment card carries is bounded instead: the opening of each agreement up to
+24,000 bytes, cut at a line break, and 48,000 bytes for all of them, with a line saying how much more there is and that
+`task get` on the task that made it shows all of it. A task description is kept whole up to the same 1 MiB ceiling; its
+owner's card carries the first 16,000 characters and points to `task get` for the rest. Tasks assigned to one worker,
+including blocked work and worktree instructions, must fit 200,000 bytes of assignment text. Compaction preserves
 harness assignments up to a fixed 100,000-byte bound, independently of token
 estimator calibration. Human instruction token limits remain separate.
 
@@ -611,16 +612,16 @@ ephemeral: delivered into the recipient's next turn, cached for a few turns, com
 * **Typed**: `info` (no reply expected), `request`, `blocker`, `answer`, `contract` (an interface changed).
 * **No broadcast, no self-mail, known recipients only** (`to: manager` resolves to the manager).
 * **Bounded inline, kept whole**: 600 characters of mail that asks for something (`request`, `blocker`) and 1,200 of
-  mail that carries content (`info`, `answer`, `contract`) reach the recipient's thread. A longer message, up to 48,000
-  characters, is not refused or cut: its opening is delivered with a harness note of how much follows, and the sender or
+  mail that carries content (`info`, `answer`, `contract`) reach the recipient's thread. A longer message, up to 1 MiB
+  (a ceiling for memory only), is not refused or cut: its opening is delivered with a harness note of how much follows, and the sender or
   the recipient reads the whole, line breaks kept, with `mail read=<id>`. Mail coalesced while an inbox was full, and
   parcels a mailman digested from their opening, are kept whole as well, and the digest names their ids. The router keeps
   these messages within 8 MiB, forgetting the oldest first. 8 messages per minute per sender (the manager, who coordinates the whole team, is not held to it), 3 per minute per
   sender->recipient pair, identical text to one recipient deduplicated for 5 minutes; over-limit errors are written for
-  the sending model and say what to do instead (use `note`, wait, or fold messages). A message over 48,000 characters is
+  the sending model and say what to do instead (use `note`, wait, or fold messages). A message over that ceiling is
   refused with its length, how far over it is, a target below the limit, and where long content lasts: a file in the
-  sender's task scope, or the agreement submitted with `task done` (at most 40,000 bytes, read with `task get`,
-  inherited by dependent tasks). The
+  sender's task scope, or the agreement submitted with `task done` (read with `task get`, inherited by dependent
+  tasks). The
   router's bookkeeping is swept, so it does not grow with the number of agents or messages that ever existed.
 * **Framed by the harness.** A delivered message is one line: a harness-written header (`[mail <id> <kind> from
   <agent>]`), the text reduced to one printable line in which harness-looking markers (`[mail`, `[end`, `[system`, ...),

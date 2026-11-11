@@ -99,7 +99,7 @@ func TestAgreementRejectsTruncationAndWrongOwnerWithoutChangingState(t *testing.
 		t.Fatal(err)
 	}
 	before := b.Snapshot()
-	for _, text := range []string{strings.Repeat("a", maxAgreementBytes+1), strings.Repeat("line\n", maxAgreementLines) + "last", strings.Repeat("<a", maxAgreementBytes*5/16)} {
+	for _, text := range []string{strings.Repeat("a", maxAgreementBytes+1), strings.Repeat("<a", maxAgreementBytes*5/16)} {
 		if err := b.submitAgreementAt("sc-1", plan.ID, 0, "done", "", text); err == nil {
 			t.Fatal("oversized agreement was silently cut")
 		}
@@ -122,9 +122,9 @@ func TestAgreementRejectsTruncationAndWrongOwnerWithoutChangingState(t *testing.
 func TestAgreementRejectsOversizedInheritedContextAtomically(t *testing.T) {
 	b := NewBoard(nil)
 	var deps []string
-	for range 4 {
+	for range maxInheritedAgreementBytes/maxAgreementBytes + 1 {
 		p := agreementTask(t, b, "A contract")
-		acceptAgreement(t, b, p, "sc-1", strings.Repeat("a", 35000))
+		acceptAgreement(t, b, p, "sc-1", strings.Repeat("a", maxAgreementBytes))
 		deps = append(deps, p.ID)
 	}
 	task := agreementTask(t, b, "Consumer", deps...)
@@ -245,7 +245,7 @@ func TestAgreementReuseKeepsBlockedContractsAndRejectsExcessContext(t *testing.T
 	var contracts []string
 	for i := 0; i < 9; i++ {
 		plan := agreementTask(t, r.sw.Board, fmt.Sprintf("Plan %d", i))
-		contract := strings.TrimSpace(fmt.Sprintf("CONTRACT-%d: ", i) + strings.Repeat("shared interfaces; ", 1800))
+		contract := strings.TrimSpace(fmt.Sprintf("CONTRACT-%d: ", i) + strings.Repeat("shared interfaces; ", 1200))
 		acceptAgreement(t, r.sw.Board, plan, "sc-planner", contract)
 		current = agreementTask(t, r.sw.Board, fmt.Sprintf("Work %d", i), plan.ID)
 		before := r.sw.Board.Snapshot()
@@ -442,5 +442,27 @@ func TestAnAgreementRevisedAfterItWasInheritedIsShownWhole(t *testing.T) {
 	got := agreementPointers(sn, []TaskAgreement{{Task: "T1", Text: "v1: the API answers JSON"}, {Task: "T4", Text: "the store keeps UTC"}})
 	if got[0].Text != "v1: the API answers JSON" || !strings.Contains(got[1].Text, "inherited from T4: task get T4 shows it") {
 		t.Fatalf("pointers = %+v", got)
+	}
+}
+
+// A long agreement is accepted whole and kept whole on the board; a dependent's card carries its opening and says where the
+// rest is, so no prompt grows with it.
+func TestLongAgreementIsKeptWholeAndShownInPart(t *testing.T) {
+	b := NewBoard(nil)
+	long := strings.Repeat("shared interfaces line\n", 4000) // about 92,000 bytes
+	p := agreementTask(t, b, "Plan")
+	acceptAgreement(t, b, p, "sc-1", long)
+	got, _ := b.Snapshot().Task(p.ID)
+	if got.Agreement != strings.TrimSpace(long) {
+		t.Fatalf("the board kept %d of %d bytes", len(got.Agreement), len(long))
+	}
+	card := agreementCard([]TaskAgreement{{Task: p.ID, Text: got.Agreement}, {Task: "T99", Text: got.Agreement}, {Task: "T98", Text: got.Agreement}, {Task: "T97", Text: "x"}})
+	if len(card) > agreementCardBytes+2000 {
+		t.Fatalf("the card is %d bytes", len(card))
+	}
+	for _, want := range []string{"task get " + p.ID + " shows all of it", "task get T99 shows all of it", "Agreement T97: 1 characters, not shown here: task get T97 shows it"} {
+		if !strings.Contains(card, want) {
+			t.Fatalf("the card does not say %q", want)
+		}
 	}
 }

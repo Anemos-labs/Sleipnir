@@ -450,7 +450,7 @@ func TestBoardTransitions(t *testing.T) {
 // grew past its limit.
 func TestBoardBoundsTaskFields(t *testing.T) {
 	b := NewBoard(nil)
-	huge := strings.Repeat("A", 1_000_000)
+	huge := strings.Repeat("A", maxDescRunes+1)
 	if _, err := b.CreateTask("be-9", TaskSpec{Title: "t", Files: make([]string, 50_000)}); err == nil {
 		t.Fatal("a 50k-entry scope was accepted")
 	}
@@ -471,7 +471,7 @@ func TestBoardBoundsTaskFields(t *testing.T) {
 	if n := len([]rune(tk.Desc)); n > maxDescRunes {
 		t.Fatalf("description kept %d runes", n)
 	}
-	if card := taskCard(tk, "be-1", true) + taskCard(tk, "be-1", false); len(card) > maxDescRunes+4000 {
+	if card := taskCard(tk, "be-1", true) + taskCard(tk, "be-1", false); len(card) > descInlineRunes+4000 || !strings.Contains(card, "task get "+tk.ID+" shows all of it") {
 		t.Fatalf("the cards of a maximal task are %d bytes", len(card))
 	}
 	b.SetLimits(BoardLimits{MaxTasks: 3})

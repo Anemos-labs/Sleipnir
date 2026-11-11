@@ -24,16 +24,17 @@ they do not indicate whether a change has been released.
     with the task instead of being refused; a file that work in flight claims
     is refused as before.
   - A refused mail, task, note, spawn or pool proposal stays at the top of the
-    agent's live view as `NOT SENT` until it is retried successfully. Mail is
-    kept whole up to 48,000 characters (was 24,000), a task description up to
-    24,000 (was 12,000), and the manager is not held to the per-sender mail
-    rate. An agreement (a planning task's contract) may be 40,000 bytes and
-    1,000 lines (was 16,000 and 400): an architect's 22,000-byte contract was
-    refused twice while fifteen tasks waited on it. `swarm.max_verifies` sets
+    agent's live view as `NOT SENT` until it is retried successfully. Mail, task
+    descriptions and agreements are no longer refused for their length (1 MiB
+    is a ceiling for memory only), and the manager is not held to the
+    per-sender mail rate. A prompt carries the opening of a long description
+    (16,000 characters) or agreement (24,000 bytes each, 48,000 in all) and
+    says that `task get` shows the rest: an architect's 22,000-byte contract
+    was refused twice at 16,000 while fifteen tasks waited on it. `swarm.max_verifies` sets
     the workers' concurrent verify gates.
   - The manager's live view names the unfinished task that holds most of the
     waiting work while members sit idle, and how to loosen it.
-  The task tool's description changes (the agreement limit), so the tool
+  The task tool's description changes (agreements of any length), so the tool
   prefix is cached anew once; the live view changes only when it has one of
   the new lines.
 

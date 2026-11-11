@@ -141,3 +141,19 @@ func safeToken(s string, max int) string {
 	}
 	return sb.String()
 }
+
+// inlineHead is the opening of s that fits in max runes, cut at the last line break in its second half when there is one,
+// and how many runes of s are left out. s is whole (rest 0) when it fits.
+func inlineHead(s string, max int) (head string, rest int) {
+	r := []rune(s)
+	if max <= 0 || len(r) <= max {
+		return s, 0
+	}
+	cut := max
+	if i := strings.LastIndex(string(r[:max]), "\n"); i >= 0 {
+		if n := len([]rune(string(r[:max])[:i])); n >= max/2 {
+			cut = n
+		}
+	}
+	return strings.TrimRight(string(r[:cut]), " \n"), len(r) - cut
+}

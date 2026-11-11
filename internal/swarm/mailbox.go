@@ -127,7 +127,7 @@ type RouterConfig struct {
 // a blocker, 1,200 of mail that carries content, reach the recipient's thread; a message
 // of up to 48,000 characters is accepted, and the rest is read with mail read.
 func DefaultRouterConfig() RouterConfig {
-	return RouterConfig{MaxPerMinute: 8, MaxPerPairPerMin: 3, MaxChars: 600, MaxContentChars: 1200, MaxBodyChars: 48000,
+	return RouterConfig{MaxPerMinute: 8, MaxPerPairPerMin: 3, MaxChars: 600, MaxContentChars: 1200, MaxBodyChars: 1 << 20,
 		DedupeWindow: 5 * time.Minute}
 }
 
@@ -153,7 +153,7 @@ func (c RouterConfig) maxCharsFor(kind string) int {
 // characters shorter and are refused again. So it says by how much the message is over,
 // gives a target with some margin, and names the places that hold long content:
 // a file in the sender's task scope (for a role that writes), read by its path, and the
-// agreement submitted with task done (at most 40000 bytes), read with task get and
+// agreement submitted with task done, read with task get and
 // inherited by dependent tasks. Notes hold 300 characters and are not offered.
 func tooLong(kind string, n, limit int) error {
 	return fmt.Errorf("message too long: %d characters, %d over the %d-character limit for %s mail. "+

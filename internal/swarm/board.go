@@ -46,7 +46,7 @@ const (
 // rendering of the board, so what one agent can add is what every agent pays for.
 const (
 	maxTitleRunes  = 160
-	maxDescRunes   = 24000 // a description is shown to its owner and read with task get, not on every agent's board
+	maxDescRunes   = 1 << 20 // a ceiling for memory only: no task needs more, and a description over descInlineRunes is shown in part (see descInlineRunes)
 	maxRoleRunes   = 32
 	maxTaskDeps    = 16
 	maxLineRunes   = 140
@@ -1833,6 +1833,12 @@ func (b *Board) Wait(after uint64, timeout time.Duration) *Snapshot {
 		}
 	}
 }
+
+// descInlineRunes is how much of a description its owner's assignment card carries. The card is in every request of the
+// owner, so a longer description is cut there at a line break with how much more there is, and task get reads it whole. A
+// description is not refused for its length below maxDescRunes: a manager whose 30,000-character description was refused
+// went on as if the task existed.
+const descInlineRunes = 16000
 
 // cleanDesc is a task description as the board keeps it: every line, defused, within maxDescRunes.
 func cleanDesc(desc string) string { return cleanBlockLines(desc, maxDescRunes, 0) }

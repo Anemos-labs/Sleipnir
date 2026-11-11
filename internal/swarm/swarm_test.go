@@ -165,7 +165,7 @@ func TestRouterRules(t *testing.T) {
 	if _, err := r.Send("be-1", "fe-1", "", "fact 4"); err == nil || !strings.Contains(err.Error(), "several times") {
 		t.Fatalf("pair limit: %v", err)
 	}
-	if _, err := r.Send("be-1", "fe-1", "request", strings.Repeat("x", 48001)); err == nil || !strings.Contains(err.Error(), "message too long") {
+	if _, err := r.Send("be-1", "fe-1", "request", strings.Repeat("x", DefaultRouterConfig().MaxBodyChars+1)); err == nil || !strings.Contains(err.Error(), "message too long") {
 		t.Fatalf("length cap: %v", err)
 	}
 	if _, err := r.Send("be-1", "mgr", "shout", "hi"); err == nil {

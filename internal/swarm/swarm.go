@@ -974,7 +974,11 @@ func taskCard(t Task, agentID string, pin bool) string {
 		var sb strings.Builder
 		fmt.Fprintf(&sb, "You are %s. Your assignment is task %s: %s\n", agentID, t.ID, title)
 		if d := cleanDesc(t.Desc); d != "" {
-			sb.WriteString(d + "\n")
+			head, rest := inlineHead(d, descInlineRunes)
+			sb.WriteString(head + "\n")
+			if rest > 0 {
+				fmt.Fprintf(&sb, "(the description goes on for %d more characters: task get %s shows all of it)\n", rest, t.ID)
+			}
 		}
 		if len(t.Files) > 0 {
 			files := make([]string, 0, len(t.Files))
