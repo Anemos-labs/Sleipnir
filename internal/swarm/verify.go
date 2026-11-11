@@ -129,14 +129,15 @@ func (s *Swarm) gateFor(ctx context.Context, t Task, m *member, dir string) (ver
 
 // verifyFiles is what {dirs} covers for task t in member m's own tree: the task's scope and, in an isolated run, the files
 // the tree changed outside it (a file no task claims may be written there, see leases.go), so a changed package is
-// checked. Without a scope, or when the tree's changes cannot be listed, it is the scope as it is.
+// checked. Without a scope it is the scope as it is; when the tree's changes cannot be listed it is nil, the whole tree, so a
+// change the listing missed is still checked.
 func (s *Swarm) verifyFiles(ctx context.Context, m *member, t Task) []string {
 	if len(t.Files) == 0 || m == nil || m.tree == nil || !strings.Contains(s.cfg.VerifyCmd, verifyDirsToken) {
 		return t.Files
 	}
 	changed, err := m.tree.Changed(ctx)
 	if err != nil {
-		return t.Files
+		return nil
 	}
 	files := t.Files
 	for _, rel := range changed {

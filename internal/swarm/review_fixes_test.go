@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -137,8 +140,15 @@ func TestUnclaimedFileOutsideTheParentScopeIsNotFree(t *testing.T) {
 		t.Fatal(err)
 	}
 	l := NewLeases(0, b)
+	l.Isolate()
+	tree := t.TempDir()
+	l.BindTree("fe-1", tree)
+	write := func(rel string) error { return l.BeforeWrite("fe-1", filepath.Join(tree, filepath.FromSlash(rel))) }
 	if !l.outsideParent("fe-1", "docs/notes.md") {
 		t.Fatal("a path outside the parent's scope counted as free")
+	}
+	if err := write("docs/notes.md"); err == nil {
+		t.Fatal("the write guard let a pool child write an unclaimed file outside its parent's scope")
 	}
 	if l.outsideParent("fe-1", "web/shared/helper.ts") || l.outsideParent("fe-1", "package-lock.json") {
 		t.Fatal("a path inside the parent's scope, or a lockfile, was held to it")
@@ -157,9 +167,66 @@ func TestUnclaimedFileOutsideTheParentScopeIsNotFree(t *testing.T) {
 	if l.outsideParent("fe-1", "docs/notes.md") {
 		t.Fatal("a path a parentless held task can submit was held to the child's parent")
 	}
+	if err := write("docs/notes.md"); err != nil {
+		t.Fatalf("the write guard refused an unclaimed file the parentless task can submit: %v", err)
+	}
+	ownNow, _ := b.Snapshot().Task(own.ID)
+	if refuse := (&Swarm{Board: b}).submitRefusal("frontend", ownNow); refuse != nil && refuse("docs/notes.md") != "" {
+		t.Fatalf("the merge queue refuses the parentless task's submission of it: %s", refuse("docs/notes.md"))
+	}
+	if !Unclaimed(b.Snapshot(), "fe-1", "docs/notes.md") {
+		t.Fatal("the merge queue's AllowOutside does not let the parentless task carry it")
+	}
 	got, _ := b.Snapshot().Task(child.ID)
 	refuse := (&Swarm{Board: b}).submitRefusal("frontend", got)
 	if refuse == nil || refuse("docs/notes.md") == "" {
 		t.Fatal("the merge queue's refusal and the write guard disagree")
+	}
+}
+
+// A refused task deliver is kept in the manager's view like any other delivery, and a call with no agent records nothing.
+func TestUnsentKeepsADeliverAndSkipsACallWithoutAnAgent(t *testing.T) {
+	if key, what, ok := unsentKey("task", json.RawMessage(`{"action":"deliver"}`)); !ok || key != "task:deliver" || what != "your task deliver" {
+		t.Fatalf("deliver: %q %q %v", key, what, ok)
+	}
+	s := &Swarm{}
+	s.unsent.now = time.Now
+	why := "refused"
+	tool := unsentTool{inner: stubTool{err: &why}, s: s}
+	for _, call := range []*tools.Call{nil, {Input: json.RawMessage(`{"to":"fe-1"}`)}, {Input: json.RawMessage(`{"to":"fe-1"}`), Env: &tools.Env{}}} {
+		if _, err := tool.Run(context.Background(), call); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(s.unsent.by) != 0 {
+		t.Fatalf("a call without an agent was recorded: %v", s.unsent.by)
+	}
+}
+
+// {dirs} covers what the tree changed outside the task's scope, but not a lockfile a build rewrote; when the changes cannot
+// be listed it covers the whole tree.
+func TestVerifyFilesAddsOutsideChangesButNotLockfiles(t *testing.T) {
+	r := newIsoRig(t, isoOpts{dirsVerify: true, files: map[string]string{"pkg/a.txt": "a\n", "lib/b.txt": "b\n"}}, script{}.fn())
+	ctx := context.Background()
+	tree, err := r.mgr.Create(ctx, "be-9", workspace.CreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"pkg/a.txt": "a2\n", "lib/b.txt": "b2\n", "go.sum": "x\n"} {
+		if err := os.WriteFile(filepath.Join(tree.Path, filepath.FromSlash(name)), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := &member{id: "be-9", tree: tree}
+	task := Task{ID: "T9", Files: []string{"pkg/"}}
+	got := r.sw.verifyFiles(ctx, m, task)
+	if !slices.Equal(got, []string{"pkg/", "lib/b.txt"}) {
+		t.Fatalf("verifyFiles = %q", got)
+	}
+	if err := tree.Remove(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.sw.verifyFiles(ctx, m, task); got != nil {
+		t.Fatalf("verifyFiles of a tree whose changes cannot be listed = %q, want nil (the whole tree)", got)
 	}
 }

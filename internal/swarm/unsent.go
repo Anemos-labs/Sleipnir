@@ -128,6 +128,8 @@ func unsentKey(tool string, input json.RawMessage) (key, what string, ok bool) {
 		switch in.Action {
 		case "create":
 			return "task:create", "your task create", true
+		case "deliver":
+			return "task:deliver", "your task deliver", true
 		case "done", "update", "block", "handover", "revise":
 			return "task:" + in.Action + ":" + id, "your task " + in.Action + " of " + id, true
 		}
