@@ -230,6 +230,9 @@ type Deps struct {
 	// DefaultMaxTokens, when set, gives each member the output limit for its own model in place of Params.MaxTokens (the
 	// session named none, and a role or slot model is not the session's).
 	DefaultMaxTokens func(cost.Model) int
+	// MaxTokensCeiling, when set, gives each member the most output its requests may ask for once one of its responses was cut
+	// off at its limit (agent.Config.MaxTokensCeiling), for its own model.
+	MaxTokensCeiling func(cost.Model) int
 	Effort           *provider.EffortSetting
 	Planner          kv.Planner
 	// BlockingCompaction serializes each agent with its own automatic compactor.

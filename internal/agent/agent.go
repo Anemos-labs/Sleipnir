@@ -172,6 +172,10 @@ type Config struct {
 	Notes  *kv.Layer
 
 	Params core.Params
+	// MaxTokensCeiling is the most output a request may ask for once a response has been cut off at Params.MaxTokens: the
+	// agent's later requests ask for it instead (a reasoning model that needed more than the limit on one hard step needs it on
+	// the next). 0, or no more than Params.MaxTokens, never raises the limit.
+	MaxTokensCeiling int
 	// Effort is an optional session-wide preference read once per request.
 	Effort *provider.EffortSetting
 	Hot    HotSource
@@ -374,6 +378,9 @@ type Agent struct {
 	// WaitUnreachable: a flaky gateway that drops connections for a minute must not cost a worker its task. Before any answer a
 	// misspelt URL still fails fast.
 	reached atomic.Bool
+	// raisedMaxTokens is the output limit the agent's own requests ask for after a response was cut off (raiseOutputLimit); 0
+	// keeps Params.MaxTokens.
+	raisedMaxTokens atomic.Int64
 
 	mu                sync.Mutex
 	stack             kv.Stack
@@ -906,6 +913,10 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 		res.Stop = resp.Stop
 		turn := a.pushResponse(resp, epoch)
 		calls := turn.ToolCalls()
+		hit := a.outputLimit() // the limit this response was cut off at, before it is raised
+		if resp.Stop == core.StopMaxTokens {
+			a.raiseOutputLimit()
+		}
 		if len(calls) == 0 && resp.Stop == core.StopMaxTokens {
 			// A response that ended at the output limit, with no call to run, is not an answer: the model was cut off, and what
 			// it wrote is the start of something. Taking it for the end of the run recorded a degenerate 16,000-token
@@ -914,10 +925,10 @@ func (a *Agent) run(ctx context.Context, origin core.Origin, input []core.Block)
 			res.Text = kv.AnswerText(turn)
 			cutoffs++
 			if cutoffs > maxCutoffRounds {
-				return res, fmt.Errorf("%w: %d tokens, %d responses in a row", ErrOutputLimit, a.cfg.Params.MaxTokens, cutoffs)
+				return res, fmt.Errorf("%w: %d tokens, %d responses in a row", ErrOutputLimit, hit, cutoffs)
 			}
 			a.cfg.Sink.Notice(a.cfg.ID, "warn", fmt.Sprintf("the response reached the output limit (%d tokens): asking the model to carry on (%d of %d)",
-				a.cfg.Params.MaxTokens, cutoffs, maxCutoffRounds))
+				hit, cutoffs, maxCutoffRounds))
 			nudge := cutoffNudge
 			if strings.TrimSpace(res.Text) == "" {
 				// All of it was reasoning: asked to continue, the model reasons again from the top and is cut off again, five
@@ -1089,6 +1100,45 @@ const maxCutoffRounds = 2
 // happened; "do it with a tool call" is the way out of the commonest cause, a long description of what it is about to do.
 const cutoffNudge = "[harness] Your last response was cut off at the output limit before it was complete. Continue from where it stopped. " +
 	"If you were about to run a command or change a file, do it now with a tool call instead of writing it out."
+
+// outputLimit is the output limit the agent's own requests ask for: Params.MaxTokens, or the raised one once a response was cut off.
+func (a *Agent) outputLimit() int {
+	if n := int(a.raisedMaxTokens.Load()); n > a.cfg.Params.MaxTokens {
+		return n
+	}
+	return a.cfg.Params.MaxTokens
+}
+
+// requestOutputLimit is outputLimit for the next main request: a raised limit is lowered to the room the prompt about to be sent
+// leaves in a known window (the larger of the provider's count of the latest prompt and the estimate of this one, less a
+// twentieth of the window for the estimate's error), so that the prompt and the limit still fit in it; never under
+// Params.MaxTokens.
+func (a *Agent) requestOutputLimit() int {
+	base, limit := a.cfg.Params.MaxTokens, a.outputLimit()
+	w := a.cfg.Model.ContextTokens
+	if limit <= base || w <= 0 {
+		return limit
+	}
+	a.mu.Lock()
+	in := max(a.promptTokens, a.plannerStateLocked().PromptTokens)
+	a.mu.Unlock()
+	return max(base, min(limit, w-in-w/20))
+}
+
+// raiseOutputLimit raises the output limit of the agent's later requests to MaxTokensCeiling after a response was cut off at
+// the limit, and reports whether it did (false when it already had, or the ceiling is no higher). A reasoning model that thought
+// past the limit on a hard step was cut off with nothing to show for it, and asked to carry on at the same limit it reasons again
+// from the top and is cut off again; a call cut off in the middle (a large file written in one go) is marked invalid and written
+// again just as long. The raise lasts the agent's life: the step after a hard one is usually as hard.
+func (a *Agent) raiseOutputLimit() bool {
+	ceiling := a.cfg.MaxTokensCeiling
+	if ceiling <= a.outputLimit() {
+		return false
+	}
+	a.raisedMaxTokens.Store(int64(ceiling))
+	a.cfg.Sink.Notice(a.cfg.ID, "info", fmt.Sprintf("a response was cut off at the output limit: this agent's requests now ask for up to %d tokens", ceiling))
+	return true
+}
 
 // maxRepeatRounds is how many responses in a row one Run stops for repeating a call; one more ends the run with ErrRepeatedCalls.
 const maxRepeatRounds = 2

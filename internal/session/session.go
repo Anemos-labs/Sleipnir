@@ -1195,15 +1195,17 @@ func (s *Session) build(ctx context.Context) error {
 				health = agent.NewCompactorHealth()
 			}
 			p := params
+			ceiling := 0
 			if o.Params.MaxTokens == 0 {
 				p.MaxTokens = defaultMaxTokens(s.Model)
+				ceiling = maxTokensCeiling(s.Model)
 			}
 			return agent.New(agent.Config{
 				ID: "main", Role: role.Name, Model: s.Model, Provider: s.Provider, Compactor: comp, CompactorModel: compModel, CompactorHealth: health,
 				Images: images,
 				Tools:  reg, ToolSpecs: specs,
 				Const: constLayer, Shared: shared, RoleL: role.Layer(),
-				Params: p, Effort: &s.effort, Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files,
+				Params: p, MaxTokensCeiling: ceiling, Effort: &s.effort, Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files,
 				Hot: func(id string) []core.Block {
 					if f := plan.Frame(plans.Get(id)); f != "" {
 						return []core.Block{core.Text(f)}
@@ -1297,7 +1299,7 @@ func (s *Session) build(ctx context.Context) error {
 		Const: constLayer, Shared: shared,
 		Events: s.Log, Blobs: s.Blobs, Archive: archive, Files: files, Perm: s.Perm,
 		Snap: s.Ckpt, Handles: handles,
-		Workdir: o.Cwd, Root: o.Root, Tmp: s.tmp, Params: params, DefaultMaxTokens: memberMaxTokens(o.Params), Effort: &s.effort, Planner: planner, KVPolicy: kvPol, Est: est, Limits: limits, Now: o.Now,
+		Workdir: o.Cwd, Root: o.Root, Tmp: s.tmp, Params: params, DefaultMaxTokens: memberMaxTokens(o.Params), MaxTokensCeiling: memberMaxTokensCeiling(o.Params), Effort: &s.effort, Planner: planner, KVPolicy: kvPol, Est: est, Limits: limits, Now: o.Now,
 		NewSink: o.NewSink, CaptureTokens: o.CaptureTokens, TrainingLogs: o.TrainingLogs, OnWrite: s.Ckpt.After, RunEnded: s.shell.EndAgent, Hooks: s.agentHooks(),
 		OutagePatience:     outagePatience(o.OutagePatience),
 		WaitUnreachable:    o.WaitUnreachable,
@@ -2132,6 +2134,30 @@ func memberMaxTokens(p core.Params) func(cost.Model) int {
 	}
 	return defaultMaxTokens
 }
+
+// memberMaxTokensCeiling is memberMaxTokens for the raised limit of a member whose response was cut off (maxTokensCeiling): nil
+// when the session names a limit, which is then never raised.
+func memberMaxTokensCeiling(p core.Params) func(cost.Model) int {
+	if p.MaxTokens != 0 {
+		return nil
+	}
+	return maxTokensCeiling
+}
+
+// maxTokensCeiling is the output limit an agent's requests are raised to once one of its responses was cut off at
+// defaultMaxTokens (agent.Config.MaxTokensCeiling): the model's reported maximum, up to 64000 tokens and a quarter of its known
+// window, so that the prompt and the limit still fit in it. A model whose maximum or window nothing reports is never raised:
+// an endpoint can refuse a limit past what it serves.
+func maxTokensCeiling(m cost.Model) int {
+	if m.MaxOutput <= 0 || m.WindowGuessed || m.ContextTokens <= 0 {
+		return 0
+	}
+	return min(m.MaxOutput, maxTokensCeilingCap, m.ContextTokens/4)
+}
+
+// maxTokensCeilingCap bounds maxTokensCeiling: past it one response takes many minutes on a slow endpoint, and a model that
+// reasons that long without acting is better told to take a step (the agent's cut-off nudge).
+const maxTokensCeilingCap = 64000
 
 // defaultMaxTokens is the output limit of a request that names none: 16000, or the model's maximum if smaller. A model with a
 // known window of 128k tokens or more gets 32000: a reasoning model can think for more than 16000 tokens before it writes a

@@ -7,6 +7,23 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A response cut off at the output limit raises the limit of that agent's
+  later requests to its model's reported maximum, up to 64000 tokens and a
+  quarter of a known window (a model whose maximum or window nothing reports
+  is not raised, nor is a limit the session names). A reasoning model that
+  thought past 32000 tokens on a hard step was asked to carry on at the same
+  limit, reasoned again from the top and was cut off again, until the run
+  ended with the output-limit error. The limit only caps what the model may
+  write: no prompt bytes change.
+- A goal judge's output limit is 12000 tokens (its model's own limit if
+  smaller), lowered as the evidence grows down to the 4000 it had, so the
+  evidence that fitted before still does: a reasoning judge weighing a large
+  goal's evidence was cut off before its verdict. A raised agent limit is
+  likewise lowered to the room the latest prompt leaves in the window.
+- A kept model catalogue older than six hours stands in for a download that
+  fails: a model no longer falls back to a guessed 200k window and a
+  16000-token output limit because the endpoint's list could not be read at
+  session start.
 - When the automatic restarts of a pool member that holds no task of its own
   run out, the manager's line names the pool that waits on it, with the mail
   that wakes the member and the `pool action=excuse` that lets the pool go on

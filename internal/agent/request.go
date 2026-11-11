@@ -37,6 +37,7 @@ func (a *Agent) request(ctx context.Context) (*provider.Response, uint64, error)
 	var opt reqOpt
 	for {
 		params := a.requestParams(a.cfg.Provider, a.cfg.Model.ID)
+		params.MaxTokens = a.requestOutputLimit()
 		opt.params = params
 		resp, epoch, err := a.requestOnce(ctx, opt)
 		if err == nil {

@@ -289,12 +289,16 @@ func (s *Swarm) newMemberAt(id string, r Role, notes *kv.Layer, ev *Evidence, tr
 	if d.DefaultMaxTokens != nil {
 		params.MaxTokens = d.DefaultMaxTokens(model)
 	}
+	ceiling := 0
+	if d.MaxTokensCeiling != nil {
+		ceiling = d.MaxTokensCeiling(model)
+	}
 	cfg := agent.Config{
 		SnapshotEachStep: s.cfg.PersistentPools || s.isolated() && s.deps.Isolation.Resumable,
 		ID:               id, Role: r.Name, Model: model, Provider: prov, Compactor: d.Compactor, CompactorModel: d.CompactorModel, CompactorHealth: d.CompactorHealth, Images: d.Images, Tools: d.Registry, ToolSpecs: d.ToolSpecs,
 		CaptureTokens: d.CaptureTokens, TrainingLogs: d.TrainingLogs,
 		Const: d.Const, Shared: s.currentShared(), RoleL: s.roleLay[r.Name], Notes: notes,
-		Params: params, Effort: d.Effort, OutagePatience: d.OutagePatience, WaitUnreachable: d.WaitUnreachable,
+		Params: params, MaxTokensCeiling: ceiling, Effort: d.Effort, OutagePatience: d.OutagePatience, WaitUnreachable: d.WaitUnreachable,
 		Barrier: d.Barrier,
 		Hot: func(agentID string) []core.Block {
 			if isSvc {
