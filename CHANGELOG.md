@@ -7,6 +7,11 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A worker whose run ends on an outage of its model's endpoint is not restarted
+  automatically on that model while a member of its role runs on another model
+  whose last run did not end on one: its task goes back to the board, and the
+  manager's assignments go to the member on the other model (as `outageSteer`
+  already steered them).
 - Creating a planning task with a scope tells the manager that its owner
   writes none of those files and to make it a work task when the files are
   the deliverable; a planning task's card says every write is refused,

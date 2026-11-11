@@ -1,7 +1,10 @@
 package swarm
 
 import (
+	"errors"
 	"time"
+
+	"github.com/anemos-labs/sleipnir/internal/provider"
 )
 
 // outageSteer is how long after a worker's run ended on an outage of its model's endpoint the manager's assignments go to a
@@ -33,4 +36,25 @@ func (s *Swarm) freeElsewhere(m *member) []string {
 		}
 	}
 	return out
+}
+
+// outageElsewhere reports whether err is an outage of m's model's endpoint while another member of m's role runs on another
+// model whose last run did not end on one: the work has somewhere better to go than a restart on the same model.
+func (s *Swarm) outageElsewhere(m *member, err error) bool {
+	var pe *provider.Error
+	if !errors.As(err, &pe) || pe.Outage() == provider.NotOutage {
+		return false
+	}
+	for _, o := range s.poolMembers(m.role) {
+		if o == m || o.model.ID == m.model.ID {
+			continue
+		}
+		o.mu.Lock()
+		ok := o.outage.IsZero()
+		o.mu.Unlock()
+		if ok {
+			return true
+		}
+	}
+	return false
 }

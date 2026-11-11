@@ -8,8 +8,8 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/provider"
 )
 
-// A worker whose run ended on an outage of its model's endpoint is not given work again while a member of its role on another
-// model is free: the manager's spawn naming it is refused with the free member to use, and a spawn by role starts that member.
+// A worker whose run ended on an outage of its model's endpoint is not restarted on that model while a member of its role runs on
+// another: its task goes back on the board. Nor is it given work again while a member of its role on another model is free: the manager's spawn naming it is refused with the free member to use, and a spawn by role starts that member.
 // In a long team run one provider had no endpoints for hours; the manager gave the work back to the workers on that model, and
 // each new run failed minutes later while the members on another model sat idle.
 func TestAssignmentsSteerAwayFromAWorkerWhoseModelIsOut(t *testing.T) {
@@ -25,14 +25,22 @@ func TestAssignmentsSteerAwayFromAWorkerWhoseModelIsOut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	r.sw.spawnMu.Lock()
+	if _, err := r.sw.ensurePool("backend"); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.spawnMu.Unlock()
+	r.sw.get("be-2").model.ID = "other/model" // the second member runs on another model
 	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Agent: "be-1", TaskID: t1.ID, Solo: true, By: "mgr"}); err != nil {
 		t.Fatal(err)
 	}
-	be2 := r.sw.get("be-2")
-	be2.model.ID = "other/model" // the second member runs on another model
 	rvWait(t, "be-1's run to fail", func() bool { _, out := r.sw.inOutage(r.sw.get("be-1")); return r.idle("be-1") && out })
-	r.sw.dropRestart(r.sw.get("be-1"), pendingOf(r, "be-1"), "test: no restart")
-	r.sw.Board.Requeue("be-1", t1.ID, 0, "test: back to the board", false, 0)
+	if p := pendingOf(r, "be-1"); p != nil {
+		t.Fatal("be-1 is restarted on the model that failed while be-2 runs on another")
+	}
+	if tk, _ := r.sw.Board.Snapshot().Task(t1.ID); tk.Status != StatusTodo || tk.Owner != "" {
+		t.Fatalf("%s = %s/%s after be-1's run ended on an outage, want back on the board", t1.ID, tk.Status, tk.Owner)
+	}
 
 	out := r.callTool(context.Background(), "spawn", "mgr", "manager", map[string]any{"agent": "be-1", "task": t1.ID})
 	if !out.IsError || !strings.Contains(out.Text, "be-1's last run ended") || !strings.Contains(out.Text, "spawn agent=be-2") {
