@@ -512,8 +512,8 @@ func TestImportBytesAreBounded(t *testing.T) {
 	w := newWorld(t)
 	files := map[string]string{}
 	var b strings.Builder
-	chunk := strings.Repeat("filler line of text\n", (60<<10)/20)
-	for i := 0; i < 40; i++ {
+	chunk := strings.Repeat("filler line of text\n", (MaxFileBytes*15/16)/20)
+	for i := 0; i < maxImportBytes/len(chunk)+4; i++ {
 		fmt.Fprintf(&b, "@big%02d.md\n", i)
 		files[fmt.Sprintf("big%02d.md", i)] = chunk
 	}
@@ -544,7 +544,7 @@ func TestImportBytesAreBounded(t *testing.T) {
 func TestPerFileCapTruncatesWithANote(t *testing.T) {
 	w := newWorld(t)
 	var big strings.Builder
-	for i := 0; big.Len() < 100<<10; i++ {
+	for i := 0; big.Len() < MaxFileBytes+36<<10; i++ {
 		fmt.Fprintf(&big, "line number %06d of a very long instruction file\n", i)
 	}
 	tree(t, w.root, map[string]string{"AGENTS.md": big.String(), "CLAUDE.md": "short"})
@@ -571,7 +571,7 @@ func TestPerFileCapTruncatesWithANote(t *testing.T) {
 func TestTruncationNeverSplitsACharacter(t *testing.T) {
 	w := newWorld(t)
 	// One long line of 3-byte characters: no newline to cut at.
-	tree(t, w.root, map[string]string{"AGENTS.md": strings.Repeat("€", 40_000)})
+	tree(t, w.root, map[string]string{"AGENTS.md": strings.Repeat("€", MaxFileBytes/3+1000)})
 	s := w.mustLoad("")[0]
 	if !s.Truncated || !utf8.ValidString(s.Text) || strings.ContainsRune(s.Text, utf8.RuneError) {
 		t.Fatal("truncated text must be valid UTF-8 with no replacement characters")
@@ -584,11 +584,11 @@ func TestTotalCapFavoursLaterHigherPrecedenceSources(t *testing.T) {
 		return strings.Repeat(tag+" filler line\n", n/len(tag+" filler line\n"))
 	}
 	tree(t, w.root, map[string]string{
-		"AGENTS.md":             chunk("A", 60<<10),
-		"CLAUDE.md":             chunk("C", 60<<10),
-		"SLEIPNIR.md":           chunk("S", 60<<10),
-		".sleipnir/SLEIPNIR.md": chunk("D", 60<<10),
-		"SLEIPNIR.local.md":     chunk("L", 60<<10),
+		"AGENTS.md":             chunk("A", MaxFileBytes*15/16),
+		"CLAUDE.md":             chunk("C", MaxFileBytes*15/16),
+		"SLEIPNIR.md":           chunk("S", MaxFileBytes*15/16),
+		".sleipnir/SLEIPNIR.md": chunk("D", MaxFileBytes*15/16),
+		"SLEIPNIR.local.md":     chunk("L", MaxFileBytes*15/16),
 	})
 	srcs := w.mustLoad("")
 	if len(srcs) != 5 {
@@ -604,14 +604,14 @@ func TestTotalCapFavoursLaterHigherPrecedenceSources(t *testing.T) {
 	if srcs[4].Truncated || srcs[3].Truncated {
 		t.Fatal("the highest-precedence sources must be kept whole")
 	}
-	if !srcs[0].Truncated || !strings.Contains(srcs[0].Text, "together exceed 256 KB") {
+	if !srcs[0].Truncated || !strings.Contains(srcs[0].Text, fmt.Sprintf("together exceed %d KB", MaxTotalBytes>>10)) {
 		t.Fatalf("the lowest-precedence source should be cut with a note: %q", srcs[0].Text[max(0, len(srcs[0].Text)-100):])
 	}
 }
 
 func TestTotalCapOmitsSourcesThatGetNoBudget(t *testing.T) {
 	w := newWorld(t)
-	big := strings.Repeat("x", 64<<10-1) // just under the per-file cap
+	big := strings.Repeat("x", MaxFileBytes-1) // just under the per-file cap
 	tree(t, w.root, map[string]string{
 		"AGENTS.md": big, "CLAUDE.md": big, "SLEIPNIR.md": big, ".sleipnir/SLEIPNIR.md": big, "SLEIPNIR.local.md": big,
 	})

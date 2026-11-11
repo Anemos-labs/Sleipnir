@@ -399,14 +399,14 @@ import, and the lessons of earlier goals (`~/.sleipnir/lessons.json`). Under `/a
 project and its session's home; under `/api/memory` (a page with no tab yet) only the user's own files. Every answer is the whole
 `wire.MemoryView`. A write names the `version` it was edited from (a hash of the file's bytes, `""` for a file that is not there) and
 is refused with `409 changed` when the file changed since, so a note an agent saved meanwhile is not lost. A project file is written
-inside the project root only, and a project file that is a link, a file over 64 KB and an imported file are not written (`400
+inside the project root only, and a project file that is a link, a file over 2 MB and an imported file are not written (`400
 bad_path`). A change applies to the sessions started after it.
 
 | Method | Path | Does | Confirmation |
 |---|---|---|---|
 | `GET` | `/api/sessions/{id}/memory` | `wire.MemoryView`: `notes` (the list, its version, whether the memory plugin is on, the limits), `project` (the same for the project's notes; absent with no tab), `lore` (`dir`, and per role its `path` and `items`: `stage` insight or canon, `confirmed`, `text`; absent with no tab), `files` (each place with `scope`, `exists`, `loaded` by a session started now, `text`, `version`, `editable` and `why` not) and `lessons` (kind, text, the goal it came from, uses, wins, losses, utility) | - |
 | `PUT` | `/api/sessions/{id}/memory/notes` | `wire.MemoryNotesWrite`: the whole list of notes (`scope` `project` for the project's, which also keeps them out of git; `400 bad_path` when `.sleipnir` or the file is a link), cleaned and held to the memory tool's limits (`400 bad_request` says which); `409 changed` | - |
-| `PUT` | `/api/sessions/{id}/memory/file` | `wire.MemoryFileWrite`: one instruction file by its `path` as `files` shows it, created with its folder when it is not there; `400 bad_path` for another path or a file not edited here, `400 bad_request` for text that is not UTF-8 or over 64 KB; `409 changed` | - |
+| `PUT` | `/api/sessions/{id}/memory/file` | `wire.MemoryFileWrite`: one instruction file by its `path` as `files` shows it, created with its folder when it is not there; `400 bad_path` for another path or a file not edited here, `400 bad_request` for text that is not UTF-8 or over 2 MB; `409 changed` | - |
 | `DELETE` | `/api/sessions/{id}/memory/lessons/{lesson}` | Removes a lesson; `404 not_found` for an id the file does not have | - |
 | `GET` | `/api/memory` | As `GET /api/sessions/{id}/memory`, for the user's own files only | - |
 | `PUT` | `/api/memory/notes` | As `PUT /api/sessions/{id}/memory/notes`, for the user's notes only | - |

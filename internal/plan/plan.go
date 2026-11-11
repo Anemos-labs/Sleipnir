@@ -22,9 +22,8 @@ const (
 	Doing   = "doing"
 	Done    = "done"
 
-	// MaxSteps and MaxStepRune are ceilings for memory only, far above what a plan needs: up to 10000 steps of up to 16384
-	// characters, each kept as the agent wrote it. A team's manager held to 24 steps of 160 characters spent its first calls
-	// cutting its plan down.
+	// MaxSteps and MaxStepRune are ceilings for memory only: up to 10000 steps of up to 16384 characters, each kept as the
+	// agent wrote it; a plan over them is refused, not cut.
 	MaxSteps    = 10000
 	MaxStepRune = 1 << 14
 	// MaxEffort is the largest estimate a step keeps (hours); a larger one is read as this.

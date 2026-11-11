@@ -721,3 +721,40 @@ func TestRetryNoticesCountTheAttemptsAndTheLastFailureIsFinal(t *testing.T) {
 		t.Errorf("%d model.error events for a retry, want 5 (the sixth failure is reported once, as the end of the request)", retries)
 	}
 }
+
+// A result over the per-result cap from a tool that did not save its own whole output is saved behind a recall handle, so the
+// middle the cut leaves out is not lost (a long memory list, say).
+func TestAResultOverThePerResultCapIsSavedBehindARecallHandle(t *testing.T) {
+	long := "HEAD " + strings.Repeat("a note that the list shows\n", 4000) + "TAIL" // ~108k chars
+	fts := []fakeTool{{name: "read", readOnly: true, run: func(json.RawMessage) *tools.Result { return &tools.Result{Text: long} }}}
+	var mu sync.Mutex
+	var shown string
+	r := newLimRig(t, func(c *agent.Config) { c.MaxTurnResultChars, c.Perm = 1_000_000, perm.AllowAll{} }, fts, func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		defer mu.Unlock()
+		if tm := toolMessages(c); len(tm) > 0 {
+			shown = tm[0]
+			return mock.Reply{Text: "done"}
+		}
+		return mock.Reply{ToolCalls: []mock.ToolCall{{ID: "c1", Name: "read", Args: `{}`}}}
+	})
+	if _, err := r.agent.Run(context.Background(), "list"); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(shown) > 61_000 || !strings.Contains(shown, "HEAD") || !strings.Contains(shown, "TAIL") {
+		t.Fatalf("the result was not cut to the cap with its head and tail: %d chars", len(shown))
+	}
+	h := regexp.MustCompile(`saved as (out_[0-9a-f]{16,})`).FindStringSubmatch(shown)
+	if h == nil {
+		t.Fatalf("the cut result does not name a recall handle: ...%s", shown[len(shown)-200:])
+	}
+	ref, n, ok := r.handles.Resolve(h[1])
+	if !ok || n != len(long) {
+		t.Fatalf("handle %s: ok=%v len=%d", h[1], ok, n)
+	}
+	if b, err := r.blobs.Get(ref); err != nil || string(b) != long {
+		t.Fatalf("the blob behind %s is not the whole result: %v", h[1], err)
+	}
+}

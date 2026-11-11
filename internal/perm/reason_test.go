@@ -92,7 +92,7 @@ func TestPlanModeWritesOnlyToTheScratchDirectory(t *testing.T) {
 	}
 	tmp, _ = filepath.EvalSymlinks(tmp)
 	e := f.engine(t, Config{Mode: ModePlan, Tmp: tmp})
-	for _, cmd := range []string{`cat > "$TMPDIR/ci.yaml" <<'X'` + "\na: 1\nX", "echo x > " + tmp + "/a", `mkdir -p "$TMPDIR/out"`, `cp "$TMPDIR/a" "$TMPDIR/b"`} {
+	for _, cmd := range []string{`cat > "$TMPDIR/ci.yaml" <<'X'` + "\na: 1\nX", "echo x > " + tmp + "/a", `mkdir -p "$TMPDIR/out"`} {
 		if d := e.Check(context.Background(), f.request(bash(cmd))); !d.Allow {
 			t.Errorf("%s: %s", cmd, d.Reason)
 		}
@@ -104,9 +104,37 @@ func TestPlanModeWritesOnlyToTheScratchDirectory(t *testing.T) {
 	for _, cmd := range []string{"mkdir build", `cp go.mod "$TMPDIR/x" && mkdir build`,
 		`ln -s "$PWD" "$TMPDIR/link" && printf x > "$TMPDIR/link/main.go"`,
 		`mv "$TMPDIR/a" "$TMPDIR/link" && printf x > "$TMPDIR/link/main.go"`,
-		`cp -s "$TMPDIR/a" "$TMPDIR/l"`, `cp -l "$TMPDIR/a" "$TMPDIR/l"`, `cp -R "$TMPDIR/a" "$TMPDIR/c"`, `cp -a "$TMPDIR/a" "$TMPDIR/c"`} {
+		`cp -s "$TMPDIR/a" "$TMPDIR/l"`, `cp -l "$TMPDIR/a" "$TMPDIR/l"`, `cp -R "$TMPDIR/a" "$TMPDIR/c"`, `cp -a "$TMPDIR/a" "$TMPDIR/c"`,
+		// A copy into a directory writes a child the command does not name, which may be a link into the project; touch
+		// follows a link too. Only mkdir is let through.
+		`cp "$TMPDIR/a" "$TMPDIR/b"`, `touch "$TMPDIR/a"`} {
 		if d := e.Check(context.Background(), f.request(bash(cmd))); d.Allow {
 			t.Errorf("plan mode allowed %s", cmd)
+		}
+	}
+}
+
+// A copy into a scratch directory whose child is a link to a project file would overwrite that file: it is refused.
+func TestPlanModeCopyIntoALinkToTheProjectIsRefused(t *testing.T) {
+	f := newFixture(t)
+	tmp := filepath.Join(f.root, "..", "scratch-cp-"+filepath.Base(f.root))
+	if err := os.MkdirAll(filepath.Join(tmp, "out"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	tmp, _ = filepath.EvalSymlinks(tmp)
+	if err := os.WriteFile(filepath.Join(f.root, "main.go"), []byte("package main\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(f.root, "main.go"), filepath.Join(tmp, "out", "main.go")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(tmp, "input"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	e := f.engine(t, Config{Mode: ModePlan, Tmp: tmp})
+	for _, cmd := range []string{`cp "$TMPDIR/input/main.go" "$TMPDIR/out"`, `echo x > "$TMPDIR/out/main.go"`} {
+		if d := e.Check(context.Background(), f.request(bash(cmd))); d.Allow {
+			t.Errorf("plan mode allowed %s, which writes the project's main.go through a link", cmd)
 		}
 	}
 }

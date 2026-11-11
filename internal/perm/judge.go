@@ -423,37 +423,13 @@ func (rs *resolver) scratchOnly(all []access) bool {
 	return wrote
 }
 
-// scratchMaker reports whether a file-writing command only makes new directories or plain files: mkdir, touch, and cp of files
-// without options that make links or copy trees. A link it could make (ln, mv of a link, cp -s, -l, -R, -a) would let a later write
-// in the same command, judged before the link exists, reach through the scratch directory into the project.
+// scratchMaker reports whether a file-writing command only makes new directories: mkdir. Other commands write paths they do not
+// name or follow links: cp into a directory writes a child that may be a link into the project, touch follows a link, and a link
+// a command makes (ln, mv of a link, cp -s) would let a later write in the same command, judged before the link exists, reach
+// through the scratch directory into the project. A read-only agent writes its scratch files with a redirection, whose target is
+// resolved before it is judged.
 func scratchMaker(u *unit) bool {
-	if u.simple == nil {
-		return false
-	}
-	switch u.name {
-	case "mkdir", "touch":
-		return true
-	case "cp":
-		for _, a := range u.simple.Args {
-			if a == "--" {
-				break
-			}
-			if !strings.HasPrefix(a, "-") || a == "-" {
-				continue
-			}
-			if strings.HasPrefix(a, "--") {
-				if a != "--force" && a != "--verbose" && a != "--no-clobber" {
-					return false
-				}
-				continue
-			}
-			if strings.Trim(a[1:], "fvnip") != "" { // -f, -v, -n, -i and -p (mode and times) only
-				return false
-			}
-		}
-		return true
-	}
-	return false
+	return u.simple != nil && u.name == "mkdir"
 }
 
 // clipText retains at most n runes and appends an ellipsis when needed; n must be nonnegative.

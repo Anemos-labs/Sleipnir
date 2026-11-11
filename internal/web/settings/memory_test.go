@@ -215,3 +215,23 @@ func TestMemoryViewShowsTheProjectsNotesAndLore(t *testing.T) {
 		t.Errorf("project notes without a tab: %d", rec.Code)
 	}
 }
+
+// The page can save as many notes as the memory tool keeps: the body of the PUT is not held under them.
+func TestMemoryNotesCanBeSavedUpToTheToolsCeiling(t *testing.T) {
+	e := memEnv(t)
+	var v wire.MemoryView
+	e.ok(http.MethodGet, "/api/sessions/t1/memory", nil, nil, &v)
+	var notes []string
+	for size := 0; size+memtool.MaxNoteRunes+8 < memtool.MaxBytes; size += memtool.MaxNoteRunes + 3 {
+		notes = append(notes, fmt.Sprintf("N%04d ", len(notes))+strings.Repeat(`"`, memtool.MaxNoteRunes-6))
+	}
+	e.ok(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: notes, Version: v.Notes.Version}, nil, &v)
+	if len(v.Notes.Notes) != len(notes) {
+		t.Fatalf("saved %d of %d notes", len(v.Notes.Notes), len(notes))
+	}
+	// Removing one note still sends far more than the old 64 KB body limit.
+	e.ok(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: notes[1:], Version: v.Notes.Version}, nil, &v)
+	if len(v.Notes.Notes) != len(notes)-1 {
+		t.Fatalf("after removing one: %d notes", len(v.Notes.Notes))
+	}
+}

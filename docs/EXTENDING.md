@@ -83,7 +83,7 @@ deep, each file is included once, an imported file appears right after its impor
 indented code are examples, not imports. A refused import is reported and left out.
 
 **Cleaning and size.** BOM removed, line endings unified, HTML comments and hidden characters removed. One file is cut
-at 64 KB and all files together at 256 KB (at a line boundary, with a note). The shared instruction allowance
+at 2 MB and all files together at 8 MB (at a line boundary, with a note). The shared instruction allowance
 defaults to the smaller of **16,384 estimated tokens** and **one quarter of the initial main model's context window**.
 Later, more specific files receive room first; earlier files may be shortened at a line boundary or omitted.
 The prompt identifies overflow, and a startup warning lists the affected paths. `/recon` prints the loaded text.

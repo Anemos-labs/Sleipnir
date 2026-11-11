@@ -79,3 +79,34 @@ func TestAReplayKeepsTheLastAcceptedPlan(t *testing.T) {
 		t.Errorf("restored: %+v", got)
 	}
 }
+
+// A legacy call that an earlier version accepted with a step over today's ceiling (it cut the step then) is restored clipped, and
+// replaces the plan before it.
+func TestAReplayRestoresALegacyPlanWithAStepOverTheCeiling(t *testing.T) {
+	dir := t.TempDir()
+	l, err := events.Open(dir, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	emit := func(typ string, data map[string]any) {
+		if _, err := l.Emit("be-1", typ, data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	emit(events.TypeToolCall, map[string]any{"id": "c1", "name": "plan", "input": map[string]any{"items": []map[string]any{{"step": "older"}}}})
+	emit(events.TypeToolResult, map[string]any{"id": "c1", "name": "plan", "error": false})
+	emit(events.TypeToolCall, map[string]any{"id": "c2", "name": "plan", "input": map[string]any{"items": []map[string]any{{"step": "newer " + strings.Repeat("x", plan.MaxStepRune)}}}})
+	emit(events.TypeToolResult, map[string]any{"id": "c2", "name": "plan", "error": false})
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store := plan.NewStore()
+	restorePlans(filepath.Join(dir, "events.jsonl"), store)
+	got := store.Get("be-1")
+	if len(got) != 1 {
+		t.Fatalf("restored %d steps: %+v", len(got), got)
+	}
+	if !strings.HasPrefix(got[0].Step, "newer ") || len([]rune(got[0].Step)) != plan.MaxStepRune {
+		t.Fatalf("restored a step of %d runes: %.40q", len([]rune(got[0].Step)), got[0].Step)
+	}
+}

@@ -215,8 +215,10 @@ func compileRule(r Rule, res *resolver) (*crule, error) {
 		}
 		c.argv = toks
 		if c.workspace {
-			c.refused = workspaceRefused[strings.Join(toks, " ")]
-			c.fileList = workspaceFileLists[strings.Join(toks, " ")]
+			// By the longest prefix the tables know: a rule with fixed options of its own ("pnpm exec eslint --quiet") keeps
+			// the refused options of its command, so --fix is still off it.
+			c.refused = byLongestPrefix(workspaceRefused, toks)
+			c.fileList = byLongestPrefix(workspaceFileLists, toks)
 		}
 	case classWeb:
 		switch {
@@ -541,4 +543,16 @@ func (c *crule) matchOther(r Request) bool {
 		return false
 	}
 	return c.blanket || wildMatch(c.wild, r.Summary)
+}
+
+// byLongestPrefix is m's value for the longest run of toks' first words that is a key of m (the words joined by spaces), or the
+// zero value when none is.
+func byLongestPrefix[T any](m map[string]T, toks []string) T {
+	for n := len(toks); n > 0; n-- {
+		if v, ok := m[strings.Join(toks[:n], " ")]; ok {
+			return v
+		}
+	}
+	var zero T
+	return zero
 }

@@ -7,6 +7,17 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A tool result over the 60,000-character cap of one result is saved whole
+  behind a recall handle when its tool did not save it, and the cut result
+  names the handle: what the cut leaves out (the middle of a long memory list)
+  can be read with `recall`.
+- The instruction loader reads up to 2 MB of a file and 8 MB in all (from 64 KB
+  and 256 KB), so the memory tool's notes, which may take up to 2 MB, are read
+  again whole; the context policy still decides what the prompt carries. The
+  web Memory page's notes `PUT` takes a body that fits the most notes the tool
+  keeps, and an instruction file it edits may be up to 2 MB.
+- A `:workspace` rule with options of its own (`pnpm exec eslint --quiet`)
+  keeps the refused options of its command: `--fix` stays off it.
 - A worker whose run ends on an outage of its model's endpoint is not restarted
   automatically on that model while a member of its role runs on another model
   whose last run did not end on one: its task goes back to the board, and the
@@ -23,9 +34,10 @@ they do not indicate whether a change has been released.
   `pnpm exec tsc --noEmit` and `pnpm exec eslint` without their writing
   options (`--fix`, `--cache-location`, `--cache-file` among them).
 - Plan mode (read-only agents, and pool members before their child task) lets
-  a command write to the session's scratch directory (`$TMPDIR`), `mkdir`,
-  `touch` and `cp` of files there included; commands that can make links (`ln`,
-  `mv`, `cp -s`, `-l`, `-R`, `-a`) are not. A scratch directory that holds the
+  a command write to the session's scratch directory (`$TMPDIR`) by a
+  redirection, and `mkdir` there; other file-writing commands (`cp`, which can
+  write through a link already in a directory, `touch`, and those that can make
+  links: `ln`, `mv`) are not. A scratch directory that holds the
   project, or is the project, and a path in it that holds the project are not
   scratch: plan mode writes in the project stay refused.
 - Limits on what agents write are ceilings for memory only, not reasons to

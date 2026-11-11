@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -82,5 +83,23 @@ func TestANoteReadKeepsAnEarlierRefusedNote(t *testing.T) {
 	}
 	if lines := sw.unsent.lines("w-2"); len(lines) != 2 || !strings.Contains(lines[1], "refused for a reason") {
 		t.Fatalf("view after a note read: %q", lines)
+	}
+}
+
+// However many long refusals an agent has, what the view adds to every turn is bounded: the newest maxUnsent, each shown in part.
+// The view is added after the hot block's budget on purpose (a refusal must not be the part the budget drops), so the bound is
+// what keeps it small.
+func TestLongRefusalsAddABoundedViewToEveryTurn(t *testing.T) {
+	b := unsentBook{now: time.Now}
+	for i := range 10 {
+		b.record("be-1", fmt.Sprintf("task:done:T%d", i), fmt.Sprintf("your task done of T%d", i), strings.Repeat("verify failed ", 2000))
+	}
+	lines := b.lines("be-1")
+	total := 0
+	for _, l := range lines {
+		total += len([]rune(l))
+	}
+	if len(lines) != 1+maxUnsent || total > 300+maxUnsent*(listedRunes+200) {
+		t.Fatalf("the view is %d lines, %d characters", len(lines), total)
 	}
 }

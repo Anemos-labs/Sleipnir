@@ -309,4 +309,43 @@ func TestPoolChecksOfAChainedVerifyCommandThroughTheEngine(t *testing.T) {
 	if d := po2.Check(ctx, perm.Request{Tool: "bash", Command: "pnpm exec eslint --fix src", Cwd: root}); d.Allow {
 		t.Error("a read-only pool member was allowed pnpm exec eslint --fix")
 	}
+	// Fixed options of the verify command's own do not take the checker's refused options off the rule.
+	eng3, err := perm.NewEngine(perm.Config{Mode: perm.ModeBypass, Root: root, Home: t.TempDir(), Allow: []string{"Bash(pnpm:*)"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	po3 := eng3.PlanOnly((&Swarm{cfg: Config{VerifyCmd: "pnpm exec eslint --quiet {dirs}"}}).poolChecks()...)
+	if d := po3.Check(ctx, perm.Request{Tool: "bash", Command: "pnpm exec eslint --quiet src", Cwd: root}); !d.Allow {
+		t.Errorf("pnpm exec eslint --quiet src: %s", d.Reason)
+	}
+	if d := po3.Check(ctx, perm.Request{Tool: "bash", Command: "pnpm exec eslint --quiet --fix src", Cwd: root}); d.Allow {
+		t.Error("a read-only pool member was allowed pnpm exec eslint --quiet --fix")
+	}
+}
+
+// Through poolPermission: a member of a planning pool, read-only to it, may still run git status and each command of a chained
+// verification command, and not a command the chain's prefix would also match.
+func TestPoolPermissionOfAPlanningMemberWithAChainedVerifyCommand(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}, VerifyCmd: "go vet ./... && pnpm exec eslint --quiet {dirs}"}, func(ctx context.Context, c *rvCall) rvReply {
+		return rvReply{Text: "waiting"}
+	})
+	if _, err := r.sw.Spawn(SpawnReq{Role: "frontend", Title: "build the UI", Files: []string{"web/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	member := r.sw.Board.Snapshot().Tasks[0].Pool.Members[1]
+	root := t.TempDir()
+	eng, err := perm.NewEngine(perm.Config{Mode: perm.ModeBypass, Root: root, Home: t.TempDir(), Allow: []string{"Bash(pnpm:*)"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	for cmd, allow := range map[string]bool{
+		"git status": true, "go vet ./...": true, "pnpm exec eslint --quiet web": true,
+		"pnpm exec eslint --quiet --fix web": false, "pnpm --dir web add some-package": false,
+	} {
+		d, handled := r.sw.poolPermission(ctx, member, eng, perm.Request{Tool: "bash", Command: cmd, Cwd: root})
+		if !handled || d.Allow != allow {
+			t.Errorf("%s: handled=%v allow=%v, want allow=%v (%s)", cmd, handled, d.Allow, allow, d.Reason)
+		}
+	}
 }
