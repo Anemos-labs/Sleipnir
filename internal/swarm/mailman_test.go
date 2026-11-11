@@ -762,8 +762,8 @@ func TestMailmanOnlyDeliversMail(t *testing.T) {
 	}
 }
 
-// Everything the mailman is held to: a digest that is too long, for a recipient that has no
-// parcels, or a second one for the same recipient, is refused with what to do instead, and
+// Everything the mailman is held to: a digest for a recipient that has no parcels, or a second
+// one for the same recipient, is refused with what to do instead (a long one is kept), and
 // the bounds of the ledger hold: a full mailroom delivers directly, a batch covers at most
 // MailmanBatch parcels.
 func TestMailmanBounds(t *testing.T) {
@@ -773,13 +773,10 @@ func TestMailmanBounds(t *testing.T) {
 			if batch == "" {
 				return rvReply{Text: "done"}
 			}
-			switch answered {
-			case 0:
-				return rvReply{Tools: []rvToolCall{{"mail", map[string]any{"to": "mgr", "text": strings.Repeat("long ", 200)}}}}
-			case 1:
+			if answered == 0 {
 				return rvReply{Tools: []rvToolCall{
 					{"mail", map[string]any{"to": "ghost-9", "text": "not a recipient"}},
-					{"mail", map[string]any{"to": "mgr", "text": "the short digest"}},
+					{"mail", map[string]any{"to": "mgr", "text": strings.Repeat("long ", 200)}},
 					{"mail", map[string]any{"to": "mgr", "text": "a second digest for the same recipient"}},
 				}}
 			}
@@ -796,7 +793,10 @@ func TestMailmanBounds(t *testing.T) {
 		if st.Digests != 1 || st.Digested != 3 || st.Direct != 0 {
 			t.Fatalf("stats %+v", st)
 		}
-		for _, want := range []string{"digest too long", "no parcels for ghost-9 are waiting", "every recipient has its digest"} {
+		if r.prov.sawEver("digest too long") {
+			t.Fatal("a digest longer than MailmanDigestChars was refused: the length asked for is not a limit")
+		}
+		for _, want := range []string{"no parcels for ghost-9 are waiting", "every recipient has its digest"} {
 			rvWait(t, "the mailman to be told "+want, func() bool { return r.prov.sawEver(want) })
 		}
 	})

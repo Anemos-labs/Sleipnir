@@ -127,7 +127,7 @@ type RouterConfig struct {
 // a blocker, 1,200 of mail that carries content, reach the recipient's thread; a message
 // of up to 48,000 characters is accepted, and the rest is read with mail read.
 func DefaultRouterConfig() RouterConfig {
-	return RouterConfig{MaxPerMinute: 8, MaxPerPairPerMin: 3, MaxChars: 600, MaxContentChars: 1200, MaxBodyChars: 1 << 20,
+	return RouterConfig{MaxPerMinute: 30, MaxPerPairPerMin: 10, MaxChars: 600, MaxContentChars: 1200, MaxBodyChars: 1 << 20,
 		DedupeWindow: 5 * time.Minute}
 }
 

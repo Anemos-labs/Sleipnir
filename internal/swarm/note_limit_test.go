@@ -15,7 +15,7 @@ func TestNoteToolStatesItsLimit(t *testing.T) {
 		t.Fatalf("the note tool does not state its %s-character limit:\n%s\n%s", limit, spec.Description, spec.InputSchema)
 	}
 	b := NewBoard(nil)
-	if _, err := b.AddNote("mgr", "shared", "manager", strings.Repeat("x", maxNoteRunes+1)); err == nil || !strings.Contains(err.Error(), limit+"-character limit") {
+	if _, err := b.AddNote("mgr", "shared", "manager", strings.Repeat("x", maxNoteRunes+1)); err == nil || !strings.Contains(err.Error(), limit+"-character ceiling") {
 		t.Fatalf("an over-long note: %v", err)
 	}
 }

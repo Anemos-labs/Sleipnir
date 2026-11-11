@@ -416,9 +416,13 @@ Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side
   layer is not implemented (section 9), so a note stays until newer notes evict it or its author withdraws it; an
   author at its limit is told its notes' ids and to withdraw one or fold facts together. Agreements use task
   dependencies instead.
-* **The board is bounded**, because every agent's prompt carries a rendering of it: 1000 tasks; titles 160 characters,
-  descriptions 2000, at most 16 dependencies and 16 scope entries per task; 48 pending notes (8 per author, the oldest
-  evicted, 300 characters each); 8 alerts, which expire after 2 minutes and are cleared when the conflict ends.
+* **What agents write is kept as written.** The board's bounds are ceilings for memory only (100000 tasks, 1000
+  dependencies and 1000 scope entries per task, 16384 characters for a note, a status line, a result or an
+  assumption, 1 MiB for a description or a report), never a reason to refuse or cut what an agent meant to say. What
+  every agent's prompt carries is bounded by how it is shown instead: a title over 160 characters shows its opening, a
+  list of tasks shows the first 400 characters of a line, result or evidence with a pointer to `task get`, which shows
+  the task whole, and 48 pending notes are shown (8 per author, the oldest evicted). 8 alerts, which expire after 2
+  minutes and are cleared when the conflict ends.
 
 ## 4. Task lifecycle and harness-owned "done"
 
@@ -616,7 +620,7 @@ ephemeral: delivered into the recipient's next turn, cached for a few turns, com
   (a ceiling for memory only), is not refused or cut: its opening is delivered with a harness note of how much follows, and the sender or
   the recipient reads the whole, line breaks kept, with `mail read=<id>`. Mail coalesced while an inbox was full, and
   parcels a mailman digested from their opening, are kept whole as well, and the digest names their ids. The router keeps
-  these messages within 8 MiB, forgetting the oldest first. 8 messages per minute per sender (the manager, who coordinates the whole team, is not held to it), 3 per minute per
+  these messages within 8 MiB, forgetting the oldest first. 30 messages per minute per sender (the manager, who coordinates the whole team, is not held to it), 10 per minute per
   sender->recipient pair, identical text to one recipient deduplicated for 5 minutes; over-limit errors are written for
   the sending model and say what to do instead (use `note`, wait, or fold messages). A message over that ceiling is
   refused with its length, how far over it is, a target below the limit, and where long content lasts: a file in the

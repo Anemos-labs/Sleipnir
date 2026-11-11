@@ -851,10 +851,10 @@ func renderTaskList(s *Snapshot) string {
 	for _, t := range s.Tasks {
 		sb.WriteString(taskLine(t))
 		if t.Result != "" {
-			sb.WriteString(" ⇒ " + t.Result)
+			sb.WriteString(" ⇒ " + listed(t.Result, t.ID))
 		}
 		if t.Evidence != "" {
-			sb.WriteString(" [" + t.Evidence + "]")
+			sb.WriteString(" [" + listed(t.Evidence, t.ID) + "]")
 		}
 		if t.Agreement != "" {
 			sb.WriteString(" [agreement: task get " + t.ID + "]")
@@ -1606,21 +1606,21 @@ func diffSnapshots(a, b *Snapshot) []string {
 				line = fmt.Sprintf("%s → %s:%s (%s)", t.ID, t.Status, t.Closure.String(), t.Owner)
 			}
 			if t.Result != "" {
-				line += ": " + t.Result
+				line += ": " + listed(t.Result, t.ID)
 			} else if t.Line != "" {
-				line += ": " + t.Line
+				line += ": " + listed(t.Line, t.ID)
 			}
 			if t.Evidence != "" && t.Status == StatusReview {
-				line += " [" + t.Evidence + "]"
+				line += " [" + listed(t.Evidence, t.ID) + "]"
 			}
 			if len(t.Assumptions) > 0 && t.Status == StatusReview {
-				line += " assumed: " + strings.Join(t.Assumptions, "; ")
+				line += " assumed: " + listed(strings.Join(t.Assumptions, "; "), t.ID)
 			}
 			out = append(out, line)
 		case t.Status == StatusTodo && existed && (old.Status == StatusDoing || old.Status == StatusBlocked || old.Status == StatusReview):
 			line := fmt.Sprintf("%s → todo (returned to the pool)", t.ID)
 			if t.Line != "" {
-				line += ": " + t.Line
+				line += ": " + listed(t.Line, t.ID)
 			}
 			out = append(out, line)
 		}
@@ -1713,4 +1713,14 @@ func (s *Swarm) planNudge(agentID string) string {
 		return ""
 	}
 	return ". If this finishes a step of your plan, mark it done with the plan tool; if it shows work the plan lacks, add a step"
+}
+
+// listed is a task's line, result or evidence as a list of tasks shows it: whole when it is short, else its opening and a
+// pointer to task get, which shows it whole.
+func listed(text, id string) string {
+	head, rest := inlineHead(text, listedRunes)
+	if rest == 0 {
+		return text
+	}
+	return fmt.Sprintf("%s … (%d more characters: task get %s)", head, rest, id)
 }

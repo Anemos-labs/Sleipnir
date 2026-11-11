@@ -81,3 +81,23 @@ func TestPrivateTmpdirIsKnownAndNamedInTheRefusal(t *testing.T) {
 		t.Errorf("allowed without a scratch directory: %s", d.Reason)
 	}
 }
+
+// A read-only agent (plan mode) may write a scratch file in $TMPDIR, which is outside the project; a write in the workspace is
+// still refused.
+func TestPlanModeWritesOnlyToTheScratchDirectory(t *testing.T) {
+	f := newFixture(t)
+	tmp := filepath.Join(f.root, "..", "scratch-plan-"+filepath.Base(f.root))
+	if err := os.MkdirAll(tmp, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	tmp, _ = filepath.EvalSymlinks(tmp)
+	e := f.engine(t, Config{Mode: ModePlan, Tmp: tmp})
+	for _, cmd := range []string{`cat > "$TMPDIR/ci.yaml" <<'X'` + "\na: 1\nX", "echo x > " + tmp + "/a"} {
+		if d := e.Check(context.Background(), f.request(bash(cmd))); !d.Allow {
+			t.Errorf("%s: %s", cmd, d.Reason)
+		}
+	}
+	if d := e.Check(context.Background(), f.request(bash("echo x > notes.txt"))); d.Allow {
+		t.Error("plan mode let a command write in the workspace")
+	}
+}

@@ -42,9 +42,11 @@ import (
 )
 
 const (
-	MaxNotes     = 40
-	MaxNoteRunes = 300
-	MaxBytes     = 8 << 10
+	// MaxNotes, MaxNoteRunes and MaxBytes are ceilings for memory only: a note is kept as the agent wrote it. (Notes the
+	// prompt cannot carry whole go the way of any long instructions section: the context policy archives the overflow.)
+	MaxNotes     = 1000
+	MaxNoteRunes = 1 << 14
+	MaxBytes     = 1 << 20
 	// header is plain text, not an HTML comment: the instruction loader removes comments, and this line must reach the model.
 	header = "Notes the agent saved with its memory tool. They may be wrong or out of date; the user's own instructions win."
 )
@@ -352,7 +354,7 @@ func ReadNotes(path string) ([]string, error) {
 
 // MaxFileBytes bounds what is read of a notes file. The tool writes at most MaxBytes; a file longer than this was not written as
 // notes, and reading it all (a link to an endless device, say) would only cost memory.
-const MaxFileBytes = 1 << 20
+const MaxFileBytes = 2 << 20
 
 // LoadNotes reads the notes file at path: its bytes and its notes. A missing file holds none; anything but a regular file of at
 // most MaxFileBytes is an error (fs.ErrNotExist for a missing one).

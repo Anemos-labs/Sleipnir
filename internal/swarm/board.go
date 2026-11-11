@@ -45,17 +45,21 @@ const (
 // Limits on what one agent can put on the board. Every agent's prompt carries a
 // rendering of the board, so what one agent can add is what every agent pays for.
 const (
-	maxTitleRunes  = 160
-	maxDescRunes   = 1 << 20 // a ceiling for memory only: no task needs more, and a description over descInlineRunes is shown in part (see descInlineRunes)
-	maxRoleRunes   = 32
-	maxTaskDeps    = 16
-	maxLineRunes   = 140
-	maxResultRunes = 160
-	maxEvidRunes   = 320
-	maxReportRunes = 16000
-	maxAssumptions = 8   // assumptions one submission may list
-	maxAssumeRunes = 200 // runes in one assumption
-	maxNoteRunes   = 300
+	maxTitleRunes = 160
+	maxDescRunes  = 1 << 20 // a ceiling for memory only: no task needs more, and a description over descInlineRunes is shown in part (see descInlineRunes)
+	maxRoleRunes  = 32
+	maxTaskDeps   = 1000
+	// The texts below are kept as the agent wrote them, up to a ceiling for memory only. A view that lists many tasks shows
+	// each one's opening (listedRunes) and points to task get, which shows it whole: a status line cut at 140 characters, or
+	// a result at 160, lost what the agent believed it had said.
+	maxLineRunes   = 1 << 14
+	maxResultRunes = 1 << 14
+	maxEvidRunes   = 1 << 14
+	maxReportRunes = 1 << 20
+	maxAssumptions = 1000    // assumptions one submission may list
+	maxAssumeRunes = 1 << 14 // runes in one assumption
+	maxNoteRunes   = 1 << 14
+	listedRunes    = 400 // what a list of tasks shows of one task's line, result or evidence
 	maxAlertRunes  = 160
 	maxPendingEvts = 4096
 )
@@ -174,7 +178,7 @@ func (s *Snapshot) Agent(id string) (AgentInfo, bool) {
 
 // BoardLimits bound the board.
 type BoardLimits struct {
-	MaxTasks         int           // tasks ever created (default 1000)
+	MaxTasks         int           // tasks ever created (default 100000, a ceiling for memory)
 	MaxNotes         int           // pending proposed notes; the oldest are evicted (default 48)
 	MaxNotesPerAgent int           // pending notes one agent may have (default 8)
 	MaxAlerts        int           // alerts shown at once (default 8)
@@ -183,7 +187,7 @@ type BoardLimits struct {
 
 // DefaultBoardLimits returns the default limits.
 func DefaultBoardLimits() BoardLimits {
-	return BoardLimits{MaxTasks: 1000, MaxNotes: 48, MaxNotesPerAgent: 8, MaxAlerts: 8, AlertTTL: 2 * time.Minute}
+	return BoardLimits{MaxTasks: 100000, MaxNotes: 48, MaxNotesPerAgent: 8, MaxAlerts: 8, AlertTTL: 2 * time.Minute}
 }
 
 // withDefaults returns a copy with nonpositive task, note, alert, and alert-lifetime limits
@@ -1563,8 +1567,8 @@ func (b *Board) RestoreKeeping(prev *Snapshot, owners map[string]string, keep ma
 // every agent's prompt carries.
 func (b *Board) AddNote(from, scope, role, text string) (int, error) {
 	if n := utf8.RuneCountInString(strings.Join(strings.Fields(text), " ")); n > maxNoteRunes {
-		// Refused, not cut: a fact cut short is a wrong fact on every agent's board.
-		return 0, fmt.Errorf("note too long: %d characters, %d over the %d-character limit. A note is one durable fact; put the detail in a mail, a task description or a file, and note where it is", n, n-maxNoteRunes, maxNoteRunes)
+		// Refused, not cut: a fact cut short is a wrong fact on every agent's board. The ceiling is for memory only.
+		return 0, fmt.Errorf("note too long: %d characters, over the %d-character ceiling. Put the detail in a file and note where it is", n, maxNoteRunes)
 	}
 	text = cleanText(text, maxNoteRunes)
 	if text == "" {

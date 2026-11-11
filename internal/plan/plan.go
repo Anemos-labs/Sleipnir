@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"unicode"
+	"unicode/utf8"
 )
 
 const (
@@ -21,15 +22,10 @@ const (
 	Doing   = "doing"
 	Done    = "done"
 
-	// MaxSteps bounds a plan. A goal of many hours needs a step for each part of it (a plan of a dozen broad steps shows a
-	// day's work as nearly done after an hour), so the bound leaves room for one step or two per milestone.
-	MaxSteps = 24
-	// MaxDelegatedSteps bounds a delegated plan (a team's manager): a step for each part a worker takes, and a team of thirty
-	// takes many more than one agent does alone. Held to MaxSteps, a large team's manager spent its first calls cutting its plan.
-	MaxDelegatedSteps = 80
-	// MaxStepRune is how long a step is kept: a longer one is shortened at a word, not refused (the step is a summary; the
-	// work's detail lives in the task it names).
-	MaxStepRune = 160
+	// MaxSteps and MaxStepRune are ceilings for memory only. A plan holds as many steps as the work has, each as long as the
+	// agent writes it: a team's manager held to 24 steps of 160 characters spent its first calls cutting its plan down.
+	MaxSteps    = 10000
+	MaxStepRune = 1 << 14
 	// MaxEffort is the largest estimate a step keeps (hours); a larger one is read as this.
 	MaxEffort = 200
 	// MaxMilestoneRune bounds the milestone id a step names.
@@ -121,12 +117,8 @@ func normalize(in []Item, oneDoing bool) ([]Item, error) {
 	if len(in) == 0 {
 		return nil, fmt.Errorf(`the plan has no steps: give "items" as a list of {"step": "...", "status": "pending|doing|done"}`)
 	}
-	limit := MaxSteps
-	if !oneDoing {
-		limit = MaxDelegatedSteps
-	}
-	if len(in) > limit {
-		return nil, fmt.Errorf("the plan has %d steps; the limit is %d: merge steps that belong together", len(in), limit)
+	if len(in) > MaxSteps {
+		return nil, fmt.Errorf("the plan has %d steps, over the %d-step ceiling", len(in), MaxSteps)
 	}
 	out := make([]Item, 0, len(in))
 	doing := 0
@@ -140,7 +132,9 @@ func normalize(in []Item, oneDoing bool) ([]Item, error) {
 		if step == "" {
 			return nil, fmt.Errorf("step %d is empty", i+1)
 		}
-		step = shortenStep(step)
+		if n := utf8.RuneCountInString(step); n > MaxStepRune {
+			return nil, fmt.Errorf("step %d is %d characters, over the %d-character ceiling", i+1, n, MaxStepRune)
+		}
 		st := strings.ToLower(strings.TrimSpace(it.Status))
 		switch st {
 		case "", Pending, "todo", "open":
@@ -334,19 +328,3 @@ func (s *Store) Get(agent string) []Item {
 
 // Open is how many steps of the agent's plan are not done.
 func (s *Store) Open(agent string) int { return Open(s.Get(agent)) }
-
-// shortenStep cuts a step longer than MaxStepRune at the last space in its second half, and marks the cut with an ellipsis.
-func shortenStep(step string) string {
-	r := []rune(step)
-	if len(r) <= MaxStepRune {
-		return step
-	}
-	cut := MaxStepRune - 1
-	for i := cut; i > MaxStepRune/2; i-- {
-		if r[i] == ' ' {
-			cut = i
-			break
-		}
-	}
-	return strings.TrimRight(string(r[:cut]), " ,;:") + "…"
-}

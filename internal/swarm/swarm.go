@@ -165,7 +165,7 @@ type Config struct {
 	// many parcels one request of the mailman covers (24, at most 66: each parcel is shown
 	// at least 240 characters within the request's budget), MailmanMaxPending how many
 	// the harness holds at all before delivering directly (200), and MailmanDigestChars
-	// the longest digest (700).
+	// the length of digest the mailman is asked for (700; a longer one is kept).
 	Mailman            bool
 	MailmanQuiet       time.Duration
 	MailmanMax         time.Duration

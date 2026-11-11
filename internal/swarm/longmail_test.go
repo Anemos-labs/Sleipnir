@@ -109,7 +109,7 @@ func TestTaskDescriptionAndLongTitleAreKept(t *testing.T) {
 // A note over its limit is refused with its size, not cut into a wrong fact.
 func TestLongNoteIsRefusedNotCut(t *testing.T) {
 	b := NewBoard(nil)
-	if _, err := b.AddNote("be-1", "shared", "be", strings.Repeat("n", maxNoteRunes+5)); err == nil || !strings.Contains(err.Error(), "5 over") {
+	if _, err := b.AddNote("be-1", "shared", "be", strings.Repeat("n", maxNoteRunes+5)); err == nil || !strings.Contains(err.Error(), "over the") {
 		t.Fatalf("long note: %v", err)
 	}
 }

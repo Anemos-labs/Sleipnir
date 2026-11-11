@@ -7,10 +7,21 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
-- The plan tool no longer refuses a step over 160 characters: it shortens it at
-  a word and keeps it. A manager's plan may hold up to 80 steps (an agent's own
-  plan stays at 24), so a large team's manager no longer spends its first calls
-  cutting its plan down.
+- Plan mode (read-only agents, and pool members before their child task) lets
+  a command write to the session's scratch directory (`$TMPDIR`): a reviewer
+  writing a config to validate there changed nothing in the project, and was
+  refused.
+- Limits on what agents write are ceilings for memory only, not reasons to
+  refuse or cut. A plan takes any number of steps of any length (it was 24 steps
+  of 160 characters). Notes, status lines, results, evidence and assumptions are
+  kept up to 16384 characters (they were cut at 140 to 320, a note over 300 was
+  refused), reports up to 1 MiB (16000), a task's dependencies and scope entries
+  up to 1000 (16), the board up to 100000 tasks (1000), and the `memory` tool up
+  to 1000 notes of 16384 characters (40 of 300). A list of tasks shows the first
+  400 characters of each line, result or evidence and points to `task get`. A
+  mailman digest longer than `MailmanDigestChars` is kept: that length is what
+  the mailman is asked for. Mail rates rise to 30 a minute per sender and 10 per
+  pair (8 and 3).
 - Large teams scale. Four limits held every team at about the throughput of
   fifteen workers, whatever its size:
   - The worktree merge queue verified each submission on its own, so a team

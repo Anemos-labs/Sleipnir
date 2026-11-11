@@ -737,6 +737,11 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 	case ModeBypass, ModeYolo:
 		return allow(string(mode) + " mode")
 	case ModePlan:
+		if a.write && !a.dynamic && ev.rs.inTmp(a.real) {
+			// The session's scratch directory is outside the project: a read-only agent that writes a check's input there (a
+			// config to validate, a fixture to diff against) changes nothing it was told to leave alone.
+			return allow("write to the session's scratch directory ($TMPDIR)")
+		}
 		if a.write {
 			return deny(planReason("it would write " + a.raw))
 		}

@@ -15,7 +15,7 @@ const (
 	// each agreement's opening up to agreementInlineBytes, all of them up to agreementCardBytes, and the rest is read with
 	// task get on the task that made it.
 	maxAgreementBytes          = 1 << 20
-	maxInheritedAgreementBytes = 4 << 20
+	maxInheritedAgreementBytes = 16 << 20
 	maxClaimedAssignmentBytes  = 200000
 	agreementInlineBytes       = 24000
 	agreementCardBytes         = 48000
