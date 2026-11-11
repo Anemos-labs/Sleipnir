@@ -7,6 +7,10 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A pool member whose pool is read-only to it (planning, reconciliation) may run
+  the team's verification command, `go build`, and the type-check and lint
+  scripts. Members asked to check the combined result before confirming it were
+  refused the very command that judges it.
 - Plan mode (read-only agents, and pool members before their child task) lets
   a command write to the session's scratch directory (`$TMPDIR`): a reviewer
   writing a config to validate there changed nothing in the project, and was

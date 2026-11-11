@@ -101,3 +101,23 @@ func TestPlanModeWritesOnlyToTheScratchDirectory(t *testing.T) {
 		t.Error("plan mode let a command write in the workspace")
 	}
 }
+
+// A read-only role's checks include a build and a type check: a pool member asked to check the combined result was refused
+// `go build -o "$TMPDIR/app" ./cmd/app`.
+func TestReadOnlyChecksIncludeABuildToTheScratchDirectory(t *testing.T) {
+	f := newFixture(t)
+	tmp := filepath.Join(f.root, "..", "scratch-build-"+filepath.Base(f.root))
+	if err := os.MkdirAll(tmp, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	tmp, _ = filepath.EvalSymlinks(tmp)
+	po := f.engine(t, Config{Mode: ModeBypass, Tmp: tmp}).PlanOnly(ReadOnlyAllow...)
+	for _, cmd := range []string{`go build -o "$TMPDIR/app" ./cmd/app`, "go build ./...", "pnpm exec tsc --noEmit"} {
+		if d := po.Check(context.Background(), f.request(bash(cmd))); !d.Allow {
+			t.Errorf("%s: %s", cmd, d.Reason)
+		}
+	}
+	if d := po.Check(context.Background(), f.request(bash("go build -o notes.bin ./cmd/app"))); d.Allow {
+		t.Error("a build that writes its named output into the workspace was allowed")
+	}
+}

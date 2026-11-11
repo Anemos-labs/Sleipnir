@@ -712,7 +712,7 @@ func (s *Swarm) poolPermission(ctx context.Context, id string, inner perm.Reques
 			}
 		}
 		if e, ok := inner.(*perm.Engine); ok {
-			if po := e.PlanOnly(perm.ReadOnlyAllow...); po != nil {
+			if po := e.PlanOnly(s.poolChecks()...); po != nil {
 				d := po.Check(ctx, req)
 				if !d.Allow {
 					d.Reason = poolReadOnly(t, id) + " Refused: " + planCause(d.Reason)
@@ -729,6 +729,34 @@ func (s *Swarm) poolPermission(ctx context.Context, id string, inner perm.Reques
 		}
 	}
 	return perm.Decision{}, false
+}
+
+// poolChecks is what a pool member may run while its pool is read-only to it: the checks of a read-only role (perm.ReadOnlyAllow)
+// and the team's own verification command. A member asked to check the combined result before it confirms was refused the very
+// command that judges it ("bash verify.sh is not a read-only command"), and the test runner of a subdirectory (pnpm --dir web test).
+func (s *Swarm) poolChecks() []string {
+	rules := slices.Clone(perm.ReadOnlyAllow)
+	if r := verifyAllowRule(s.cfg.VerifyCmd); r != "" {
+		rules = append(rules, r)
+	}
+	return rules
+}
+
+// verifyAllowRule is the allow rule that matches the verification command cmd: the command itself, or, when it takes {dirs}, the
+// command up to {dirs} with any arguments after it. It is "" when there is no command, or nothing before {dirs}.
+func verifyAllowRule(cmd string) string {
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" || strings.ContainsAny(cmd, "()") {
+		return ""
+	}
+	if i := strings.Index(cmd, verifyDirsToken); i >= 0 {
+		head := strings.TrimSpace(cmd[:i])
+		if head == "" {
+			return ""
+		}
+		return "Bash(" + head + ":*)"
+	}
+	return "Bash(" + cmd + ")"
 }
 
 // repairAdvice follows an inspect refused for a checkout the merge left in conflict: the member's own files are its to repair, whatever

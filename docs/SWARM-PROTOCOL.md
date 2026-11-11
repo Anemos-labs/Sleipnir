@@ -282,7 +282,9 @@ mutating commands are denied by the engine that understands shell syntax, not by
 tests and static checks stay allowed, `perm.ReadOnlyAllow`: `go test`, `go vet`, `pytest`, `node --test`, `node --check`,
 `npm test`, `pnpm test`, `yarn test`, `cargo test`, `cargo check`, `make test`, and on the tests preset's terms, every file inside the workspace and no option
 that writes the project's files or installs, `ruff check`, `ruff format --check`, `ruff format --diff`, `mypy`, `pyright`,
-`tsc --noEmit`, `eslint` and `cargo clippy` (not `--fix`); the manager
+`tsc --noEmit`, `eslint` and `cargo clippy` (not `--fix`), `go build` (a named output only in `$TMPDIR`),
+`pnpm exec tsc --noEmit`, and the `typecheck` and `lint` scripts of npm and pnpm; plan mode also lets a command write in the
+session's scratch directory, `$TMPDIR`); the manager
 uses the session's permissions and any explicit manager profile), and swarm
 tools check the caller's role, which the harness puts in the call. The manager owns
 assignments, revisions and scope changes. A pool leader can create and accept its
@@ -291,7 +293,8 @@ pool's scope: when two of its children overlap it parts them), and assign existi
 pool members. A pool member that is not
 writing inside its own child task (planning, reconciliation) is judged under the
 plan profile with the research and checks a read-only role keeps (web fetch and
-search, the project's tests and static checks), and then by its own permissions,
+search, the project's tests and static checks) and the team's own verification command (`swarm.verify`, up to `{dirs}`), so
+that a member asked to check the combined result can run what judges it, and then by its own permissions,
 so a pool never grants more than the session does. Without a permission engine (tests, embedding) read-only roles fall back
 to a strict allowlist of one plain inspection command (no operators, redirections, substitutions, exec flags, or
 paths outside the project).

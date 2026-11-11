@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
@@ -235,5 +236,32 @@ func TestVerifyFilesAddsOutsideChangesButNotLockfiles(t *testing.T) {
 	r.sw.cfg.Verify = func(_ context.Context, _, cmd string) (string, int, error) { ran = cmd; return "ok", 0, nil }
 	if vr := r.sw.runVerify(ctx, r.repo, files); !vr.ok || ran != "check-dirs ./..." {
 		t.Fatalf("the worker gate ran %q (%+v)", ran, vr)
+	}
+}
+
+// A pool member may run the team's verification command while its pool is read-only to it: the rule matches the command, or the
+// command up to {dirs} with any directories after it, and parses as a session rule.
+func TestPoolChecksIncludeTheVerificationCommand(t *testing.T) {
+	for cmd, want := range map[string]string{
+		"bash /opt/ops/verify.sh": "Bash(bash /opt/ops/verify.sh)",
+		"go test {dirs}":          "Bash(go test:*)",
+		"{dirs}":                  "",
+		"":                        "",
+		"sh -c (x)":               "",
+	} {
+		got := verifyAllowRule(cmd)
+		if got != want {
+			t.Errorf("verifyAllowRule(%q) = %q, want %q", cmd, got, want)
+			continue
+		}
+		if got != "" {
+			if _, err := perm.ParseRule(perm.Allow, got); err != nil {
+				t.Errorf("%s does not parse: %v", got, err)
+			}
+		}
+	}
+	s := &Swarm{cfg: Config{VerifyCmd: "bash /opt/ops/verify.sh"}}
+	if rules := s.poolChecks(); !slices.Contains(rules, "Bash(bash /opt/ops/verify.sh)") || len(rules) != len(perm.ReadOnlyAllow)+1 {
+		t.Fatalf("pool checks: %v", rules)
 	}
 }
