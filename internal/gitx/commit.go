@@ -249,6 +249,9 @@ type CommitOptions struct {
 	// history. Tracked files inside such a directory are staged as usual
 	// (modifications and deletions), and so is anything already in the index.
 	LeaveUntrackedStores bool
+	// Leave names new files (repository-relative, literal paths) to keep out of the commit: they are staged with
+	// everything else and then taken out of the index again, so they stay in the work tree, untracked.
+	Leave []string
 }
 
 // CommitAll stages every change (`add -A`: modifications, deletions, new
@@ -281,6 +284,14 @@ func (r *Repo) CommitAllWith(ctx context.Context, msg string, author Author, opt
 	}
 	if err := stageAll(ctx, b, opts, 5*r.s.timeout); err != nil {
 		return "", err
+	}
+	if len(opts.Leave) > 0 {
+		if _, err := b.run(ctx, call{
+			args:  []string{"rm", "--cached", "-q", "--ignore-unmatch", "--pathspec-from-file=-", "--pathspec-file-nul"},
+			stdin: strings.NewReader(strings.Join(opts.Leave, "\x00")), mutating: true, timeout: 5 * r.s.timeout,
+		}); err != nil {
+			return "", err
+		}
 	}
 	merging := r.InProgress() == "merge"
 	if !merging {

@@ -187,7 +187,9 @@ func (t *Tree) commitLocked(ctx context.Context, msg string) (string, error) {
 	if err := t.onOwnBranchLocked(ctx, "commit"); err != nil {
 		return "", err
 	}
-	sha, err := t.repo.CommitAllWith(ctx, t.m.withAgentTrailer(msg, t.Agent), t.author(), workCommit)
+	opts := workCommit
+	opts.Leave = t.m.builtExecutables(ctx, t.repo, t.Path)
+	sha, err := t.repo.CommitAllWith(ctx, t.m.withAgentTrailer(msg, t.Agent), t.author(), opts)
 	if err != nil {
 		return "", err
 	}

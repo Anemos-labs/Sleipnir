@@ -3,6 +3,7 @@ package workspace
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -564,6 +565,50 @@ func (m *Manager) checkHistory(ctx context.Context, repo *gitx.Repo, base, to st
 // stores (gitx.DependencyStores), which an install in a repository without
 // ignore rules for them would otherwise turn into history.
 var workCommit = gitx.CommitOptions{LeaveUntrackedStores: true}
+
+// builtExecutables lists the new untracked files under root that are native executables or compiled objects (ELF, Mach-O, a
+// Windows PE, a Java class): what a build writes, never source. They are left out of an agent's commit and stay in its tree.
+// A team's `go build ./cmd/app` put a 12 MB binary named app at the root of the tree; the commit recorded it, and the merge
+// queue refused the work five times because another task claimed that path for its .gitignore line.
+func (m *Manager) builtExecutables(ctx context.Context, repo *gitx.Repo, root string) []string {
+	st, err := repo.StatusWith(ctx, gitx.StatusOptions{Untracked: "all", MaxBytes: 32 << 20})
+	if err != nil || st.Truncated {
+		return nil
+	}
+	var out []string
+	for _, p := range st.Untracked {
+		if strings.HasSuffix(p, "/") || gitx.InDependencyStore(p) {
+			continue
+		}
+		if isExecutableFile(filepath.Join(root, filepath.FromSlash(p))) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// isExecutableFile reports whether the regular file at name starts with the magic of a native executable or a compiled object.
+func isExecutableFile(name string) bool {
+	fi, err := os.Lstat(name)
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() < 64 {
+		return false
+	}
+	f, err := os.Open(name)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	var head [4]byte
+	if _, err := io.ReadFull(f, head[:]); err != nil {
+		return false
+	}
+	switch string(head[:]) {
+	case "\x7fELF", "\xfe\xed\xfa\xce", "\xfe\xed\xfa\xcf", "\xce\xfa\xed\xfe", "\xcf\xfa\xed\xfe", "\xca\xfe\xba\xbe":
+		return true
+	}
+	// "MZ" opens other files too: a PE is one only with an executable's name or mode
+	return string(head[:2]) == "MZ" && (fi.Mode()&0o111 != 0 || strings.HasSuffix(strings.ToLower(name), ".exe") || strings.HasSuffix(strings.ToLower(name), ".dll"))
+}
 
 // checkCommittable is the guard every commit of an agent's work passes: nothing in
 // what would be recorded may be a nested repository or exceed the size limit (once

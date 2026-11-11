@@ -34,6 +34,9 @@ they do not indicate whether a change has been released.
     the workers' concurrent verify gates.
   - A pool member's live view says where each of its pools stands and the
     one step that is the member's own now.
+  - A native executable or compiled object a build wrote into a worker's tree
+    (ELF, Mach-O, PE, a Java class) is left out of its commit and stays in the
+    tree, untracked.
   - The manager's live view names the unfinished task that holds most of the
     waiting work while members sit idle, and how to loosen it.
   The task tool's description changes (agreements of any length), so the tool
