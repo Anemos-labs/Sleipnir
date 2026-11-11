@@ -7,10 +7,66 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
-- The plan tool no longer refuses a step over 160 characters: it shortens it at
-  a word and keeps it. A manager's plan may hold up to 80 steps (an agent's own
-  plan stays at 24), so a large team's manager no longer spends its first calls
-  cutting its plan down.
+- A tool result over the 60,000-character cap of one result is saved whole
+  behind a recall handle when its tool did not save it, and the cut result
+  names the handle: what the cut leaves out (the middle of a long memory list)
+  can be read with `recall`. Without the recall tool, or when the result cannot
+  be saved, the cut result says to narrow the call.
+- The instruction loader reads up to 2 MB of a file and 8 MB in all (from 64 KB
+  and 256 KB), so the memory tool's notes, which may take up to 2 MB, are read
+  again whole; the context policy still decides what the prompt carries. The
+  web Memory page's notes `PUT` takes a body that fits a whole notes file, and
+  an instruction file it edits may be up to 2 MB.
+- A `:workspace` rule with options of its own (`pnpm exec eslint --quiet`)
+  keeps the refused options of its command: `--fix` stays off it.
+- A worker whose run ends on an outage of its model's endpoint is not restarted
+  automatically on that model while a member of its role runs on another model
+  whose last run did not end on one: its task goes back to the board for the
+  manager to assign (the repair does not start the worker on it again), and the
+  manager's assignments go to the member on the other model (as `outageSteer`
+  already steered them).
+- Creating a planning task with a scope tells the manager that its owner
+  writes none of those files and to make it a work task when the files are
+  the deliverable; a planning task's card says every write is refused,
+  whatever its description says.
+- A pool member whose pool is read-only to it (planning, reconciliation) may run
+  the team's verification command (each command of a plain `&&` chain; a
+  `{dirs}` template only when `{dirs}` ends it, with paths in the workspace and
+  without a checker's writing options), `go build -o` to `$TMPDIR`, and
+  `pnpm exec tsc --noEmit` and `pnpm exec eslint` without their writing
+  options (`--fix`, `--cache-location`, `--cache-file` among them).
+- Plan mode (read-only agents, and pool members before their child task) lets
+  a command write to the session's scratch directory (`$TMPDIR`) by a
+  redirection, and `mkdir` there; other file-writing commands (`cp`, which can
+  write through a link already in a directory, `touch`, and those that can make
+  links: `ln`, `mv`) are not. A scratch directory that holds the
+  project, or is the project, and a path in it that holds the project are not
+  scratch: plan mode writes in the project stay refused.
+- Limits on what agents write are ceilings for memory only, not reasons to
+  refuse or cut. A plan takes up to 10000 steps
+  of up to 16384 characters (it was 24 steps of 160 characters); a saved plan
+  with a longer step still replays, the step cut to the ceiling, and a replay
+  keeps the last plan the tool accepted (a call it refused is not restored). Notes, status lines, results, evidence and assumptions are
+  kept up to 16384 characters (they were cut at 140 to 320, a note over 300 was
+  refused), reports up to 1 MiB (16000), a task's dependencies and scope entries
+  up to 1000 (16), the board up to 100000 tasks (1000), and the `memory` tool up
+  to 1000 notes of 16384 characters (40 of 300); a memory write that would take
+  the notes file, with its text written by hand, over 2 MiB is refused instead of
+  leaving a file that cannot be read. A list of tasks shows the first
+  400 characters of each line, result or evidence and points to `task get`. A
+  mailman digest longer than `MailmanDigestChars` is kept: that length is what
+  the mailman is asked for; one longer than the recipient's mail limit is
+  delivered like any long mail, its opening inline and the whole for
+  `mail read`. Only input over a ceiling is refused (a note, an agreement, a
+  plan step) or cut (a report over 1 MiB). A `task done` text is the task's
+  result whole (it was cut at 120 characters). An error, a refusal's reason or
+  a command named in a tool result is shown whole (they were cut at 80 to 400
+  characters), and a harness alert up to 2048 characters (160). A long team
+  note shows its opening on the live board and `note read=<id>` shows it whole.
+  An assignment card names its scope and dependencies up to 16000 characters
+  and points to `task get` for the rest (dependencies were cut at 120), and the
+  agreements it has no room for on one line. Mail rates rise to 30 a minute per sender and 10 per
+  pair (8 and 3).
 - Large teams scale. Four limits held every team at about the throughput of
   fifteen workers, whatever its size:
   - The worktree merge queue verified each submission on its own, so a team

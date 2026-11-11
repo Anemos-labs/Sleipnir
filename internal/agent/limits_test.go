@@ -7,6 +7,7 @@ package agent_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -719,5 +720,115 @@ func TestRetryNoticesCountTheAttemptsAndTheLastFailureIsFinal(t *testing.T) {
 	}
 	if retries != 5 {
 		t.Errorf("%d model.error events for a retry, want 5 (the sixth failure is reported once, as the end of the request)", retries)
+	}
+}
+
+// A result over the per-result cap from a tool that did not save its own whole output is saved behind a recall handle, so the
+// middle the cut leaves out is not lost (a long memory list, say).
+func TestAResultOverThePerResultCapIsSavedBehindARecallHandle(t *testing.T) {
+	long := "HEAD " + strings.Repeat("a note that the list shows\n", 4000) + "TAIL" // ~108k chars
+	fts := []fakeTool{{name: "read", readOnly: true, run: func(json.RawMessage) *tools.Result { return &tools.Result{Text: long} }}}
+	var mu sync.Mutex
+	var shown string
+	r := newLimRig(t, func(c *agent.Config) { c.MaxTurnResultChars, c.Perm = 1_000_000, perm.AllowAll{} }, fts, func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		defer mu.Unlock()
+		if tm := toolMessages(c); len(tm) > 0 {
+			shown = tm[0]
+			return mock.Reply{Text: "done"}
+		}
+		return mock.Reply{ToolCalls: []mock.ToolCall{{ID: "c1", Name: "read", Args: `{}`}}}
+	})
+	if _, err := r.agent.Run(context.Background(), "list"); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(shown) > 61_000 || !strings.Contains(shown, "HEAD") || !strings.Contains(shown, "TAIL") {
+		t.Fatalf("the result was not cut to the cap with its head and tail: %d chars", len(shown))
+	}
+	h := regexp.MustCompile(`saved as (out_[0-9a-f]{16,})`).FindStringSubmatch(shown)
+	if h == nil {
+		t.Fatalf("the cut result does not name a recall handle: ...%s", shown[len(shown)-200:])
+	}
+	ref, n, ok := r.handles.Resolve(h[1])
+	if !ok || n != len(long) {
+		t.Fatalf("handle %s: ok=%v len=%d", h[1], ok, n)
+	}
+	if b, err := r.blobs.Get(ref); err != nil || string(b) != long {
+		t.Fatalf("the blob behind %s is not the whole result: %v", h[1], err)
+	}
+}
+
+// Without the recall tool a cut result names no handle the agent cannot read: it says to narrow the call instead.
+func TestAResultOverThePerResultCapWithoutRecallSaysToNarrowTheCall(t *testing.T) {
+	long := "HEAD " + strings.Repeat("a line of a long listing\n", 4000) + "TAIL"
+	fts := []fakeTool{{name: "read", readOnly: true, run: func(json.RawMessage) *tools.Result { return &tools.Result{Text: long} }}}
+	var mu sync.Mutex
+	var shown string
+	r := newLimRig(t, func(c *agent.Config) {
+		reg := tools.NewRegistry()
+		reg.Register(fts[0])
+		specs, err := reg.Specs()
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Tools, c.ToolSpecs, c.MaxTurnResultChars, c.Perm = reg, specs, 1_000_000, perm.AllowAll{}
+	}, fts, func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		defer mu.Unlock()
+		if tm := toolMessages(c); len(tm) > 0 {
+			shown = tm[0]
+			return mock.Reply{Text: "done"}
+		}
+		return mock.Reply{ToolCalls: []mock.ToolCall{{ID: "c1", Name: "read", Args: `{}`}}}
+	})
+	if _, err := r.agent.Run(context.Background(), "list"); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if strings.Contains(shown, "out_") || !strings.Contains(shown, "narrower request") {
+		t.Fatalf("the cut result without recall: ...%s", shown[max(0, len(shown)-200):])
+	}
+}
+
+// failingPuts is a blob store that refuses to save any payload holding marker, the way a full disk refuses a large write.
+type failingPuts struct {
+	events.Blobs
+	marker string
+}
+
+func (f failingPuts) Put(data []byte) (core.Hash, error) {
+	if strings.Contains(string(data), f.marker) {
+		return "", errors.New("disk full")
+	}
+	return f.Blobs.Put(data)
+}
+
+// When saving a cut result fails, the result names no handle that would not resolve: it says to narrow the call instead.
+func TestAResultOverThePerResultCapThatCannotBeSavedSaysToNarrowTheCall(t *testing.T) {
+	long := "HEAD " + strings.Repeat("a line of an unsaved listing\n", 4000) + "TAIL-UNSAVED"
+	fts := []fakeTool{{name: "read", readOnly: true, run: func(json.RawMessage) *tools.Result { return &tools.Result{Text: long} }}}
+	var mu sync.Mutex
+	var shown string
+	r := newLimRig(t, func(c *agent.Config) {
+		c.Blobs, c.MaxTurnResultChars, c.Perm = failingPuts{Blobs: c.Blobs, marker: "TAIL-UNSAVED"}, 1_000_000, perm.AllowAll{}
+	}, fts, func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		defer mu.Unlock()
+		if tm := toolMessages(c); len(tm) > 0 {
+			shown = tm[0]
+			return mock.Reply{Text: "done"}
+		}
+		return mock.Reply{ToolCalls: []mock.ToolCall{{ID: "c1", Name: "read", Args: `{}`}}}
+	})
+	if _, err := r.agent.Run(context.Background(), "list"); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if strings.Contains(shown, "saved as out_") || !strings.Contains(shown, "narrower request") {
+		t.Fatalf("the cut result whose save failed: ...%s", shown[max(0, len(shown)-200):])
 	}
 }

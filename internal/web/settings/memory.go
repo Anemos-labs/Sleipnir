@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
@@ -45,11 +46,18 @@ var memoryLessonRe = regexp.MustCompile(`^[0-9a-f]{12}$`)
 
 // registerMemory adds the routes of the Memory page: under a tab (its project's files and the home of its session), and under
 // /api/memory for a page with no tab yet (the user's own files only, in the server's home).
+// notesBody bounds a PUT of the notes: a whole notes file's worth (memtool.MaxFileBytes, which a file written by hand may
+// fill and an edit may then shorten) with every byte in its longest JSON escape (\u003c, six bytes), and room for the JSON
+// around them.
+const notesBody = 6*memtool.MaxFileBytes + 64<<10
+
 func (s *service) registerMemory() {
 	for _, pre := range []string{"/api/sessions/{id}/memory", "/api/memory"} {
 		s.srv.HandleFunc("GET "+pre, s.handleMemory, web.RouteOpts{})
-		s.srv.HandleFunc("PUT "+pre+"/notes", s.handleMemoryNotes, web.RouteOpts{MaxBody: 64 << 10})
-		s.srv.HandleFunc("PUT "+pre+"/file", s.handleMemoryFile, web.RouteOpts{MaxBody: memory.MaxFileBytes + 16<<10})
+		// notesBody fits a whole notes file, every character of it escaped in JSON.
+		s.srv.HandleFunc("PUT "+pre+"/notes", s.handleMemoryNotes, web.RouteOpts{MaxBody: notesBody})
+		// An instruction file up to memory.MaxFileBytes, every character of it escaped in JSON (the text check is the handler's).
+		s.srv.HandleFunc("PUT "+pre+"/file", s.handleMemoryFile, web.RouteOpts{MaxBody: 6*memory.MaxFileBytes + 64<<10})
 		s.srv.HandleFunc("DELETE "+pre+"/lessons/{lesson}", s.handleMemoryLesson, web.RouteOpts{NoBody: true})
 	}
 }
@@ -127,7 +135,7 @@ func (s *service) handleMemoryFile(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case len(body.Text) > memory.MaxFileBytes:
-		reply(w, nil, fail(http.StatusBadRequest, "bad_request", "the text is over 64 KB, the most an instruction file is read for"))
+		reply(w, nil, fail(http.StatusBadRequest, "bad_request", fmt.Sprintf("the text is over %d KB, the most an instruction file is read for", memory.MaxFileBytes>>10)))
 		return
 	case !utf8.ValidString(body.Text) || strings.ContainsRune(body.Text, 0):
 		reply(w, nil, fail(http.StatusBadRequest, "bad_request", "the text is not plain UTF-8 text"))
@@ -418,7 +426,7 @@ func readMemoryFile(f memory.File) memFile {
 	switch {
 	case len(b) > memory.MaxFileBytes:
 		m.text = strings.ToValidUTF8(string(b[:memory.MaxFileBytes]), "�")
-		m.why = "it is over 64 KB: edit it in an editor"
+		m.why = fmt.Sprintf("it is over %d KB: edit it in an editor", memory.MaxFileBytes>>10)
 	case !utf8.Valid(b) || strings.ContainsRune(string(b), 0):
 		m.why = "it is not plain text"
 	default:

@@ -37,6 +37,7 @@ type deriveState struct {
 	lastErr  map[string]string
 	hold     map[string]holdInfo  // UI id -> a sink tool start the log has not caught up with
 	pend     map[string]*pendTool // log-only tool rows waiting for their output (callKey of the agent and the tool call id)
+	plans    map[string]pendPlan  // UI id -> a plan call waiting for its result: a plan the tool refused is not shown
 	hist     []string             // the person's lines
 	ckpts    map[string]*ckptOut  // cid
 	ckptSeen map[string]bool      // cid -> a ckpt event was journalled (the first is critical)
@@ -106,6 +107,7 @@ func (d *deriveState) init() {
 	d.lastErr = map[string]string{}
 	d.hold = map[string]holdInfo{}
 	d.pend = map[string]*pendTool{}
+	d.plans = map[string]pendPlan{}
 	d.ckpts = map[string]*ckptOut{}
 	d.ckptSeen = map[string]bool{}
 	d.digests = map[string]digestInfo{}

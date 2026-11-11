@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"unicode"
+	"unicode/utf8"
 )
 
 const (
@@ -21,15 +22,10 @@ const (
 	Doing   = "doing"
 	Done    = "done"
 
-	// MaxSteps bounds a plan. A goal of many hours needs a step for each part of it (a plan of a dozen broad steps shows a
-	// day's work as nearly done after an hour), so the bound leaves room for one step or two per milestone.
-	MaxSteps = 24
-	// MaxDelegatedSteps bounds a delegated plan (a team's manager): a step for each part a worker takes, and a team of thirty
-	// takes many more than one agent does alone. Held to MaxSteps, a large team's manager spent its first calls cutting its plan.
-	MaxDelegatedSteps = 80
-	// MaxStepRune is how long a step is kept: a longer one is shortened at a word, not refused (the step is a summary; the
-	// work's detail lives in the task it names).
-	MaxStepRune = 160
+	// MaxSteps and MaxStepRune are ceilings for memory only: up to 10000 steps of up to 16384 characters, each kept as the
+	// agent wrote it; a plan over them is refused, not cut.
+	MaxSteps    = 10000
+	MaxStepRune = 1 << 14
 	// MaxEffort is the largest estimate a step keeps (hours); a larger one is read as this.
 	MaxEffort = 200
 	// MaxMilestoneRune bounds the milestone id a step names.
@@ -117,30 +113,51 @@ func Normalize(in []Item) ([]Item, error) { return normalize(in, true) }
 // (resume, the web view) uses it too, since the tool already judged what it saved.
 func NormalizeDelegated(in []Item) ([]Item, error) { return normalize(in, false) }
 
+// NormalizeSaved is for a replay of a plan the tool accepted before (resume, the web view): an older version shortened a step
+// over its limit and kept the plan, so a saved step over MaxStepRune is cut to it, and steps past MaxSteps are dropped, rather
+// than the saved plan lost. delegated is NormalizeDelegated's rule on doing steps.
+func NormalizeSaved(in []Item, delegated bool) ([]Item, error) {
+	if len(in) > MaxSteps {
+		in = in[:MaxSteps]
+	}
+	clipped := make([]Item, len(in))
+	for i, it := range in {
+		it.Step = cleanStep(it.Step) // as the tool counted it: leading spaces do not count toward the ceiling
+		if r := []rune(it.Step); len(r) > MaxStepRune {
+			it.Step = string(r[:MaxStepRune-1]) + "…"
+		}
+		clipped[i] = it
+	}
+	return normalize(clipped, !delegated)
+}
+
+// cleanStep is a step's text without control characters, its runs of space one space.
+func cleanStep(s string) string {
+	return strings.Join(strings.Fields(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) && !unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, s)), " ")
+}
+
 func normalize(in []Item, oneDoing bool) ([]Item, error) {
 	if len(in) == 0 {
 		return nil, fmt.Errorf(`the plan has no steps: give "items" as a list of {"step": "...", "status": "pending|doing|done"}`)
 	}
-	limit := MaxSteps
-	if !oneDoing {
-		limit = MaxDelegatedSteps
-	}
-	if len(in) > limit {
-		return nil, fmt.Errorf("the plan has %d steps; the limit is %d: merge steps that belong together", len(in), limit)
+	if len(in) > MaxSteps {
+		return nil, fmt.Errorf("the plan has %d steps, over the %d-step ceiling", len(in), MaxSteps)
 	}
 	out := make([]Item, 0, len(in))
 	doing := 0
 	for i, it := range in {
-		step := strings.Join(strings.Fields(strings.Map(func(r rune) rune {
-			if unicode.IsControl(r) && !unicode.IsSpace(r) {
-				return -1
-			}
-			return r
-		}, it.Step)), " ")
+		step := cleanStep(it.Step)
 		if step == "" {
 			return nil, fmt.Errorf("step %d is empty", i+1)
 		}
-		step = shortenStep(step)
+		if n := utf8.RuneCountInString(step); n > MaxStepRune {
+			return nil, fmt.Errorf("step %d is %d characters, over the %d-character ceiling", i+1, n, MaxStepRune)
+		}
 		st := strings.ToLower(strings.TrimSpace(it.Status))
 		switch st {
 		case "", Pending, "todo", "open":
@@ -334,19 +351,3 @@ func (s *Store) Get(agent string) []Item {
 
 // Open is how many steps of the agent's plan are not done.
 func (s *Store) Open(agent string) int { return Open(s.Get(agent)) }
-
-// shortenStep cuts a step longer than MaxStepRune at the last space in its second half, and marks the cut with an ellipsis.
-func shortenStep(step string) string {
-	r := []rune(step)
-	if len(r) <= MaxStepRune {
-		return step
-	}
-	cut := MaxStepRune - 1
-	for i := cut; i > MaxStepRune/2; i-- {
-		if r[i] == ' ' {
-			cut = i
-			break
-		}
-	}
-	return strings.TrimRight(string(r[:cut]), " ,;:") + "…"
-}

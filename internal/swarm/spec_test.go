@@ -868,7 +868,7 @@ func TestConfigDefaults(t *testing.T) {
 	if New(Config{StuckAfter: -1}, Deps{}, nil).cfg.StuckAfter >= 0 {
 		t.Fatal("a negative StuckAfter must stay disabled")
 	}
-	if b := s.Board.lim; b.MaxTasks != 1000 || b.MaxNotes != 48 || b.AlertTTL != 2*time.Minute {
+	if b := s.Board.lim; b.MaxTasks != 100000 || b.MaxNotes != 48 || b.AlertTTL != 2*time.Minute {
 		t.Fatalf("board limits: %+v", b)
 	}
 }

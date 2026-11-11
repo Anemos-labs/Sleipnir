@@ -81,3 +81,127 @@ func TestPrivateTmpdirIsKnownAndNamedInTheRefusal(t *testing.T) {
 		t.Errorf("allowed without a scratch directory: %s", d.Reason)
 	}
 }
+
+// A read-only agent (plan mode) may write a scratch file in $TMPDIR, which is outside the project; a write in the workspace is
+// still refused.
+func TestPlanModeWritesOnlyToTheScratchDirectory(t *testing.T) {
+	f := newFixture(t)
+	tmp := filepath.Join(f.root, "..", "scratch-plan-"+filepath.Base(f.root))
+	if err := os.MkdirAll(tmp, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	tmp, _ = filepath.EvalSymlinks(tmp)
+	e := f.engine(t, Config{Mode: ModePlan, Tmp: tmp})
+	for _, cmd := range []string{`cat > "$TMPDIR/ci.yaml" <<'X'` + "\na: 1\nX", "echo x > " + tmp + "/a", `mkdir -p "$TMPDIR/out"`} {
+		if d := e.Check(context.Background(), f.request(bash(cmd))); !d.Allow {
+			t.Errorf("%s: %s", cmd, d.Reason)
+		}
+	}
+	if d := e.Check(context.Background(), f.request(bash("echo x > notes.txt"))); d.Allow {
+		t.Error("plan mode let a command write in the workspace")
+	}
+	// A link made in the scratch directory would let a write after it, judged before it exists, reach the project.
+	for _, cmd := range []string{"mkdir build", `cp go.mod "$TMPDIR/x" && mkdir build`,
+		`ln -s "$PWD" "$TMPDIR/link" && printf x > "$TMPDIR/link/main.go"`,
+		`mv "$TMPDIR/a" "$TMPDIR/link" && printf x > "$TMPDIR/link/main.go"`,
+		`cp -s "$TMPDIR/a" "$TMPDIR/l"`, `cp -l "$TMPDIR/a" "$TMPDIR/l"`, `cp -R "$TMPDIR/a" "$TMPDIR/c"`, `cp -a "$TMPDIR/a" "$TMPDIR/c"`,
+		// A copy into a directory writes a child the command does not name, which may be a link into the project; touch
+		// follows a link too. Only mkdir is let through.
+		`cp "$TMPDIR/a" "$TMPDIR/b"`, `touch "$TMPDIR/a"`} {
+		if d := e.Check(context.Background(), f.request(bash(cmd))); d.Allow {
+			t.Errorf("plan mode allowed %s", cmd)
+		}
+	}
+}
+
+// A copy into a scratch directory whose child is a link to a project file would overwrite that file: it is refused.
+func TestPlanModeCopyIntoALinkToTheProjectIsRefused(t *testing.T) {
+	f := newFixture(t)
+	tmp := filepath.Join(f.root, "..", "scratch-cp-"+filepath.Base(f.root))
+	if err := os.MkdirAll(filepath.Join(tmp, "out"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	tmp, _ = filepath.EvalSymlinks(tmp)
+	if err := os.WriteFile(filepath.Join(f.root, "main.go"), []byte("package main\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(f.root, "main.go"), filepath.Join(tmp, "out", "main.go")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(tmp, "input"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	e := f.engine(t, Config{Mode: ModePlan, Tmp: tmp})
+	for _, cmd := range []string{`cp "$TMPDIR/input/main.go" "$TMPDIR/out"`, `echo x > "$TMPDIR/out/main.go"`} {
+		if d := e.Check(context.Background(), f.request(bash(cmd))); d.Allow {
+			t.Errorf("plan mode allowed %s, which writes the project's main.go through a link", cmd)
+		}
+	}
+}
+
+// A path in $TMPDIR that holds the project is not scratch either: writing there could reach the project's files.
+func TestPlanModeScratchWriteToAPathThatHoldsTheProjectIsRefused(t *testing.T) {
+	f := newFixture(t)
+	root, _ := filepath.EvalSymlinks(f.root)
+	parent := filepath.Dir(filepath.Dir(root))
+	e := f.engine(t, Config{Mode: ModePlan, Tmp: parent})
+	if d := e.Check(context.Background(), f.request(bash("touch "+filepath.Dir(root)))); d.Allow {
+		t.Error("plan mode allowed a write to the directory that holds the project")
+	}
+}
+
+// A scratch directory that holds the project is no scratch directory: plan mode does not let a command write in the
+// project because its path is under the session's $TMPDIR.
+func TestPlanModeScratchThatHoldsTheProjectIsNotScratch(t *testing.T) {
+	f := newFixture(t)
+	parent, _ := filepath.EvalSymlinks(filepath.Dir(f.root))
+	e := f.engine(t, Config{Mode: ModePlan, Tmp: parent})
+	for _, cmd := range []string{"echo x > notes.txt", "mkdir build", "echo x > " + filepath.Join(f.root, "notes.txt")} {
+		if d := e.Check(context.Background(), f.request(bash(cmd))); d.Allow {
+			t.Errorf("plan mode allowed %s with the project inside $TMPDIR", cmd)
+		}
+	}
+	if d := e.Check(context.Background(), f.request(bash("echo x > "+filepath.Join(parent, "elsewhere.txt")))); !d.Allow {
+		t.Errorf("a write in $TMPDIR outside the project: %s", d.Reason)
+	}
+}
+
+// A project at $TMPDIR itself has no scratch directory apart from it.
+func TestPlanModeScratchThatIsTheProjectIsNotScratch(t *testing.T) {
+	f := newFixture(t)
+	root, _ := filepath.EvalSymlinks(f.root)
+	e := f.engine(t, Config{Mode: ModePlan, Tmp: root})
+	for _, cmd := range []string{"echo x > notes.txt", "mkdir build", `echo x > "$TMPDIR/notes.txt"`, `mkdir -p "$TMPDIR/out"`} {
+		if d := e.Check(context.Background(), f.request(bash(cmd))); d.Allow {
+			t.Errorf("plan mode allowed %s with the project at $TMPDIR", cmd)
+		}
+	}
+}
+
+// A read-only role's checks include a build and a type check: a pool member asked to check the combined result was refused
+// `go build -o "$TMPDIR/app" ./cmd/app`.
+func TestReadOnlyChecksIncludeABuildToTheScratchDirectory(t *testing.T) {
+	f := newFixture(t)
+	tmp := filepath.Join(f.root, "..", "scratch-build-"+filepath.Base(f.root))
+	if err := os.MkdirAll(tmp, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	tmp, _ = filepath.EvalSymlinks(tmp)
+	po := f.engine(t, Config{Mode: ModeBypass, Tmp: tmp}).PlanOnly(ReadOnlyAllow...)
+	for _, cmd := range []string{`go build -o "$TMPDIR/app" ./cmd/app`, "pnpm exec tsc --noEmit", "pnpm exec eslint src"} {
+		if d := po.Check(context.Background(), f.request(bash(cmd))); !d.Allow {
+			t.Errorf("%s: %s", cmd, d.Reason)
+		}
+	}
+	if d := po.Check(context.Background(), f.request(bash("go build -o notes.bin ./cmd/app"))); d.Allow {
+		t.Error("a build that writes its named output into the workspace was allowed")
+	}
+	// A checker's writing options take it off its rule; a project's lint script may take --fix.
+	for _, cmd := range []string{"pnpm exec tsc --noEmit --generateTrace trace", "pnpm exec eslint --fix src",
+		"npm run lint -- --fix", "pnpm lint --fix", "pnpm exec eslint --cache-location package.json src",
+		"pnpm exec eslint --cache-file=package.json src"} {
+		if d := po.Check(context.Background(), f.request(bash(cmd))); d.Allow {
+			t.Errorf("a read-only check allowed %s: %s", cmd, d.Reason)
+		}
+	}
+}

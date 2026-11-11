@@ -88,19 +88,19 @@ func TestADeniedChangeChangesNothing(t *testing.T) {
 func TestLimitsAreInBandAndNeverSilent(t *testing.T) {
 	tool := New(filepath.Join(t.TempDir(), "MEMORY.md"))
 	allow := &recording{allow: true}
-	if r := run(t, tool, allow, map[string]any{"action": "add", "text": strings.Repeat("x", MaxNoteRunes+1)}); !r.IsError || !strings.Contains(r.Text, "limit is 300") {
+	if r := run(t, tool, allow, map[string]any{"action": "add", "text": strings.Repeat("x", MaxNoteRunes+1)}); !r.IsError || !strings.Contains(r.Text, fmt.Sprintf("limit is %d", MaxNoteRunes)) {
 		t.Errorf("a long note: %+v", r)
 	}
 	if r := run(t, tool, allow, map[string]any{"action": "add", "text": "  \n "}); !r.IsError {
 		t.Errorf("an empty note: %+v", r)
 	}
 	for i := 0; i < MaxNotes; i++ {
-		if r := run(t, tool, allow, map[string]any{"action": "add", "text": "note number " + string(rune('A'+i/26)) + string(rune('a'+i%26))}); r.IsError {
+		if r := run(t, tool, allow, map[string]any{"action": "add", "text": fmt.Sprintf("note number %04d", i)}); r.IsError {
 			t.Fatalf("note %d: %s", i, r.Text)
 		}
 	}
 	r := run(t, tool, allow, map[string]any{"action": "add", "text": "one too many"})
-	if !r.IsError || !strings.Contains(r.Text, "memory is full") || !strings.Contains(r.Text, "1. note number Aa") || !strings.Contains(r.Text, "40. ") {
+	if !r.IsError || !strings.Contains(r.Text, "memory is full") || !strings.Contains(r.Text, "1. note number 0000") || !strings.Contains(r.Text, fmt.Sprintf("%d. ", MaxNotes)) {
 		t.Errorf("a full memory lists its notes so the model can merge: %.200s", r.Text)
 	}
 	if r := run(t, tool, allow, map[string]any{"action": "remove", "text": "note number"}); !r.IsError || !strings.Contains(r.Text, "matches every note") {
@@ -109,7 +109,7 @@ func TestLimitsAreInBandAndNeverSilent(t *testing.T) {
 	if r := run(t, tool, allow, map[string]any{"action": "remove", "text": "no"}); !r.IsError {
 		t.Errorf("a two-letter match: %+v", r)
 	}
-	if r := run(t, tool, allow, map[string]any{"action": "remove", "text": "note number Ab"}); r.IsError || !strings.Contains(r.Text, "removed 1") {
+	if r := run(t, tool, allow, map[string]any{"action": "remove", "text": "note number 0001"}); r.IsError || !strings.Contains(r.Text, "removed 1") {
 		t.Errorf("a precise remove: %+v", r)
 	}
 }
@@ -344,5 +344,19 @@ func TestProjectScopeRefusalSaysWhyAndWhatToDo(t *testing.T) {
 	r = run(t, NewScoped(user, ""), &recording{allow: true}, map[string]any{"action": "add", "scope": "project", "text": "x"})
 	if !r.IsError || !strings.Contains(r.Text, "no project, or the project is not trusted") {
 		t.Fatalf("generic refusal = %+v", r)
+	}
+}
+
+// A write that would take a file with text written by hand over MaxFileBytes is refused: it would succeed, and the next read fail.
+func TestAWriteOverTheFileCeilingIsRefused(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "MEMORY.md")
+	if err := os.WriteFile(path, []byte(strings.Repeat("x", MaxFileBytes-3)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteNotes(path, []string{"abc"}); err == nil || !strings.Contains(err.Error(), "ceiling") {
+		t.Fatalf("a write over the ceiling: %v", err)
+	}
+	if _, err := ReadNotes(path); err != nil {
+		t.Fatalf("the file can no longer be read: %v", err)
 	}
 }

@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -8,7 +9,9 @@ import (
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/lore"
+	"github.com/anemos-labs/sleipnir/internal/memory"
 	"github.com/anemos-labs/sleipnir/internal/session"
+	"github.com/anemos-labs/sleipnir/internal/tools/memtool"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
 )
 
@@ -95,7 +98,7 @@ func TestMemoryNotesAreReplacedFromTheirVersion(t *testing.T) {
 	if rec := e.do(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: []string{"x"}, Version: old}, nil); rec.Code != http.StatusConflict || errCode(rec) != "changed" {
 		t.Errorf("a write from a stale version: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := e.do(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: []string{strings.Repeat("a", 301)}, Version: v.Notes.Version}, nil); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "limit is 300") {
+	if rec := e.do(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: []string{strings.Repeat("a", memtool.MaxNoteRunes+1)}, Version: v.Notes.Version}, nil); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), fmt.Sprintf("limit is %d", memtool.MaxNoteRunes)) {
 		t.Errorf("a note over the limit: %d %s", rec.Code, rec.Body.String())
 	}
 }
@@ -211,5 +214,61 @@ func TestMemoryViewShowsTheProjectsNotesAndLore(t *testing.T) {
 	}
 	if rec := e.do(http.MethodPut, "/api/memory/notes", wire.MemoryNotesWrite{Scope: "project", Notes: []string{"x"}}, nil); rec.Code != http.StatusBadRequest {
 		t.Errorf("project notes without a tab: %d", rec.Code)
+	}
+}
+
+// The page can save as many notes as the memory tool keeps: the body of the PUT is not held under them.
+func TestMemoryNotesCanBeSavedUpToTheToolsCeiling(t *testing.T) {
+	e := memEnv(t)
+	var v wire.MemoryView
+	e.ok(http.MethodGet, "/api/sessions/t1/memory", nil, nil, &v)
+	var notes []string
+	for size := 0; size+memtool.MaxNoteRunes+8 < memtool.MaxBytes; size += memtool.MaxNoteRunes + 3 {
+		notes = append(notes, fmt.Sprintf("N%04d ", len(notes))+strings.Repeat(`<`, memtool.MaxNoteRunes-6)) // "<" is six bytes in Go's JSON (\u003c)
+	}
+	e.ok(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: notes, Version: v.Notes.Version}, nil, &v)
+	if len(v.Notes.Notes) != len(notes) {
+		t.Fatalf("saved %d of %d notes", len(v.Notes.Notes), len(notes))
+	}
+	// Removing one note still sends far more than the old 64 KB body limit.
+	e.ok(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: notes[1:], Version: v.Notes.Version}, nil, &v)
+	if len(v.Notes.Notes) != len(notes)-1 {
+		t.Fatalf("after removing one: %d notes", len(v.Notes.Notes))
+	}
+}
+
+// A notes file written by hand over the tool's MaxBytes (up to the file ceiling) can still be shortened from the page.
+func TestMemoryNotesWrittenByHandOverTheCeilingCanBeShortened(t *testing.T) {
+	e := memEnv(t)
+	var b strings.Builder
+	b.WriteString("Notes the agent saved with its memory tool.\n")
+	var notes []string
+	for b.Len()+memtool.MaxNoteRunes+8 < memtool.MaxFileBytes-1024 {
+		n := fmt.Sprintf("N%04d ", len(notes)) + strings.Repeat("<", memtool.MaxNoteRunes-6)
+		notes = append(notes, n)
+		b.WriteString("- " + n + "\n")
+	}
+	write(t, filepath.Join(e.home, ".sleipnir", "MEMORY.md"), b.String())
+	var v wire.MemoryView
+	e.ok(http.MethodGet, "/api/sessions/t1/memory", nil, nil, &v)
+	if len(v.Notes.Notes) != len(notes) {
+		t.Fatalf("read %d of %d notes", len(v.Notes.Notes), len(notes))
+	}
+	e.ok(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: notes[1:], Version: v.Notes.Version}, nil, &v)
+	if len(v.Notes.Notes) != len(notes)-1 {
+		t.Fatalf("after removing one: %d notes", len(v.Notes.Notes))
+	}
+}
+
+// An instruction file near the size limit whose every character JSON escapes is still saved, not refused for its body size.
+func TestAnInstructionFileOfEscapedTextUpToTheLimitIsSaved(t *testing.T) {
+	e := memEnv(t)
+	text := strings.Repeat(`<\`, (memory.MaxFileBytes-1024)/2) // "<" is six bytes in Go's JSON (<) and "\" two
+	var v wire.MemoryView
+	e.ok(http.MethodGet, "/api/memory", nil, nil, &v)
+	e.ok(http.MethodPut, "/api/memory/file", wire.MemoryFileWrite{Path: "~/.sleipnir/SLEIPNIR.md", Text: text, Version: fileRow(t, v, "~/.sleipnir/SLEIPNIR.md").Version}, nil, &v)
+	b, err := os.ReadFile(filepath.Join(e.home, ".sleipnir", "SLEIPNIR.md"))
+	if err != nil || string(b) != text {
+		t.Fatalf("SLEIPNIR.md was not saved whole: %d of %d bytes (%v)", len(b), len(text), err)
 	}
 }

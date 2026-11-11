@@ -134,7 +134,7 @@ func approvalText(id string, r perm.Request, task string, ownTree bool, timeout 
 	return fmt.Sprintf("Approval %s: %s asks to run %q %s. The permission engine asks because: %s. %s"+
 		"Answer with approve id=%s decision=yes, decision=no with text= saying what to do instead, or decision=escalate to put it to the person. "+
 		"With no answer within %s it goes to the person.",
-		id, who, cleanText(what, 400), where, cleanText(r.Why, 300), reach, id, timeout)
+		id, who, cleanText(what, 400), where, cleanText(r.Why, maxReasonRunes), reach, id, timeout)
 }
 
 // fallbackText is the message that puts to the manager a question the person left unanswered. Unlike a routine question it may
@@ -160,7 +160,7 @@ func fallbackText(id string, r perm.Request, task string, ownTree bool, timeout 
 		"network, so approve only what the goal needs and nothing you would not defend to the person; when in doubt, say no and say "+
 		"what to do instead. Answer with approve id=%s decision=yes, decision=no with text=, or decision=escalate to leave it with the "+
 		"person. With no answer within %s it stays with the person.",
-		id, who, cleanText(what, 400), where, cleanText(r.Why, 300), id, timeout)
+		id, who, cleanText(what, 400), where, cleanText(r.Why, maxReasonRunes), id, timeout)
 }
 
 // answerApproval delivers the manager's answer to a waiting question.
@@ -214,7 +214,7 @@ func (t *approveTool) Run(_ context.Context, c *tools.Call) (*tools.Result, erro
 		in.Text = ""
 	}
 	t.s.noteCoordination(c.Env.Agent, "approve", "")
-	if err := t.s.answerApproval(in.ID, approvalAnswer{decision: in.Decision, text: cleanText(in.Text, 1000)}); err != nil {
+	if err := t.s.answerApproval(in.ID, approvalAnswer{decision: in.Decision, text: cleanText(in.Text, maxReasonRunes)}); err != nil {
 		return tools.Errorf("%v", err), nil
 	}
 	switch in.Decision {

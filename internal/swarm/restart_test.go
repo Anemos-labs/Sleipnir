@@ -14,6 +14,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/tui/state"
 )
 
@@ -399,10 +400,16 @@ func TestRestartCauses(t *testing.T) {
 // a member whose request fails ends its run with an error; the others' requests block until their run is cancelled.
 func poolRestartRig(t *testing.T, clock *fakeClock, fail func(c *rvCall) bool) (*rvRig, Task) {
 	t.Helper()
+	return poolRestartRigErr(t, clock, fail, errors.New("request failed"))
+}
+
+// poolRestartRigErr is poolRestartRig whose failing calls return failure.
+func poolRestartRigErr(t *testing.T, clock *fakeClock, fail func(c *rvCall) bool, failure error) (*rvRig, Task) {
+	t.Helper()
 	cfg := Config{PersistentPools: true, MaxWorkers: 3, Team: []string{"backend", "backend", "backend"}}
 	r := newClockRig(t, cfg, clock, func(ctx context.Context, c *rvCall) rvReply {
 		if fail(c) {
-			return rvReply{Err: errors.New("request failed")}
+			return rvReply{Err: failure}
 		}
 		<-ctx.Done()
 		return rvReply{Text: "stopped"}
@@ -614,4 +621,67 @@ func TestARestartLeavesANewAssignmentOfTheTaskItKept(t *testing.T) {
 			t.Fatal("the worker was restarted on a new assignment")
 		}
 	})
+}
+
+// A pool member without a task of its own whose run ends on an outage of its model is still restarted in its pool, even while a
+// member of its role runs on another model: the pool waits on its vote, and nothing would hand that back to the manager.
+func TestAPoolMemberWithoutATaskIsRestartedInItsPoolAfterAnOutage(t *testing.T) {
+	clock := newFakeClock()
+	var broken atomic.Bool
+	broken.Store(true)
+	cfg := Config{PersistentPools: true, MaxWorkers: 3, Team: []string{"backend", "backend", "backend"}}
+	r := newClockRig(t, cfg, clock, func(ctx context.Context, c *rvCall) rvReply {
+		if c.Agent == "be-3" && broken.Load() {
+			return rvReply{Err: &provider.Error{Kind: provider.ErrServer, Status: 503, Message: "No endpoints are currently available"}}
+		}
+		<-ctx.Done()
+		return rvReply{Text: "stopped"}
+	})
+	r.sw.StartManager()
+	r.sw.spawnMu.Lock()
+	if _, err := r.sw.ensurePool("backend"); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.spawnMu.Unlock()
+	r.sw.get("be-1").model.ID = "other/model" // a member of its role runs on another model
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "build the API", Files: []string{"api/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	parent := r.sw.Board.Snapshot().Tasks[0]
+	member := "be-3"
+	rvWait(t, member+"'s run to fail", func() bool { _, out := r.sw.inOutage(r.sw.get(member)); return r.idle(member) && out })
+	if p := pendingOf(r, member); p == nil || p.pool != parent.ID {
+		t.Fatalf("pending restart = %+v, want one in pool %s", p, parent.ID)
+	}
+}
+
+// A pool member whose run on a child its parent is blocked on ends on an outage of its model keeps the child and is restarted on
+// it, even while a member of its role runs on another model: the parent waits on that child, not on the manager.
+func TestAPoolChildTheParentWaitsOnStaysItsMembersAfterAnOutage(t *testing.T) {
+	clock := newFakeClock()
+	var broken atomic.Bool
+	outage := &provider.Error{Kind: provider.ErrServer, Status: 503, Message: "No endpoints are currently available"}
+	r, parent := poolRestartRigErr(t, clock, func(c *rvCall) bool { return c.Agent == "be-2" && broken.Load() }, outage)
+	if err := r.sw.Board.poolUpdate("mgr", parent.ID, func(_ *Snapshot, _ *Task, p *PoolState) error { p.Phase = "executing"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	child, err := r.sw.Board.CreateTask(parent.Owner, TaskSpec{Parent: parent.ID, Title: "handlers", Role: "backend", Files: []string{"api/handlers.go"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.sw.Board.BlockOn(parent.Owner, parent.ID, child.ID, "waits for the handlers"); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.get(parent.Owner).model.ID = "other/model" // a member of its role runs on another model
+	rvWait(t, "be-2 in a turn", func() bool { return r.running("be-2") })
+	broken.Store(true)
+	r.sw.stopRun(r.sw.get("be-2"), "test: end the turn", false)
+	rvWait(t, "be-2 idle", func() bool { return r.idle("be-2") && pendingOf(r, "be-2") == nil })
+	if _, err := r.sw.Spawn(SpawnReq{Agent: "be-2", TaskID: child.ID, By: parent.Owner}); err != nil {
+		t.Fatal(err)
+	}
+	rvWait(t, "the child's run to fail", func() bool { return r.idle("be-2") && scheduledOf(r, "be-2") })
+	if c, _ := r.sw.Board.Snapshot().Task(child.ID); c.Status != StatusDoing || c.Owner != "be-2" {
+		t.Fatalf("%s = %s/%s after an outage, want doing and be-2's", child.ID, c.Status, c.Owner)
+	}
 }

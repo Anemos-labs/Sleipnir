@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"runtime/debug"
 	"strings"
@@ -311,7 +312,8 @@ func (a *Agent) seeable(blocks []core.Block) []core.Block {
 	return out
 }
 
-// perTurnResultCap bounds a single result even if a tool forgot to truncate.
+// perResultCap bounds a single result even if a tool forgot to truncate; the whole result stays readable through recall when
+// the agent has the recall tool and the result could be saved.
 const perResultCap = 60_000
 
 func (a *Agent) finishResult(call core.Block, res *tools.Result, took time.Duration) core.Block {
@@ -320,7 +322,28 @@ func (a *Agent) finishResult(call core.Block, res *tools.Result, took time.Durat
 	}
 	text := res.Text
 	if len(text) > perResultCap {
+		full := text
 		text, _ = tools.Truncate(text, perResultCap)
+		if res.Handle == "" {
+			// A tool that did not save its own whole output (Env.Finish does) gets it saved here, so what the cut leaves out
+			// can still be read with recall instead of being lost. The tool.result event carries the handle, so a resumed
+			// session mints it again (RebuildHandles). Without the recall tool, or when saving fails, the note says to narrow
+			// the call instead.
+			var h core.Hash
+			err := errors.New("no recall tool")
+			if _, ok := a.cfg.Tools.Get("recall"); ok {
+				h, err = a.cfg.Blobs.Put([]byte(full))
+			}
+			switch {
+			case err == nil:
+				res.Truncated, res.FullRef, res.FullChars = true, h, len(full)
+				res.Handle = a.cfg.Handles.Add(h, len(full))
+				text += fmt.Sprintf("\n[full output saved as %s (%d chars); use recall to read a range]", res.Handle, len(full))
+			default:
+				res.Truncated = true
+				text += fmt.Sprintf("\n[the output was %d chars and is cut to %d; re-run the call with a narrower request to see the rest]", len(full), perResultCap)
+			}
+		}
 	}
 	if strings.TrimSpace(text) == "" && len(res.Blocks) == 0 {
 		text = "(no output)"

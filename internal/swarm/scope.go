@@ -23,8 +23,8 @@ import (
 // that fits but never admits one that does not).
 
 const (
-	maxScopeEntries = 16
-	maxScopeLen     = 200
+	maxScopeEntries = 1000 // ceilings for memory only
+	maxScopeLen     = 4096
 	maxScopeSegs    = 32
 	maxBraceAlts    = 16
 )

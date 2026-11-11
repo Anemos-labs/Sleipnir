@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/anemos-labs/sleipnir/internal/core"
+	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 	"github.com/anemos-labs/sleipnir/internal/workspace"
 )
@@ -112,7 +113,7 @@ func TestInlineHeadBytesCutsOnARuneBoundary(t *testing.T) {
 	if head, rest := inlineHead("ab  cd", 4); head != "ab" || rest != 4 {
 		t.Fatalf("trimmed spaces are not counted as left out: %q, %d", head, rest)
 	}
-	card := agreementCard([]TaskAgreement{{Task: "T1", Text: text}, {Task: "T2", Text: text}, {Task: "T3", Text: "x"}})
+	card := agreementCard("T9000", []TaskAgreement{{Task: "T1", Text: text}, {Task: "T2", Text: text}, {Task: "T3", Text: "x"}})
 	if len(card) > agreementCardBytes+2000 || !utf8.ValidString(card) {
 		t.Fatalf("a card of %d bytes", len(card))
 	}
@@ -235,5 +236,116 @@ func TestVerifyFilesAddsOutsideChangesButNotLockfiles(t *testing.T) {
 	r.sw.cfg.Verify = func(_ context.Context, _, cmd string) (string, int, error) { ran = cmd; return "ok", 0, nil }
 	if vr := r.sw.runVerify(ctx, r.repo, files); !vr.ok || ran != "check-dirs ./..." {
 		t.Fatalf("the worker gate ran %q (%+v)", ran, vr)
+	}
+}
+
+// A pool member may run the team's verification command while its pool is read-only to it: the rule matches the command, or the
+// command up to {dirs} with any directories after it, and parses as a session rule.
+func TestPoolChecksIncludeTheVerificationCommand(t *testing.T) {
+	for cmd, want := range map[string]string{
+		"bash /opt/ops/verify.sh": "Bash(bash /opt/ops/verify.sh)",
+		"go test {dirs}":          "Bash(go test:workspace)",
+		"{dirs}":                  "",
+		"":                        "",
+		"sh -c (x)":               "",
+		"pnpm --dir {dirs} test":  "",
+	} {
+		got := verifyAllowRule(cmd)
+		if got != want {
+			t.Errorf("verifyAllowRule(%q) = %q, want %q", cmd, got, want)
+			continue
+		}
+		if got != "" {
+			if _, err := perm.ParseRule(perm.Allow, got); err != nil {
+				t.Errorf("%s does not parse: %v", got, err)
+			}
+		}
+	}
+	if got := verifyAllowRules("go test ./... && go vet ./... && ./ci.sh {dirs}"); !slices.Equal(got, []string{"Bash(go test ./...)", "Bash(go vet ./...)", "Bash(./ci.sh:workspace)"}) {
+		t.Fatalf("a chain of checks: %v", got)
+	}
+	for _, cmd := range []string{"make check; rm -rf x", "echo 'health && pnpm install && ready'", "make check & pnpm install", "test -n \"$X\" && pnpm install"} {
+		if got := verifyAllowRules(cmd); len(got) != 0 {
+			t.Fatalf("%s: %v", cmd, got)
+		}
+	}
+	s := &Swarm{cfg: Config{VerifyCmd: "bash /opt/ops/verify.sh"}}
+	if rules := s.poolChecks(); !slices.Contains(rules, "Bash(bash /opt/ops/verify.sh)") || len(rules) != len(perm.ReadOnlyAllow)+1 {
+		t.Fatalf("pool checks: %v", rules)
+	}
+}
+
+// The pool checks of a chained verification command keep ordinary reads allowed, and a command with arguments after {dirs} lends
+// its prefix to nothing: a session that permits pnpm still has a read-only pool member refused `pnpm --dir web add`.
+func TestPoolChecksOfAChainedVerifyCommandThroughTheEngine(t *testing.T) {
+	root := t.TempDir()
+	eng, err := perm.NewEngine(perm.Config{Mode: perm.ModeBypass, Root: root, Home: t.TempDir(), Allow: []string{"Bash(pnpm:*)"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Swarm{cfg: Config{VerifyCmd: "go test ./... && pnpm --dir {dirs} test"}}
+	po := eng.PlanOnly(s.poolChecks()...)
+	if po == nil {
+		t.Fatal("no plan-only view of the engine")
+	}
+	ctx := context.Background()
+	for _, cmd := range []string{"git status", "go test ./..."} {
+		if d := po.Check(ctx, perm.Request{Tool: "bash", Command: cmd, Cwd: root}); !d.Allow {
+			t.Errorf("%s: %s", cmd, d.Reason)
+		}
+	}
+	if d := po.Check(ctx, perm.Request{Tool: "bash", Command: "pnpm --dir web add some-package", Cwd: root}); d.Allow {
+		t.Error("a read-only pool member was allowed pnpm --dir web add")
+	}
+	// A checker before {dirs} keeps its refused options: the rule does not let it rewrite sources.
+	eng2, err := perm.NewEngine(perm.Config{Mode: perm.ModeBypass, Root: root, Home: t.TempDir(), Allow: []string{"Bash(pnpm:*)"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	po2 := eng2.PlanOnly((&Swarm{cfg: Config{VerifyCmd: "pnpm exec eslint {dirs}"}}).poolChecks()...)
+	if d := po2.Check(ctx, perm.Request{Tool: "bash", Command: "pnpm exec eslint src", Cwd: root}); !d.Allow {
+		t.Errorf("pnpm exec eslint src: %s", d.Reason)
+	}
+	if d := po2.Check(ctx, perm.Request{Tool: "bash", Command: "pnpm exec eslint --fix src", Cwd: root}); d.Allow {
+		t.Error("a read-only pool member was allowed pnpm exec eslint --fix")
+	}
+	// Fixed options of the verify command's own do not take the checker's refused options off the rule.
+	eng3, err := perm.NewEngine(perm.Config{Mode: perm.ModeBypass, Root: root, Home: t.TempDir(), Allow: []string{"Bash(pnpm:*)"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	po3 := eng3.PlanOnly((&Swarm{cfg: Config{VerifyCmd: "pnpm exec eslint --quiet {dirs}"}}).poolChecks()...)
+	if d := po3.Check(ctx, perm.Request{Tool: "bash", Command: "pnpm exec eslint --quiet src", Cwd: root}); !d.Allow {
+		t.Errorf("pnpm exec eslint --quiet src: %s", d.Reason)
+	}
+	if d := po3.Check(ctx, perm.Request{Tool: "bash", Command: "pnpm exec eslint --quiet --fix src", Cwd: root}); d.Allow {
+		t.Error("a read-only pool member was allowed pnpm exec eslint --quiet --fix")
+	}
+}
+
+// Through poolPermission: a member of a planning pool, read-only to it, may still run git status and each command of a chained
+// verification command, and not a command the chain's prefix would also match.
+func TestPoolPermissionOfAPlanningMemberWithAChainedVerifyCommand(t *testing.T) {
+	r := newRVRig(t, Config{PersistentPools: true, MaxWorkers: 2, Team: []string{"frontend", "frontend"}, VerifyCmd: "go vet ./... && pnpm exec eslint --quiet {dirs}"}, func(ctx context.Context, c *rvCall) rvReply {
+		return rvReply{Text: "waiting"}
+	})
+	if _, err := r.sw.Spawn(SpawnReq{Role: "frontend", Title: "build the UI", Files: []string{"web/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	member := r.sw.Board.Snapshot().Tasks[0].Pool.Members[1]
+	root := t.TempDir()
+	eng, err := perm.NewEngine(perm.Config{Mode: perm.ModeBypass, Root: root, Home: t.TempDir(), Allow: []string{"Bash(pnpm:*)"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	for cmd, allow := range map[string]bool{
+		"git status": true, "go vet ./...": true, "pnpm exec eslint --quiet web": true,
+		"pnpm exec eslint --quiet --fix web": false, "pnpm --dir web add some-package": false,
+	} {
+		d, handled := r.sw.poolPermission(ctx, member, eng, perm.Request{Tool: "bash", Command: cmd, Cwd: root})
+		if !handled || d.Allow != allow {
+			t.Errorf("%s: handled=%v allow=%v, want allow=%v (%s)", cmd, handled, d.Allow, allow, d.Reason)
+		}
 	}
 }

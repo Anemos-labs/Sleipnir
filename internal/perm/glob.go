@@ -17,7 +17,8 @@ type resolver struct {
 	home, homeReal string
 	tmp            string     // the session's private scratch directory (Config.Tmp), "" when it has none
 	tmpReal        string     // tmp with symlinks followed
-	roots          []rootPair // workspace roots: Root first, then any extras
+	roots          []rootPair // workspace roots: Root first, then any extras, then tmp when there is one
+	projectRoots   int        // how many of roots come before tmp's own (set with tmp)
 	// treeBases are "<tree parent>/*" (each parent lexical and resolved): relative
 	// patterns are anchored at every per-agent tree as well as at the root.
 	treeBases []string
@@ -172,6 +173,23 @@ func inside(dir, p string) bool {
 // inTmp reports whether a resolved path lies inside the session's scratch directory (Config.Tmp).
 func (rs *resolver) inTmp(real string) bool {
 	return rs.tmpReal != "" && real != "" && inside(rs.tmpReal, real)
+}
+
+// isScratch reports whether a resolved path is in the session's scratch directory and not in a workspace root that the
+// scratch directory holds: a session whose scratch directory is /work, for a project at /work/app, has no scratch
+// directory apart from the project, and plan mode's scratch writes would otherwise reach the project. A project at the scratch
+// directory itself holds all of it. The root that tmp itself adds is not a project root.
+func (rs *resolver) isScratch(real string) bool {
+	if !rs.inTmp(real) {
+		return false
+	}
+	for _, r := range rs.roots[:rs.projectRoots] {
+		// a path in the project, or one that holds the project (a copy into it could reach the project's files)
+		if inside(rs.tmpReal, r.real) && (inside(r.real, real) || inside(real, r.real)) {
+			return false
+		}
+	}
+	return true
 }
 
 // isShipped reports whether an access resolves to a file inside a directory of code the harness ships. A link there that leads

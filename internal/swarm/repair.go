@@ -334,7 +334,7 @@ func (s *Swarm) childRevised(by string, child Task, why string) error {
 	if err != nil {
 		return err
 	}
-	why = cleanText(why, 200)
+	why = cleanText(why, maxReasonRunes)
 	var lead, own string
 	switch {
 	case child.Owner == cur.Owner:
@@ -460,7 +460,7 @@ func (t *taskTool) widenInPlace(c *tools.Call, in taskIn, task Task) *tools.Resu
 		return tools.Errorf("cannot widen the scope of %s: %v", in.ID, err)
 	}
 	return text("%s: scope widened in place (%s); its workers keep going. (%s) Widening a scope needs no revise: update with files does it.",
-		in.ID, strings.Join(files, ", "), cleanText(in.Text, 200))
+		in.ID, strings.Join(files, ", "), cleanText(in.Text, maxReasonRunes))
 }
 
 // widenScope sets the wider scope files on the task as it was read (was): inside the board mutation the task must still be doing, at

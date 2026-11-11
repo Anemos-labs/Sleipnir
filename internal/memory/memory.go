@@ -55,7 +55,7 @@
 // The scope of each Source is kept so a caller can drop the project's files when
 // the project is not trusted.
 //
-// Sizes are capped at 64 KB per file and 256 KB overall. A file over its cap is
+// Sizes are capped at 2 MB per file and 8 MB overall. A file over its cap is
 // cut at a line boundary and says so. When the total is exceeded, the
 // highest-precedence (latest) sources keep their text and the earliest give up
 // theirs first, each with a note. Empty files and files that are only comments
@@ -94,10 +94,12 @@ const (
 const ProjectNotes = ".sleipnir/MEMORY.local.md"
 
 const (
-	// MaxFileBytes caps one file; longer files are cut and say so.
-	MaxFileBytes = 64 << 10
-	// MaxTotalBytes caps all sources together.
-	MaxTotalBytes = 256 << 10
+	// MaxFileBytes caps one file; longer files are cut and say so. It is the most a notes file of the memory tool holds
+	// (memtool.MaxFileBytes), so notes the tool saved are all read again: what the prompt cannot carry whole the context
+	// policy archives, as with any long instructions section.
+	MaxFileBytes = 2 << 20
+	// MaxTotalBytes caps all sources together: room for both notes files at their ceiling and the instruction files.
+	MaxTotalBytes = 8 << 20
 	// MaxImportDepth is how many levels of "@path" imports are followed.
 	MaxImportDepth = 5
 	// maxSources bounds the work a hostile tree of imports can cause.

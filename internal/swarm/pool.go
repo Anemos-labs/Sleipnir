@@ -643,7 +643,7 @@ func (s *Swarm) syncPlanners(t Task) {
 		s.unreserve(m, rs)
 		switch {
 		case err != nil:
-			s.notify(id, "info", fmt.Sprintf("The harness could not bring the merged work into your tree before planning %s (%s): read the integration branch, or merge it into your tree before you implement.", t.ID, cleanText(err.Error(), 160)))
+			s.notify(id, "info", fmt.Sprintf("The harness could not bring the merged work into your tree before planning %s (%s): read the integration branch, or merge it into your tree before you implement.", t.ID, cleanText(err.Error(), maxErrorRunes)))
 		case note != "":
 			s.notify(id, "info", note+" Resolve them before you plan "+t.ID+".")
 		}
@@ -671,7 +671,7 @@ func (s *Swarm) wakeBlockedOnResolved(id, reason string) {
 			continue
 		}
 		s.notify(t.Owner, "info", fmt.Sprintf("%s, which %s waits on, was closed as no longer needed (%s): nothing will land for it. "+
-			"Block %s on the task that replaces it, or call task resume on %s if it can go on without it.", id, t.ID, cleanText(reason, 300), t.ID, t.ID))
+			"Block %s on the task that replaces it, or call task resume on %s if it can go on without it.", id, t.ID, cleanText(reason, maxReasonRunes), t.ID, t.ID))
 	}
 }
 
@@ -712,7 +712,7 @@ func (s *Swarm) poolPermission(ctx context.Context, id string, inner perm.Reques
 			}
 		}
 		if e, ok := inner.(*perm.Engine); ok {
-			if po := e.PlanOnly(perm.ReadOnlyAllow...); po != nil {
+			if po := e.PlanOnly(s.poolChecks()...); po != nil {
 				d := po.Check(ctx, req)
 				if !d.Allow {
 					d.Reason = poolReadOnly(t, id) + " Refused: " + planCause(d.Reason)
@@ -729,6 +729,53 @@ func (s *Swarm) poolPermission(ctx context.Context, id string, inner perm.Reques
 		}
 	}
 	return perm.Decision{}, false
+}
+
+// poolChecks is what a pool member may run while its pool is read-only to it: the checks of a read-only role (perm.ReadOnlyAllow)
+// and the team's own verification command. A member asked to check the combined result before it confirms was refused the very
+// command that judges it ("bash verify.sh is not a read-only command"), and the test runner of a subdirectory (pnpm --dir web test).
+func (s *Swarm) poolChecks() []string {
+	return append(slices.Clone(perm.ReadOnlyAllow), verifyAllowRules(s.cfg.VerifyCmd)...)
+}
+
+// verifyAllowRules are the allow rules that match the verification command cmd, one for each command of a "&&" chain: the
+// command itself, or, for one that ends in {dirs}, the command up to {dirs} with paths in the workspace after it and none of the
+// options that make a known checker write. A command with
+// arguments after {dirs} ("pnpm --dir {dirs} test") gets no rule: a prefix rule up to {dirs} would also match "pnpm --dir web add
+// a-package". Nor does a rule that does not parse: one bad rule would make the engine refuse the whole list, ordinary reads too.
+func verifyAllowRules(cmd string) []string {
+	// Only a plain chain is split: quotes, expansions and other operators would make "&&" text that is not a chain ("echo 'a && b'").
+	if strings.ContainsAny(cmd, "'\"`$\\;|<>\n#") || strings.Contains(strings.ReplaceAll(cmd, "&&", ""), "&") {
+		return nil
+	}
+	var rules []string
+	for _, part := range strings.Split(cmd, "&&") {
+		r := verifyAllowRule(part)
+		if r == "" {
+			continue
+		}
+		if _, err := perm.ParseRule(perm.Allow, r); err != nil {
+			continue
+		}
+		rules = append(rules, r)
+	}
+	return rules
+}
+
+// verifyAllowRule is verifyAllowRules for one command; "" when it has none.
+func verifyAllowRule(cmd string) string {
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" || strings.ContainsAny(cmd, "()") {
+		return ""
+	}
+	if i := strings.Index(cmd, verifyDirsToken); i >= 0 {
+		head := strings.TrimSpace(cmd[:i])
+		if head == "" || strings.TrimSpace(cmd[i+len(verifyDirsToken):]) != "" {
+			return ""
+		}
+		return "Bash(" + head + ":workspace)" // its paths in the workspace, without the options that make a checker write (--fix)
+	}
+	return "Bash(" + cmd + ")"
 }
 
 // repairAdvice follows an inspect refused for a checkout the merge left in conflict: the member's own files are its to repair, whatever
@@ -1358,7 +1405,7 @@ func pastTense(action string) string {
 // and reconciles again. A pool in any other phase, or one reconciled again while the gate ran, is not reset.
 func (s *Swarm) poolGateFailed(by string, t Task, vr verifyResult) *tools.Result {
 	if vr.infra {
-		return tools.Errorf("Not done yet: verification could not run (%v). Try again in a moment; if it keeps failing, block the task and tell the manager.", cleanText(vr.err.Error(), 200))
+		return tools.Errorf("Not done yet: verification could not run (%v). Try again in a moment; if it keeps failing, block the task and tell the manager.", cleanText(vr.err.Error(), maxErrorRunes))
 	}
 	tail, _ := tools.Truncate(vr.out, 3000)
 	rev := 0

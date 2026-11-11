@@ -340,10 +340,10 @@ func TestSecSound_RouterBoundaries(t *testing.T) {
 	if _, err := r.Send("be-1", "be-2", "info", "hi"); err == nil {
 		t.Error("duplicate accepted")
 	}
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 3*DefaultRouterConfig().MaxPerPairPerMin; i++ {
 		_, _ = r.Send("be-1", "be-2", "info", fmt.Sprintf("m%d", i))
 	}
-	if len(got) > 3 {
+	if len(got) > DefaultRouterConfig().MaxPerPairPerMin {
 		t.Errorf("per-pair rate limit let %d messages through", len(got))
 	}
 }

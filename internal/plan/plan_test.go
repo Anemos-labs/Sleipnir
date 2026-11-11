@@ -24,6 +24,7 @@ func TestNormalizeCleansAndRefuses(t *testing.T) {
 		"two doing":  {{Step: "a", Status: "doing"}, {Step: "b", Status: "doing"}},
 		"odd status": {{Step: "a", Status: "maybe"}},
 		"too many":   make([]Item, MaxSteps+1),
+		"too long":   {{Step: strings.Repeat("x", MaxStepRune+1)}},
 	} {
 		if _, err := Normalize(bad); err == nil {
 			t.Errorf("%s was accepted", name)
@@ -31,25 +32,41 @@ func TestNormalizeCleansAndRefuses(t *testing.T) {
 	}
 }
 
-// A long step is shortened at a word, not refused, and a manager's plan may hold a step for each part of a large team's work.
-func TestNormalizeShortensALongStepAndLetsAManagerPlanMore(t *testing.T) {
-	long := strings.Repeat("word ", MaxStepRune)
+// A long step and a long plan are kept as written: the bounds are ceilings for memory only.
+func TestNormalizeKeepsLongStepsAndLongPlans(t *testing.T) {
+	long := strings.Repeat("word ", 400)
 	got, err := Normalize([]Item{{Step: long}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := utf8.RuneCountInString(got[0].Step); n > MaxStepRune || !strings.HasSuffix(got[0].Step, "word…") {
-		t.Fatalf("shortened step (%d runes): %q", n, got[0].Step)
+	if got[0].Step != strings.TrimSpace(long) {
+		t.Fatalf("the step was changed: %d runes", utf8.RuneCountInString(got[0].Step))
 	}
-	many := make([]Item, MaxSteps+1)
+	many := make([]Item, 200)
 	for i := range many {
 		many[i].Step = "step"
 	}
 	if _, err := NormalizeDelegated(many); err != nil {
-		t.Fatalf("a manager's plan of %d steps: %v", len(many), err)
+		t.Fatalf("a plan of %d steps: %v", len(many), err)
 	}
-	if _, err := NormalizeDelegated(make([]Item, MaxDelegatedSteps+1)); err == nil {
-		t.Fatal("a delegated plan over its bound was accepted")
+	if _, err := Normalize(many); err != nil {
+		t.Fatalf("an agent's plan of %d steps: %v", len(many), err)
+	}
+}
+
+// A saved plan the tool accepted before, when a step over the limit was shortened, still replays: its long step is cut to the
+// ceiling instead of the plan lost on resume.
+func TestASavedPlanWithAStepOverTheCeilingReplays(t *testing.T) {
+	saved := []Item{{Step: strings.Repeat("x", MaxStepRune+50), Status: Doing}, {Step: "b", Status: Doing}}
+	if _, err := Normalize(saved); err == nil {
+		t.Fatal("the plan tool accepted a step over the ceiling")
+	}
+	got, err := NormalizeSaved(saved, true)
+	if err != nil || len(got) != 2 || utf8.RuneCountInString(got[0].Step) != MaxStepRune {
+		t.Fatalf("replay: %v, %d steps", err, len(got))
+	}
+	if _, err := NormalizeSaved(saved, false); err == nil {
+		t.Fatal("a replayed agent's plan with two doing steps was accepted")
 	}
 }
 

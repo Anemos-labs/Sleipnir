@@ -43,7 +43,12 @@ var workspaceRefused = map[string][]string{
 		"--cobertura-xml-report"},
 	"pyright":      {"--createstub", "--writebaseline"},
 	"tsc --noEmit": {"-b", "--build", "--init", "--generateTrace", "--generateCpuProfile", "--incremental", "--tsBuildInfoFile"},
-	"eslint":       {"--fix", "--init", "--fix-type", "-o", "--output-file", "--suppress-all", "--suppress-rule", "--prune-suppressions"},
+	"eslint": {"--fix", "--init", "--fix-type", "-o", "--output-file", "--suppress-all", "--suppress-rule", "--prune-suppressions",
+		"--cache-location", "--cache-file"},
+	// The same checkers run through pnpm exec, the project's own copy, on the same terms.
+	"pnpm exec tsc --noEmit": {"-b", "--build", "--init", "--generateTrace", "--generateCpuProfile", "--incremental", "--tsBuildInfoFile"},
+	"pnpm exec eslint": {"--fix", "--init", "--fix-type", "-o", "--output-file", "--suppress-all", "--suppress-rule", "--prune-suppressions",
+		"--cache-location", "--cache-file"},
 	"cargo clippy": {"--fix", "--allow-dirty", "--allow-staged", "--allow-no-vcs"},
 }
 

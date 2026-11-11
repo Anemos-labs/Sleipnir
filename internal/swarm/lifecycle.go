@@ -61,6 +61,9 @@ type runState struct {
 	// asked marks a run the watchdog stopped while it waited for the person to answer a question: a restart would ask again,
 	// so the harness does not restart it on its own (restart.go).
 	asked bool
+	// handBack marks a run whose restart planRestart skipped because its model's endpoint is failing while a member of its role
+	// runs on another model: its tasks go back to the manager (handedBack), not to a repair that would start it again on them.
+	handBack bool
 	// stopped marks a run the person or the stall sweep stopped as stuck (stop.go): the harness does not restart it on its own.
 	stopped bool
 }
@@ -1000,7 +1003,7 @@ func classifyStop(err error, reason string, reasonCounts bool, ctx context.Conte
 	case strings.Contains(err.Error(), "step limit"):
 		return stopFailed, "step limit reached", true
 	}
-	return stopFailed, "stopped with an error: " + cleanText(err.Error(), 100), true
+	return stopFailed, "stopped with an error: " + cleanText(err.Error(), maxErrorRunes), true
 }
 
 // finishRun settles a finished run. The harness closes the loop even if the model
@@ -1229,8 +1232,8 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 				s.Board.Requeue(m.id, id, rev, "interrupted", false, s.cfg.MaxAttempts)
 				continue
 			case out.infra != nil:
-				if s.submitSettledTask(m, t, summary, "NOT MERGED (the merge could not run: "+cleanText(out.infra.Error(), 100)+"); "+evid) {
-					notes = append(notes, fmt.Sprintf("%s reached review but could not be merged (%s)", id, cleanText(out.infra.Error(), 80)))
+				if s.submitSettledTask(m, t, summary, "NOT MERGED (the merge could not run: "+cleanText(out.infra.Error(), maxErrorRunes)+"); "+evid) {
+					notes = append(notes, fmt.Sprintf("%s reached review but could not be merged (%s)", id, cleanText(out.infra.Error(), maxErrorRunes)))
 				}
 				continue
 			case out.bounce != "":
@@ -1255,8 +1258,8 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 		case vr.ok:
 			s.submitSettledTask(m, t, summary, evid)
 		case vr.infra:
-			if s.submitSettledTask(m, t, summary, evid+"; verification could not run: "+cleanText(vr.err.Error(), 100)) {
-				notes = append(notes, fmt.Sprintf("%s reached review but the verifier could not run (%s)", id, cleanText(vr.err.Error(), 80)))
+			if s.submitSettledTask(m, t, summary, evid+"; verification could not run: "+cleanText(vr.err.Error(), maxErrorRunes)) {
+				notes = append(notes, fmt.Sprintf("%s reached review but the verifier could not run (%s)", id, cleanText(vr.err.Error(), maxErrorRunes)))
 			}
 		default:
 			next, applied := s.recordVerificationFailure(t, vcmd, vr)
@@ -1266,7 +1269,7 @@ func (s *Swarm) settleClean(ctx context.Context, m *member, tasks map[string]uin
 			}
 			if next.Status == StatusDoing {
 				s.notify(m.id, "request", fmt.Sprintf("Not done: you stopped without finishing %s and verification `%s` failed (exit %d). Fix the failures, then call task done.\n%s",
-					id, cleanText(vcmd, 80), vr.code, tailText(vr.out, 1500)))
+					id, cleanText(vcmd, maxReasonRunes), vr.code, tailText(vr.out, 1500)))
 				continue
 			}
 			notes = append(notes, s.verificationFailureNotice(m.id, next, vcmd, vr))

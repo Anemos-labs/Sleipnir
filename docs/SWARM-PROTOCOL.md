@@ -282,7 +282,10 @@ mutating commands are denied by the engine that understands shell syntax, not by
 tests and static checks stay allowed, `perm.ReadOnlyAllow`: `go test`, `go vet`, `pytest`, `node --test`, `node --check`,
 `npm test`, `pnpm test`, `yarn test`, `cargo test`, `cargo check`, `make test`, and on the tests preset's terms, every file inside the workspace and no option
 that writes the project's files or installs, `ruff check`, `ruff format --check`, `ruff format --diff`, `mypy`, `pyright`,
-`tsc --noEmit`, `eslint` and `cargo clippy` (not `--fix`); the manager
+`tsc --noEmit`, `eslint` and `cargo clippy` (not `--fix`), `go build` (a named output only in `$TMPDIR`),
+and `pnpm exec tsc --noEmit` and `pnpm exec eslint` on the same terms as `tsc` and `eslint` (a project's `lint` script is
+not among them: it may take `--fix`); plan mode also lets a command write in the
+session's scratch directory, `$TMPDIR`); the manager
 uses the session's permissions and any explicit manager profile), and swarm
 tools check the caller's role, which the harness puts in the call. The manager owns
 assignments, revisions and scope changes. A pool leader can create and accept its
@@ -291,7 +294,8 @@ pool's scope: when two of its children overlap it parts them), and assign existi
 pool members. A pool member that is not
 writing inside its own child task (planning, reconciliation) is judged under the
 plan profile with the research and checks a read-only role keeps (web fetch and
-search, the project's tests and static checks), and then by its own permissions,
+search, the project's tests and static checks) and the team's own verification command (`swarm.verify`: each command of a plain `&&` chain, one ending in `{dirs}` with paths in the workspace after it and without a checker's writing options), so
+that a member asked to check the combined result can run what judges it, and then by its own permissions,
 so a pool never grants more than the session does. Without a permission engine (tests, embedding) read-only roles fall back
 to a strict allowlist of one plain inspection command (no operators, redirections, substitutions, exec flags, or
 paths outside the project).
@@ -416,9 +420,17 @@ Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side
   layer is not implemented (section 9), so a note stays until newer notes evict it or its author withdraws it; an
   author at its limit is told its notes' ids and to withdraw one or fold facts together. Agreements use task
   dependencies instead.
-* **The board is bounded**, because every agent's prompt carries a rendering of it: 1000 tasks; titles 160 characters,
-  descriptions 2000, at most 16 dependencies and 16 scope entries per task; 48 pending notes (8 per author, the oldest
-  evicted, 300 characters each); 8 alerts, which expire after 2 minutes and are cleared when the conflict ends.
+* **What agents write is kept as written.** The board's bounds are ceilings for memory only (100000 tasks, 1000
+  dependencies and 1000 scope entries per task, 16384 characters for a note, a status line, a result or an
+  assumption, 1000 distinct assumptions per submission, 1048576 characters for a description or a report). Only input over a ceiling is refused (a note, with where to put the detail instead) or cut
+  (a report to its first 1048576 characters and an assumption to its first 16384, each ending in an ellipsis; blank
+  and repeated assumptions are dropped and those past the thousandth are not kept). What every agent's
+  prompt carries is bounded by how it is shown instead: a title over 160 characters shows its opening, a list of tasks
+  shows the first 400 characters of a line, result or evidence with a pointer to `task get`, which shows the task whole,
+  a note over 400 characters shows its opening with a pointer to `note read=<id>`, and 48 pending notes are shown (8
+  per author, the oldest evicted). Errors, refusal reasons and commands in tool results are shown whole, up to the
+  same 16384-character ceiling. 8 alerts, which expire after 2
+  minutes and are cleared when the conflict ends.
 
 ## 4. Task lifecycle and harness-owned "done"
 
@@ -570,10 +582,10 @@ and event-log recovery; they do not depend on the live note buffer. Task data
 cannot grant permissions or override user instructions.
 
 An agreement is not refused for its length (a planning task may not write files, so its agreement must have room for a
-real contract); 1 MiB is a ceiling for memory only, and combined inherited agreements 4 MiB. The board keeps every
+real contract); 1 MiB is a ceiling for memory only, and combined inherited agreements 16 MiB. The board keeps every
 agreement whole. What a dependent's assignment card carries is bounded instead: the opening of each agreement up to
 24,000 bytes, cut at a line break, and 48,000 bytes for all of them, with a line saying how much more there is and that
-`task get` on the task that made it shows all of it. A task description is kept whole up to the same 1 MiB ceiling; its
+`task get` on the task that made it shows all of it; agreements past that bound are named on one line (the first 200 ids and a count), with `task get` on the assigned task, which lists every inherited agreement whole. A task description is kept whole up to the same 1 MiB ceiling; its
 owner's card carries the first 16,000 characters and points to `task get` for the rest. Tasks assigned to one worker,
 including blocked work and worktree instructions, must fit 200,000 bytes of assignment text. Compaction preserves
 harness assignments up to a fixed 100,000-byte bound, independently of token
@@ -616,7 +628,7 @@ ephemeral: delivered into the recipient's next turn, cached for a few turns, com
   (a ceiling for memory only), is not refused or cut: its opening is delivered with a harness note of how much follows, and the sender or
   the recipient reads the whole, line breaks kept, with `mail read=<id>`. Mail coalesced while an inbox was full, and
   parcels a mailman digested from their opening, are kept whole as well, and the digest names their ids. The router keeps
-  these messages within 8 MiB, forgetting the oldest first. 8 messages per minute per sender (the manager, who coordinates the whole team, is not held to it), 3 per minute per
+  these messages within 8 MiB, forgetting the oldest first. 30 messages per minute per sender (the manager, who coordinates the whole team, is not held to it), 10 per minute per
   sender->recipient pair, identical text to one recipient deduplicated for 5 minutes; over-limit errors are written for
   the sending model and say what to do instead (use `note`, wait, or fold messages). A message over that ceiling is
   refused with its length, how far over it is, a target below the limit, and where long content lasts: a file in the

@@ -109,6 +109,14 @@ func (s *Swarm) planRestart(m *member, rs *runState, tasks map[string]uint64, ki
 	if !ok || rs.stopped || s.alive() != nil || s.startErr() != nil || s.wk.heldNow() {
 		return nil, 0
 	}
+	if !poolWork(s.Board.Snapshot(), m.id, tasks) && s.outageElsewhere(m, err) {
+		// Its model's endpoint is failing and a member of its role runs on another model: the work goes back to the manager, whose
+		// assignments go to that member (outageSteer), rather than to a restart on the model that just failed. A team waited half
+		// an hour on a worker the harness restarted again and again on a model the gateway kept cutting off. Pool work (poolWork) is
+		// not handed back: its pool waits on it, so it is restarted in the pool below, as for any other failure.
+		rs.handBack = true
+		return nil, 0
+	}
 	m.mu.Lock()
 	retire := m.retireOnIdle
 	m.mu.Unlock()
@@ -151,6 +159,20 @@ func (s *Swarm) planRestart(m *member, rs *runState, tasks map[string]uint64, ki
 	return &pendingRestart{due: s.deps.Now().Add(restartBackoff << n), n: n + 1, tasks: keep, pool: pool, why: why, cause: cause}, 0
 }
 
+// poolWork reports whether agent's run was on pool work: it is a member of an open pool, or a task it held is a pool task or a
+// pool's child (whose parent may be blocked on it, so openPoolOf does not see the pool).
+func poolWork(snap *Snapshot, agent string, tasks map[string]uint64) bool {
+	if openPoolOf(snap, agent) != "" {
+		return true
+	}
+	for id := range tasks {
+		if t, ok := snap.Task(id); ok && (t.Pool != nil || t.Parent != "") {
+			return true
+		}
+	}
+	return false
+}
+
 // openPoolOf is the open pool (a pool task in doing) that agent is a member of, or "".
 func openPoolOf(snap *Snapshot, agent string) string {
 	for _, t := range snap.Tasks {
@@ -169,7 +191,7 @@ func (s *Swarm) settleFailed(m *member, rs *runState, tasks map[string]uint64, k
 	if p == nil {
 		// A run that was stopped (by the person, or by the harness for a stall) hands its work back to the manager like one whose
 		// restarts ran out: the repair would otherwise start the same worker on it again a moment later.
-		return nil, tried, s.settleStopped(m, tasks, kind, why, count, tried > 0 || rs.stopped)
+		return nil, tried, s.settleStopped(m, tasks, kind, why, count, tried > 0 || rs.stopped || rs.handBack)
 	}
 	rest := maps.Clone(tasks)
 	snap := s.Board.Snapshot()

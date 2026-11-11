@@ -31,6 +31,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -42,9 +43,12 @@ import (
 )
 
 const (
-	MaxNotes     = 40
-	MaxNoteRunes = 300
-	MaxBytes     = 8 << 10
+	// MaxNotes, MaxNoteRunes and MaxBytes are ceilings for memory only: a note is kept whole, on one line with its runs of
+	// whitespace collapsed, and never cut. (Notes the
+	// prompt cannot carry whole go the way of any long instructions section: the context policy archives the overflow.)
+	MaxNotes     = 1000
+	MaxNoteRunes = 1 << 14
+	MaxBytes     = 1 << 20
 	// header is plain text, not an HTML comment: the instruction loader removes comments, and this line must reach the model.
 	header = "Notes the agent saved with its memory tool. They may be wrong or out of date; the user's own instructions win."
 )
@@ -104,7 +108,7 @@ func (*Tool) Spec() core.ToolSpec {
 		Description: "Your long-term memory: short notes shown to you at the start of every future session. " +
 			"add one when you learn something lasting. scope user (the default) is for every project: how the user wants things done, a fact about their setup. " +
 			"scope project is for this project only: a fact about this code base, a mistake not to repeat here. " +
-			"One fact per note, under 300 characters. Never save task progress, anything the code or the project files already say, or secrets. " +
+			"One fact per note, at most " + strconv.Itoa(MaxNoteRunes) + " characters. Never save task progress, anything the code or the project files already say, or secrets. " +
 			"remove a note that is wrong or stale; list shows them all. The user sees each change and can edit or remove it.",
 		InputSchema: json.RawMessage(schema),
 	}
@@ -352,7 +356,7 @@ func ReadNotes(path string) ([]string, error) {
 
 // MaxFileBytes bounds what is read of a notes file. The tool writes at most MaxBytes; a file longer than this was not written as
 // notes, and reading it all (a link to an endless device, say) would only cost memory.
-const MaxFileBytes = 1 << 20
+const MaxFileBytes = 2 << 20
 
 // LoadNotes reads the notes file at path: its bytes and its notes. A missing file holds none; anything but a regular file of at
 // most MaxFileBytes is an error (fs.ErrNotExist for a missing one).
@@ -484,6 +488,9 @@ func WriteNotes(path string, notes []string) error {
 		if !placed {
 			put()
 		}
+	}
+	if b.Len() > MaxFileBytes { // text written by hand counts too: a file over this would not be read again
+		return fmt.Errorf("memory: the notes file would be %d bytes, over the %d-byte ceiling of a notes file (its text besides the notes counts too); nothing was saved", b.Len(), MaxFileBytes)
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("memory: %w", err)

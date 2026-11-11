@@ -407,6 +407,31 @@ func (rs *resolver) outsideTmp(all []access) []access {
 	return out
 }
 
+// scratchOnly reports whether a command's accesses include a write and every write is a static path in the scratch
+// directory (isScratch).
+func (rs *resolver) scratchOnly(all []access) bool {
+	wrote := false
+	for _, a := range all {
+		if !a.write {
+			continue
+		}
+		if a.dynamic || !rs.isScratch(a.real) {
+			return false
+		}
+		wrote = true
+	}
+	return wrote
+}
+
+// scratchMaker reports whether a file-writing command only makes new directories: mkdir. Other commands write paths they do not
+// name or follow links: cp into a directory writes a child that may be a link into the project, touch follows a link, and a link
+// a command makes (ln, mv of a link, cp -s) would let a later write in the same command, judged before the link exists, reach
+// through the scratch directory into the project. A read-only agent writes its scratch files with a redirection, whose target is
+// resolved before it is judged.
+func scratchMaker(u *unit) bool {
+	return u.simple != nil && u.name == "mkdir"
+}
+
 // clipText retains at most n runes and appends an ellipsis when needed; n must be nonnegative.
 func clipText(s string, n int) string {
 	r := []rune(s)
@@ -452,6 +477,9 @@ func (ev *evaluator) decideCommand(u *unit) verdict {
 		res = allow(ev.modeReason(genericSafe))
 	case u.class == cmdFSWrite && mode == ModeAcceptEdits:
 		res = allow(ev.modeReason(genericFSWrite))
+	case mode == ModePlan && u.class == cmdFSWrite && scratchMaker(u) && ev.rs.scratchOnly(u.accesses):
+		// mkdir "$TMPDIR/out", cp a fixture there: the access checks below allow each write in the scratch directory.
+		res = allow("writes only in the session's scratch directory ($TMPDIR)")
 	case mode == ModePlan:
 		res = deny(planReason(u.label + " is not a read-only command"))
 	case u.class == cmdFSWrite:
@@ -737,6 +765,11 @@ func (ev *evaluator) accessVerdict(a access, u *unit) verdict {
 	case ModeBypass, ModeYolo:
 		return allow(string(mode) + " mode")
 	case ModePlan:
+		if a.write && !a.dynamic && ev.rs.isScratch(a.real) {
+			// The session's scratch directory is outside the project: a read-only agent that writes a check's input there (a
+			// config to validate, a fixture to diff against) changes nothing it was told to leave alone.
+			return allow("write to the session's scratch directory ($TMPDIR)")
+		}
 		if a.write {
 			return deny(planReason("it would write " + a.raw))
 		}

@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -46,6 +47,8 @@ func TestUnsentKeyNamesDeliveriesOnly(t *testing.T) {
 		{"task", `{"action":"done","id":"T4"}`, "task:done:T4", true},
 		{"task", `{"action":"list"}`, "", false},
 		{"note", `{"withdraw":3}`, "", false},
+		{"note", `{"read":3}`, "", false},
+		{"note", `{"text":"x"}`, "note", true},
 		{"pool", `{"action":"propose","id":"T2"}`, "pool:propose:T2", true},
 		{"wait", `{}`, "", false},
 	} {
@@ -53,5 +56,50 @@ func TestUnsentKeyNamesDeliveriesOnly(t *testing.T) {
 		if key != tc.key || ok != tc.ok {
 			t.Errorf("%s %s: key %q ok %v", tc.tool, tc.in, key, ok)
 		}
+	}
+}
+
+// A long refusal is whole in the tool's answer; the line the live view repeats every turn shows its opening.
+func TestALongRefusalIsShownInPartInTheView(t *testing.T) {
+	b := unsentBook{now: time.Now}
+	b.record("be-1", "task:done:T1", "your task done of T1", strings.Repeat("verify failed ", 2000)+"END")
+	lines := b.lines("be-1")
+	if len(lines) != 2 || strings.Contains(lines[1], "END") || len([]rune(lines[1])) > listedRunes+200 || !strings.Contains(lines[1], "more characters") {
+		t.Fatalf("view: %.600q", lines)
+	}
+}
+
+// A note read through the wrapped tool leaves an earlier refused note in the view.
+func TestANoteReadKeepsAnEarlierRefusedNote(t *testing.T) {
+	sw := New(Config{SessionID: "t"}, Deps{}, nil)
+	id, err := sw.Board.AddNote("w-1", "shared", "backend", "a fact")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sw.unsent.record("w-2", "note", "your note", "refused for a reason")
+	res := secRevCall(t, unsentTool{inner: &noteTool{s: sw}, s: sw}, "w-2", "backend", map[string]any{"read": id})
+	if res.IsError {
+		t.Fatalf("note read: %s", res.Text)
+	}
+	if lines := sw.unsent.lines("w-2"); len(lines) != 2 || !strings.Contains(lines[1], "refused for a reason") {
+		t.Fatalf("view after a note read: %q", lines)
+	}
+}
+
+// However many long refusals an agent has, what the view adds to every turn is bounded: the newest maxUnsent, each shown in part.
+// The view is added after the hot block's budget on purpose (a refusal must not be the part the budget drops), so the bound is
+// what keeps it small.
+func TestLongRefusalsAddABoundedViewToEveryTurn(t *testing.T) {
+	b := unsentBook{now: time.Now}
+	for i := range 10 {
+		b.record("be-1", fmt.Sprintf("task:done:T%d", i), fmt.Sprintf("your task done of T%d", i), strings.Repeat("verify failed ", 2000))
+	}
+	lines := b.lines("be-1")
+	total := 0
+	for _, l := range lines {
+		total += len([]rune(l))
+	}
+	if len(lines) != 1+maxUnsent || total > 300+maxUnsent*(listedRunes+200) {
+		t.Fatalf("the view is %d lines, %d characters", len(lines), total)
 	}
 }
