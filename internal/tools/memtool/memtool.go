@@ -431,7 +431,8 @@ func CheckNotes(notes []string) ([]string, error) {
 func CheckEdit(prev, notes []string) ([]string, error) { return CheckEditKeeping(prev, notes, nil) }
 
 // CheckEditKeeping is CheckEdit where kept[i] marks notes[i] as one of prev's notes left as it is: it is written back byte for
-// byte (it is not cleaned) and is never refused for its length. Only the notes an edit brings are cleaned and checked.
+// byte (it is not cleaned), even when it repeats another note, and is never refused for its length. Only the notes an edit
+// brings are cleaned and checked.
 func CheckEditKeeping(prev, notes []string, kept []bool) ([]string, error) {
 	had := map[string]bool{}
 	for _, n := range prev {
@@ -446,7 +447,9 @@ func CheckEditKeeping(prev, notes []string, kept []bool) ([]string, error) {
 			n = key
 		}
 		key = strings.ToLower(key)
-		if key == "" || seen[key] {
+		// A kept note goes back whatever it repeats: prev may hold notes that differ only in case or spacing, and a save that
+		// leaves them in place must not drop one. Only what the edit brings is checked for repeats.
+		if !keep && (key == "" || seen[key]) {
 			continue
 		}
 		if c := utf8.RuneCountInString(n); !keep && c > MaxNoteRunes && !had[key] {

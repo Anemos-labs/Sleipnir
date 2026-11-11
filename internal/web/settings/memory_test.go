@@ -318,3 +318,22 @@ func TestMemoryNotesLeftAsShownKeepTheirBytes(t *testing.T) {
 		t.Fatalf("%d notes saved, want 3:\n%q", n, got)
 	}
 }
+
+// Stored notes that differ only in case or spacing are all kept by a save that leaves them as they are, and a new note that
+// repeats one of them is not added.
+func TestMemoryNotesThatDifferOnlyInCaseAreAllKept(t *testing.T) {
+	e := memEnv(t)
+	write(t, filepath.Join(e.home, ".sleipnir", "MEMORY.md"), "Notes the agent saved with its memory tool.\n- Deploy now\n- deploy now\n- N2 to remove\n")
+	var v wire.MemoryView
+	e.ok(http.MethodGet, "/api/sessions/t1/memory", nil, nil, &v)
+	if len(v.Notes.Notes) != 3 {
+		t.Fatalf("read %d notes", len(v.Notes.Notes))
+	}
+	sent := append(append([]string{}, v.Notes.Notes[:2]...), "DEPLOY NOW")
+	e.ok(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: sent, Version: v.Notes.Version}, nil, &v)
+	b, err := os.ReadFile(filepath.Join(e.home, ".sleipnir", "MEMORY.md"))
+	got := string(b)
+	if err != nil || !strings.Contains(got, "- Deploy now\n") || !strings.Contains(got, "- deploy now\n") || strings.Contains(got, "DEPLOY") || strings.Contains(got, "N2") {
+		t.Fatalf("the save did not keep both stored notes and only them (%v):\n%q", err, got)
+	}
+}
