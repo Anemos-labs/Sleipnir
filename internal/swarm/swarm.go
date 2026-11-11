@@ -998,7 +998,7 @@ func taskCard(t Task, agentID string, pin bool) string {
 		}
 		sb.WriteString(agreementCard(t.Agreements))
 		if t.Kind == TaskKindPlan {
-			sb.WriteString("This is a read-only planning task. Gather input from affected roles; call task done with the full agreement field for manager review. Do not implement code.")
+			sb.WriteString("This is a read-only planning task: the harness refuses every file write while you plan, the reference areas included, whatever the description says. Gather input from affected roles; call task done with the full agreement field for manager review (a contract the plan needs as a file goes in the agreement, and the manager makes writing it a work task). Do not implement code.")
 		} else {
 			sb.WriteString("When finished, call task done with a one-line result. The harness verifies your work before accepting it.")
 		}

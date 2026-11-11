@@ -47,3 +47,18 @@ func TestListedJoinCountsWhatItLeavesOut(t *testing.T) {
 		t.Fatalf("short: %q", got)
 	}
 }
+
+// A planning task created with a scope says, to the manager that created it, that its owner writes none of those files, and how
+// to have them written instead.
+func TestAPlanningTaskWithFilesTellsTheManagerItWritesNone(t *testing.T) {
+	r := newRVRig(t, Config{Team: []string{"architect"}}, func(_ context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+	res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "create", "title": "API contract", "role": "architect",
+		"kind": "plan", "files": []any{"api/openapi.yaml"}, "description": "write api/openapi.yaml"})
+	if res.IsError || !strings.Contains(res.Text, "writes no file while it plans, api/openapi.yaml included") || !strings.Contains(res.Text, "kind=work") {
+		t.Fatalf("create: %s", res.Text)
+	}
+	if res := r.callTool(context.Background(), "task", "mgr", "manager", map[string]any{"action": "create", "title": "Fetcher", "role": "architect",
+		"files": []any{"internal/fetch/**"}, "description": "write it"}); strings.Contains(res.Text, "planning task") {
+		t.Fatalf("a work task: %s", res.Text)
+	}
+}

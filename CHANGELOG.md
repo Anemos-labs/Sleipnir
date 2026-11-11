@@ -7,6 +7,12 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Creating a planning task with a scope tells the manager that its owner
+  writes none of those files and to make it a work task when the files are
+  the deliverable; a planning task's card says every write is refused,
+  whatever its description says. A manager told its architect to write the
+  API contract in a planning task: ten minutes of writing were refused while
+  fifteen tasks waited on the plan.
 - A pool member whose pool is read-only to it (planning, reconciliation) may run
   the team's verification command (each command of a `&&` chain; a `{dirs}`
   template only when `{dirs}` ends it), `go build -o` to `$TMPDIR`, and

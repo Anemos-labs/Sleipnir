@@ -191,6 +191,19 @@ func agreementPointers(sn *Snapshot, in []TaskAgreement) []TaskAgreement {
 	return out
 }
 
+// planWritesNothingHint is what the creation of a planning task with a scope adds: its owner writes none of those files. A
+// manager created a planning task "you own and may write api/openapi.yaml and docs/architecture.md"; its architect spent ten
+// minutes writing the contract, was refused, and fifteen tasks that depended on the plan waited. When the deliverable is the
+// files, a work task is one step where a plan and then a work task are two.
+func planWritesNothingHint(t Task) string {
+	if t.Kind != TaskKindPlan || len(t.Files) == 0 {
+		return ""
+	}
+	return fmt.Sprintf(". Note: %s is a planning task, so its owner writes no file while it plans, %s included: they are reference areas. "+
+		"If the deliverable is those files written in the repository (a contract, a schema), revise %s to kind=work now: one task that writes them, "+
+		"which the work that builds on them depends on", t.ID, listedJoin(t.Files, ", ", t.ID), t.ID)
+}
+
 // reviewWaitsForNothingHint is what the creation of a top-level review task with no dependencies adds while implementation work
 // is still open: the review starts at once, over a tree without that work, and the goal still needs a review after the last
 // merge. A manager created its reviewer task with no deps; the reviewer reviewed a tree three merges short, and a second review
@@ -308,7 +321,7 @@ func (t *taskTool) Run(ctx context.Context, c *tools.Call) (*tools.Result, error
 			return tools.Errorf("%v", err), nil
 		}
 		task := made[len(made)-1]
-		hint := s.scopeHint(task.Files) + s.reviewWaitsForNothingHint(task)
+		hint := s.scopeHint(task.Files) + s.reviewWaitsForNothingHint(task) + planWritesNothingHint(task)
 		if len(made) > 1 {
 			return text("created %s %q, waiting for %s; start with %s%s", task.ID, task.Title, rigorChain(made[:len(made)-1]), made[0].ID, hint), nil
 		}
