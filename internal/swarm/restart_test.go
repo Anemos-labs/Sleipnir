@@ -704,3 +704,19 @@ func TestAPoolMemberWithoutATaskWhoseRestartsRunOutIsNamedToTheManager(t *testin
 		t.Fatal("the line does not give the excuse or say the restarts ran out")
 	}
 }
+
+// A pool member that holds no task of its own and whose run ends on its own budget is not restarted, and the manager's line
+// names its pool and says it can be excused for its budget: mail would wake a member whose next request is refused again.
+func TestAPoolMemberWithoutATaskStoppedByItsBudgetCanBeExcused(t *testing.T) {
+	clock := newFakeClock()
+	r, parent := poolRestartRigErr(t, clock, func(c *rvCall) bool { return c.Agent == "be-3" }, agent.ErrBudget)
+	member := "be-3"
+	want := member + " stopped (budget limit reached). It is a member of pool " + parent.ID + ", which waits on it"
+	rvWait(t, "the manager's line", func() bool { return mailSent(r, want) == 1 })
+	if mailSent(r, "its model, its provider or its budget") != 1 || mailSent(r, "pool action=excuse id="+parent.ID+" member="+member) != 1 {
+		t.Fatal("the line does not say a member out of budget can be excused, or does not give the excuse")
+	}
+	if p := pendingOf(r, member); p != nil {
+		t.Fatalf("a member out of budget has a restart scheduled: %+v", p)
+	}
+}
