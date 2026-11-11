@@ -110,7 +110,8 @@ func (s *service) handleMemoryNotes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	prev, _ := memtool.ReadNotes(p) // what the file breaks already does not stop an edit that leaves it no worse
-	notes, err := memtool.CheckEdit(prev, exactNotes(prev, body.Notes))
+	exact, kept := exactNotes(prev, body.Notes)
+	notes, err := memtool.CheckEditKeeping(prev, exact, kept)
 	if err != nil {
 		reply(w, nil, fail(http.StatusBadRequest, "bad_request", err.Error()))
 		return
@@ -223,29 +224,25 @@ func lessonsPath(home string) string { return filepath.Join(session.StateRoot(ho
 // shownNote is a note as the Memory page shows it (and so sends it back).
 func shownNote(n string) string { return provider.SanitizeText(n, memtool.MaxNoteRunes*4) }
 
-// exactNotes puts back, in a list the page sent, the exact text of each note it left as shown: the page has a note's display
-// form (shownNote: control and format characters out, white space collapsed, cut when long), and a save that changed another
-// note would otherwise write that form over the note's own text.
-func exactNotes(prev, sent []string) []string {
-	exact := make(map[string]string, len(prev))
-	for _, n := range prev {
-		if d := shownNote(n); d != n {
-			if _, dup := exact[d]; !dup {
-				exact[d] = n
-			}
-		}
+// exactNotes puts back, in a list the page sent, the exact text of each note it left as shown, and marks it kept: the page has a
+// note's display form (shownNote: control and format characters out, white space collapsed, cut when long), and a save that
+// changed another note would otherwise write that form over the note's own text. Each of prev's notes is put back at most once,
+// in order, so notes that look the same each keep their own text and a list of copies of one shown form costs no more than prev.
+func exactNotes(prev, sent []string) ([]string, []bool) {
+	byShown := map[string][]int{}
+	for i, n := range prev {
+		d := shownNote(n)
+		byShown[d] = append(byShown[d], i)
 	}
-	if len(exact) == 0 {
-		return sent
-	}
-	out := make([]string, len(sent))
+	out, kept := make([]string, len(sent)), make([]bool, len(sent))
 	for i, n := range sent {
-		if e, ok := exact[n]; ok {
-			n = e
-		}
 		out[i] = n
+		if q := byShown[n]; len(q) > 0 {
+			out[i], kept[i] = prev[q[0]], true
+			byShown[n] = q[1:]
+		}
 	}
-	return out
+	return out, kept
 }
 
 // memoryView reads everything the Memory page shows for a tab.

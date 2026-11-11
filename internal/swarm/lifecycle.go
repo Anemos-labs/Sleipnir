@@ -1125,8 +1125,8 @@ func (s *Swarm) finishRun(m *member, rs *runState, ctx context.Context, res *age
 		line = fmt.Sprintf("%s stopped (%s). Check task list for its current assignments; send recovery instructions or reassign unfinished work with spawn.", m.id, why)
 		if pool := openPoolOf(s.Board.Snapshot(), m.id); pool != "" {
 			// A pool member that holds no task of its own: its pool waits on it (its plan, its vote), and nothing on the board
-			// says so. The line names the pool and the two ways on: wake the member with mail, or excuse it.
-			line = fmt.Sprintf("%s stopped (%s). It is a member of pool %s, which waits on it: mail it to carry on in the pool (mail to=%s), which wakes it, or, if the failure is %s's own (its model or provider), excuse it (pool action=excuse id=%s member=%s text=<why>).", m.id, why, pool, m.id, m.id, pool, m.id)
+			// says so. The line names the pool and the two ways on: wake the member with mail, or excuse one that cannot run.
+			line = fmt.Sprintf("%s stopped (%s). It is a member of pool %s, which waits on it: mail it to carry on in the pool (mail to=%s), which wakes it when it can run, or, if it cannot take part (its model, its provider or its budget), excuse it (pool action=excuse id=%s member=%s text=<why>).", m.id, why, pool, m.id, pool, m.id)
 		}
 	}
 	if tried > 0 && failed {

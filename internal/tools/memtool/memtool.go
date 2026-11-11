@@ -428,7 +428,11 @@ func CheckNotes(notes []string) ([]string, error) {
 // an edit that does not make it worse. A note over MaxNoteRunes that prev already has is kept as it is, and more than MaxNotes notes
 // or MaxBytes in all is refused only when the edit grows past what prev has, so a file written by hand past the limits can still
 // have a note removed or corrected.
-func CheckEdit(prev, notes []string) ([]string, error) {
+func CheckEdit(prev, notes []string) ([]string, error) { return CheckEditKeeping(prev, notes, nil) }
+
+// CheckEditKeeping is CheckEdit where kept[i] marks notes[i] as one of prev's notes left as it is: it is written back byte for
+// byte (it is not cleaned) and is never refused for its length. Only the notes an edit brings are cleaned and checked.
+func CheckEditKeeping(prev, notes []string, kept []bool) ([]string, error) {
 	had := map[string]bool{}
 	for _, n := range prev {
 		had[strings.ToLower(clean(n))] = true
@@ -436,14 +440,19 @@ func CheckEdit(prev, notes []string) ([]string, error) {
 	out := make([]string, 0, len(notes))
 	seen := map[string]bool{}
 	for i, n := range notes {
-		n = clean(n)
-		if n == "" || seen[strings.ToLower(n)] {
+		keep := i < len(kept) && kept[i]
+		key := clean(n)
+		if !keep {
+			n = key
+		}
+		key = strings.ToLower(key)
+		if key == "" || seen[key] {
 			continue
 		}
-		if c := utf8.RuneCountInString(n); c > MaxNoteRunes && !had[strings.ToLower(n)] {
+		if c := utf8.RuneCountInString(n); !keep && c > MaxNoteRunes && !had[key] {
 			return nil, fmt.Errorf("note %d is %d characters; the limit is %d", i+1, c, MaxNoteRunes)
 		}
-		seen[strings.ToLower(n)] = true
+		seen[key] = true
 		out = append(out, n)
 	}
 	if len(out) > MaxNotes && len(out) > len(had) {

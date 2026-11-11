@@ -291,3 +291,30 @@ func TestMemoryNotesTheyShowCutAreKeptWholeOnASave(t *testing.T) {
 		t.Fatalf("the save did not keep the notes it left whole (%v):\n%.300s", err, b)
 	}
 }
+
+// Notes left as shown keep their exact bytes (an escape sequence, repeated spaces), notes that look the same keep their own
+// text, and a list of many copies of one shown form puts the note behind it back once.
+func TestMemoryNotesLeftAsShownKeepTheirBytes(t *testing.T) {
+	e := memEnv(t)
+	esc := "deploy \x1b[31mproduction  now"
+	zw, plain := "a​b", "ab"
+	write(t, filepath.Join(e.home, ".sleipnir", "MEMORY.md"), "Notes the agent saved with its memory tool.\n- "+esc+"\n- "+zw+"\n- "+plain+"\n- N3 to remove\n")
+	var v wire.MemoryView
+	e.ok(http.MethodGet, "/api/sessions/t1/memory", nil, nil, &v)
+	if len(v.Notes.Notes) != 4 {
+		t.Fatalf("read %d notes", len(v.Notes.Notes))
+	}
+	sent := append([]string{}, v.Notes.Notes[:3]...)
+	for range 1000 {
+		sent = append(sent, v.Notes.Notes[1]) // copies of the shown "ab"
+	}
+	e.ok(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: sent, Version: v.Notes.Version}, nil, &v)
+	b, err := os.ReadFile(filepath.Join(e.home, ".sleipnir", "MEMORY.md"))
+	got := string(b)
+	if err != nil || !strings.Contains(got, "- "+esc+"\n") || !strings.Contains(got, "- "+zw+"\n") || !strings.Contains(got, "- "+plain+"\n") || strings.Contains(got, "N3") {
+		t.Fatalf("the save did not keep each note's own text (%v):\n%q", err, got)
+	}
+	if n := strings.Count(got, "\n- "); n != 3 {
+		t.Fatalf("%d notes saved, want 3:\n%q", n, got)
+	}
+}
