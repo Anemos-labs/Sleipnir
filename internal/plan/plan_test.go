@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestNormalizeCleansAndRefuses(t *testing.T) {
@@ -22,12 +23,33 @@ func TestNormalizeCleansAndRefuses(t *testing.T) {
 		"empty step": {{Step: " \n "}},
 		"two doing":  {{Step: "a", Status: "doing"}, {Step: "b", Status: "doing"}},
 		"odd status": {{Step: "a", Status: "maybe"}},
-		"too long":   {{Step: strings.Repeat("x", MaxStepRune+1)}},
 		"too many":   make([]Item, MaxSteps+1),
 	} {
 		if _, err := Normalize(bad); err == nil {
 			t.Errorf("%s was accepted", name)
 		}
+	}
+}
+
+// A long step is shortened at a word, not refused, and a manager's plan may hold a step for each part of a large team's work.
+func TestNormalizeShortensALongStepAndLetsAManagerPlanMore(t *testing.T) {
+	long := strings.Repeat("word ", MaxStepRune)
+	got, err := Normalize([]Item{{Step: long}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := utf8.RuneCountInString(got[0].Step); n > MaxStepRune || !strings.HasSuffix(got[0].Step, "word…") {
+		t.Fatalf("shortened step (%d runes): %q", n, got[0].Step)
+	}
+	many := make([]Item, MaxSteps+1)
+	for i := range many {
+		many[i].Step = "step"
+	}
+	if _, err := NormalizeDelegated(many); err != nil {
+		t.Fatalf("a manager's plan of %d steps: %v", len(many), err)
+	}
+	if _, err := NormalizeDelegated(make([]Item, MaxDelegatedSteps+1)); err == nil {
+		t.Fatal("a delegated plan over its bound was accepted")
 	}
 }
 

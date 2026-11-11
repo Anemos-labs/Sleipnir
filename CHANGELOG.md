@@ -7,6 +7,10 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- The plan tool no longer refuses a step over 160 characters: it shortens it at
+  a word and keeps it. A manager's plan may hold up to 80 steps (an agent's own
+  plan stays at 24), so a large team's manager no longer spends its first calls
+  cutting its plan down.
 - Large teams scale. Four limits held every team at about the throughput of
   fifteen workers, whatever its size:
   - The worktree merge queue verified each submission on its own, so a team
