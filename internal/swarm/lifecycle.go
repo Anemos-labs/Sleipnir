@@ -61,6 +61,9 @@ type runState struct {
 	// asked marks a run the watchdog stopped while it waited for the person to answer a question: a restart would ask again,
 	// so the harness does not restart it on its own (restart.go).
 	asked bool
+	// handBack marks a run whose restart planRestart skipped because its model's endpoint is failing while a member of its role
+	// runs on another model: its tasks go back to the manager (handedBack), not to a repair that would start it again on them.
+	handBack bool
 	// stopped marks a run the person or the stall sweep stopped as stuck (stop.go): the harness does not restart it on its own.
 	stopped bool
 }

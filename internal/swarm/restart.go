@@ -113,6 +113,7 @@ func (s *Swarm) planRestart(m *member, rs *runState, tasks map[string]uint64, ki
 		// Its model's endpoint is failing and a member of its role runs on another model: the work goes back to the manager, whose
 		// assignments go to that member (outageSteer), rather than to a restart on the model that just failed. A team waited half
 		// an hour on a worker the harness restarted again and again on a model the gateway kept cutting off.
+		rs.handBack = true
 		return nil, 0
 	}
 	m.mu.Lock()
@@ -175,7 +176,7 @@ func (s *Swarm) settleFailed(m *member, rs *runState, tasks map[string]uint64, k
 	if p == nil {
 		// A run that was stopped (by the person, or by the harness for a stall) hands its work back to the manager like one whose
 		// restarts ran out: the repair would otherwise start the same worker on it again a moment later.
-		return nil, tried, s.settleStopped(m, tasks, kind, why, count, tried > 0 || rs.stopped)
+		return nil, tried, s.settleStopped(m, tasks, kind, why, count, tried > 0 || rs.stopped || rs.handBack)
 	}
 	rest := maps.Clone(tasks)
 	snap := s.Board.Snapshot()

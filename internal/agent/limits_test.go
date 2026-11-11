@@ -758,3 +758,36 @@ func TestAResultOverThePerResultCapIsSavedBehindARecallHandle(t *testing.T) {
 		t.Fatalf("the blob behind %s is not the whole result: %v", h[1], err)
 	}
 }
+
+// Without the recall tool a cut result names no handle the agent cannot read: it says to narrow the call instead.
+func TestAResultOverThePerResultCapWithoutRecallSaysToNarrowTheCall(t *testing.T) {
+	long := "HEAD " + strings.Repeat("a line of a long listing\n", 4000) + "TAIL"
+	fts := []fakeTool{{name: "read", readOnly: true, run: func(json.RawMessage) *tools.Result { return &tools.Result{Text: long} }}}
+	var mu sync.Mutex
+	var shown string
+	r := newLimRig(t, func(c *agent.Config) {
+		reg := tools.NewRegistry()
+		reg.Register(fts[0])
+		specs, err := reg.Specs()
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Tools, c.ToolSpecs, c.MaxTurnResultChars, c.Perm = reg, specs, 1_000_000, perm.AllowAll{}
+	}, fts, func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		defer mu.Unlock()
+		if tm := toolMessages(c); len(tm) > 0 {
+			shown = tm[0]
+			return mock.Reply{Text: "done"}
+		}
+		return mock.Reply{ToolCalls: []mock.ToolCall{{ID: "c1", Name: "read", Args: `{}`}}}
+	})
+	if _, err := r.agent.Run(context.Background(), "list"); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if strings.Contains(shown, "out_") || !strings.Contains(shown, "narrower request") {
+		t.Fatalf("the cut result without recall: ...%s", shown[max(0, len(shown)-200):])
+	}
+}

@@ -223,13 +223,36 @@ func TestMemoryNotesCanBeSavedUpToTheToolsCeiling(t *testing.T) {
 	e.ok(http.MethodGet, "/api/sessions/t1/memory", nil, nil, &v)
 	var notes []string
 	for size := 0; size+memtool.MaxNoteRunes+8 < memtool.MaxBytes; size += memtool.MaxNoteRunes + 3 {
-		notes = append(notes, fmt.Sprintf("N%04d ", len(notes))+strings.Repeat(`"`, memtool.MaxNoteRunes-6))
+		notes = append(notes, fmt.Sprintf("N%04d ", len(notes))+strings.Repeat(`<`, memtool.MaxNoteRunes-6)) // "<" is six bytes in Go's JSON (\u003c)
 	}
 	e.ok(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: notes, Version: v.Notes.Version}, nil, &v)
 	if len(v.Notes.Notes) != len(notes) {
 		t.Fatalf("saved %d of %d notes", len(v.Notes.Notes), len(notes))
 	}
 	// Removing one note still sends far more than the old 64 KB body limit.
+	e.ok(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: notes[1:], Version: v.Notes.Version}, nil, &v)
+	if len(v.Notes.Notes) != len(notes)-1 {
+		t.Fatalf("after removing one: %d notes", len(v.Notes.Notes))
+	}
+}
+
+// A notes file written by hand over the tool's MaxBytes (up to the file ceiling) can still be shortened from the page.
+func TestMemoryNotesWrittenByHandOverTheCeilingCanBeShortened(t *testing.T) {
+	e := memEnv(t)
+	var b strings.Builder
+	b.WriteString("Notes the agent saved with its memory tool.\n")
+	var notes []string
+	for b.Len()+memtool.MaxNoteRunes+8 < memtool.MaxFileBytes-1024 {
+		n := fmt.Sprintf("N%04d ", len(notes)) + strings.Repeat("<", memtool.MaxNoteRunes-6)
+		notes = append(notes, n)
+		b.WriteString("- " + n + "\n")
+	}
+	write(t, filepath.Join(e.home, ".sleipnir", "MEMORY.md"), b.String())
+	var v wire.MemoryView
+	e.ok(http.MethodGet, "/api/sessions/t1/memory", nil, nil, &v)
+	if len(v.Notes.Notes) != len(notes) {
+		t.Fatalf("read %d of %d notes", len(v.Notes.Notes), len(notes))
+	}
 	e.ok(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: notes[1:], Version: v.Notes.Version}, nil, &v)
 	if len(v.Notes.Notes) != len(notes)-1 {
 		t.Fatalf("after removing one: %d notes", len(v.Notes.Notes))

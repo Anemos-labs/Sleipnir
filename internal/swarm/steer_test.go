@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/provider"
 )
@@ -40,6 +41,15 @@ func TestAssignmentsSteerAwayFromAWorkerWhoseModelIsOut(t *testing.T) {
 	}
 	if tk, _ := r.sw.Board.Snapshot().Task(t1.ID); tk.Status != StatusTodo || tk.Owner != "" {
 		t.Fatalf("%s = %s/%s after be-1's run ended on an outage, want back on the board", t1.ID, tk.Status, tk.Owner)
+	}
+	// It is the manager's to assign: the repair does not start be-1 on it again, now or once outageSteer has passed.
+	r.sw.repairTick(clock.Now())
+	if tk, _ := r.sw.Board.Snapshot().Task(t1.ID); tk.Status != StatusTodo || tk.Owner != "" {
+		t.Fatalf("%s = %s/%s after a repair tick, want left for the manager", t1.ID, tk.Status, tk.Owner)
+	}
+	r.sw.repairTick(clock.Now().Add(outageSteer + time.Minute))
+	if tk, _ := r.sw.Board.Snapshot().Task(t1.ID); tk.Status != StatusTodo || tk.Owner != "" {
+		t.Fatalf("%s = %s/%s after a repair tick past outageSteer, want left for the manager", t1.ID, tk.Status, tk.Owner)
 	}
 
 	out := r.callTool(context.Background(), "spawn", "mgr", "manager", map[string]any{"agent": "be-1", "task": t1.ID})
