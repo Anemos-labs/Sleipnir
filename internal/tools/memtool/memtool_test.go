@@ -346,3 +346,17 @@ func TestProjectScopeRefusalSaysWhyAndWhatToDo(t *testing.T) {
 		t.Fatalf("generic refusal = %+v", r)
 	}
 }
+
+// A write that would take a file with text written by hand over MaxFileBytes is refused: it would succeed, and the next read fail.
+func TestAWriteOverTheFileCeilingIsRefused(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "MEMORY.md")
+	if err := os.WriteFile(path, []byte(strings.Repeat("x", MaxFileBytes-3)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteNotes(path, []string{"abc"}); err == nil || !strings.Contains(err.Error(), "ceiling") {
+		t.Fatalf("a write over the ceiling: %v", err)
+	}
+	if _, err := ReadNotes(path); err != nil {
+		t.Fatalf("the file can no longer be read: %v", err)
+	}
+}

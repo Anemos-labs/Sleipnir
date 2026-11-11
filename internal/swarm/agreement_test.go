@@ -445,11 +445,11 @@ func TestAgreementsWithoutRoomAreNamedOnOneBoundedLine(t *testing.T) {
 	for i := 2; i < 5000; i++ {
 		in = append(in, TaskAgreement{Task: fmt.Sprintf("T%d", i), Text: "y"})
 	}
-	card := agreementCard(in)
+	card := agreementCard("T9000", in)
 	if len(card) > agreementCardBytes+agreementUnshownIDs*8+2000 {
 		t.Fatalf("the card is %d bytes", len(card))
 	}
-	if !strings.Contains(card, "more agreements are not shown here: T") || !strings.Contains(card, " more. task get <id> shows each") {
+	if !strings.Contains(card, "more agreements are not shown here: T") || !strings.Contains(card, " more. task get T9000 lists every agreement this task inherits, whole; task get <id> shows each") {
 		t.Fatalf("the card does not name what it leaves out:\n%s", card[len(card)-2000:])
 	}
 }
@@ -473,13 +473,47 @@ func TestLongAgreementIsKeptWholeAndShownInPart(t *testing.T) {
 	if got.Agreement != strings.TrimSpace(long) {
 		t.Fatalf("the board kept %d of %d bytes", len(got.Agreement), len(long))
 	}
-	card := agreementCard([]TaskAgreement{{Task: p.ID, Text: got.Agreement}, {Task: "T99", Text: got.Agreement}, {Task: "T98", Text: got.Agreement}, {Task: "T97", Text: "x"}})
+	card := agreementCard("T9000", []TaskAgreement{{Task: p.ID, Text: got.Agreement}, {Task: "T99", Text: got.Agreement}, {Task: "T98", Text: got.Agreement}, {Task: "T97", Text: "x"}})
 	if len(card) > agreementCardBytes+2000 {
 		t.Fatalf("the card is %d bytes", len(card))
 	}
-	for _, want := range []string{"task get " + p.ID + " shows all of it", "task get T99 shows all of it", "more agreements are not shown here:", "T97. task get <id> shows each"} {
+	for _, want := range []string{"task get " + p.ID + " shows all of it", "task get T99 shows all of it", "more agreements are not shown here:", "T97. task get T9000 lists every agreement"} {
 		if !strings.Contains(card, want) {
 			t.Fatalf("the card does not say %q", want)
 		}
+	}
+}
+
+// An agreement past the ones the card names is still in reach: the card points at the owner's own task, whose task get lists
+// every inherited agreement whole.
+func TestAnAgreementTheCardDoesNotNameIsInTheOwnersTaskGet(t *testing.T) {
+	r := newRVRig(t, Config{MaxWriters: 4}, func(ctx context.Context, c *rvCall) rvReply { return rvReply{Text: "ok"} })
+	tasks := []Task{{ID: "T1", Title: "big", Role: "architect", Kind: TaskKindPlan, Status: StatusDone, Agreement: strings.Repeat("x", agreementCardBytes), Closure: closeAs(CloseAgreed)}}
+	deps := []string{"T1"}
+	for i := 2; i <= agreementUnshownIDs+50; i++ {
+		id := fmt.Sprintf("T%d", i)
+		text := "agreement of " + id + " END"
+		if id == "T10" { // sorted after T1: the two fill the card
+			text = strings.Repeat("y", agreementCardBytes) + text
+		}
+		tasks = append(tasks, Task{ID: id, Title: "a", Role: "architect", Kind: TaskKindPlan, Status: StatusDone, Agreement: text, Closure: closeAs(CloseAgreed)})
+		deps = append(deps, id)
+	}
+	tasks = append(tasks, Task{ID: "T999", Title: "api", Role: "backend", Status: StatusTodo, Deps: deps})
+	r.sw.Board.Restore(&Snapshot{Tasks: tasks})
+	if err := r.sw.Board.Claim("be-1", "T999"); err != nil {
+		t.Fatal(err)
+	}
+	cur, _ := r.sw.Board.Snapshot().Task("T999")
+	card := taskCard(cur, "be-1", true)
+	last := cur.Agreements[len(cur.Agreements)-1].Task // sorted by id: the last is past the named ones
+	_, unshown, _ := strings.Cut(card, "more agreements are not shown here:")
+	unshown, _, _ = strings.Cut(unshown, "\n")
+	if strings.Contains(unshown, " "+last+",") || strings.Contains(unshown, " "+last+" ") || !strings.Contains(unshown, "task get T999 lists every agreement") {
+		t.Fatalf("the card names %s or does not point at T999:\n%s", last, card[len(card)-1500:])
+	}
+	got := r.callTool(context.Background(), "task", "be-1", "backend", map[string]any{"action": "get", "id": "T999"}).Text
+	if !strings.Contains(got, "agreement of "+last+" END") {
+		t.Fatalf("the owner's task get of T999 does not hold %s's agreement", last)
 	}
 }

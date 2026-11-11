@@ -774,14 +774,34 @@ func judgeBlocks(t core.Turn) []string {
 // resumed session would otherwise show its agents, the goal's judge and the plan tool's checks no plan at all, while the page,
 // which reads the log, still shows the old one. A goal started after a plan clears the main agent's, as ClearGoalPlan did.
 func restorePlans(log string, store *plan.Store) {
+	// A call the tool refused (its result is an error) leaves the plan as it was before the call: NormalizeSaved restores some a
+	// replay alone would, such as a step over the ceiling, so the result decides.
+	type applied struct {
+		id   string
+		prev []plan.Item
+	}
+	last := map[string]applied{}
 	_ = events.Scan(log, func(e events.Event) error {
 		switch e.Type {
+		case events.TypeToolResult:
+			var r struct {
+				ID    string `json:"id"`
+				Error bool   `json:"error"`
+			}
+			if a, ok := last[e.Agent]; ok && json.Unmarshal(e.Data, &r) == nil && r.ID != "" && r.ID == a.id {
+				if r.Error {
+					store.Set(e.Agent, a.prev)
+				}
+				delete(last, e.Agent)
+			}
 		case "goal.start":
 			for _, id := range []string{"main", "mgr"} {
 				store.Set(id, nil)
+				delete(last, id)
 			}
 		case events.TypeToolCall:
 			var c struct {
+				ID    string          `json:"id"`
 				Name  string          `json:"name"`
 				As    string          `json:"as"`
 				Input json.RawMessage `json:"input"`
@@ -797,6 +817,7 @@ func restorePlans(log string, store *plan.Store) {
 			}
 			// As the plan tool judged it: a manager's steps may be doing at once.
 			if items, err := plan.NormalizeSaved(in.Items, e.Agent == managerAgent); err == nil {
+				last[e.Agent] = applied{id: c.ID, prev: store.Get(e.Agent)}
 				store.Set(e.Agent, items)
 			}
 		}

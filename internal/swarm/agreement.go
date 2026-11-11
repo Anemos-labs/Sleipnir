@@ -81,8 +81,8 @@ func inheritedAgreements(s *Snapshot, t Task) ([]TaskAgreement, error) {
 	return out, nil
 }
 
-// agreementCard renders immutable accepted task data inside the protected assignment.
-func agreementCard(agreements []TaskAgreement) string {
+// agreementCard renders immutable accepted task data inside the protected assignment of task owner.
+func agreementCard(owner string, agreements []TaskAgreement) string {
 	if len(agreements) == 0 {
 		return ""
 	}
@@ -118,7 +118,8 @@ func agreementCard(agreements []TaskAgreement) string {
 		if n := len(unshown) - len(shown); n > 0 {
 			more = fmt.Sprintf(" and %d more", n)
 		}
-		fmt.Fprintf(&out, "%d more agreements are not shown here: %s%s. task get <id> shows each.\n", len(unshown), strings.Join(shown, ", "), more)
+		fmt.Fprintf(&out, "%d more agreements are not shown here: %s%s. task get %s lists every agreement this task inherits, whole; task get <id> shows each.\n",
+			len(unshown), strings.Join(shown, ", "), more, cleanText(owner, 20))
 	}
 	out.WriteString("Use these shared contracts for this assignment. If they conflict with the user, each other, or the code, report the conflict to the manager before implementing a different contract.\n")
 	return out.String()

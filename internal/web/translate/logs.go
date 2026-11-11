@@ -766,7 +766,7 @@ func (t *Translator) toolCall(e events.Event, ts float64, at int64) {
 		delete(t.d.hold, uid)
 	}
 	if name == "plan" && isMain(e.Agent) {
-		t.planCall(e.Agent, p.Input, ts, at)
+		t.planCall(e.Agent, p.ID, p.Input, ts, at)
 	}
 	if !t.d.logOnly || nonAgent(e.Agent) || p.ID == "" {
 		return
@@ -783,7 +783,7 @@ func (t *Translator) toolCall(e events.Event, ts float64, at int64) {
 
 // planCall is a call of the plan tool by the main agent: the whole plan, normalized as the tool does (a team's manager, "mgr",
 // may have several steps doing).
-func (t *Translator) planCall(agent string, input json.RawMessage, ts float64, at int64) {
+func (t *Translator) planCall(agent, id string, input json.RawMessage, ts float64, at int64) {
 	var in struct {
 		Items []plan.Item `json:"items"`
 	}
@@ -814,14 +814,36 @@ func (t *Translator) planCall(agent string, input json.RawMessage, ts float64, a
 		}
 		ev.St = append(ev.St, st)
 	}
+	uid := uiID(agent)
+	pp := t.d.plans[uid]
+	t.d.plans[uid] = pendPlan{id: id, shown: ev, prev: pp.shown}
 	t.put(ev, ts, at, nil)
+}
+
+// pendPlan is the plan the page shows for an agent: the last call's, and the one before it, which the page goes back to when the
+// tool refuses the call (planResult).
+type pendPlan struct {
+	id          string
+	shown, prev *wire.Plan
+}
+
+// planResult takes back a plan the tool refused: the page shows the one before it again.
+func (t *Translator) planResult(agent, id string, isErr bool, ts float64, at int64) {
+	uid := uiID(agent)
+	pp, ok := t.d.plans[uid]
+	if !ok || id == "" || pp.id != id || !isErr {
+		return
+	}
+	prev := pp.prev
+	if prev == nil {
+		prev = &wire.Plan{Steps: []string{}, St: []string{}}
+	}
+	t.d.plans[uid] = pendPlan{shown: prev}
+	t.put(prev, ts, at, nil)
 }
 
 // toolResult is tool.result: in a log-only translation, the outcome of a waiting tool row.
 func (t *Translator) toolResult(e events.Event, ts float64, at int64) {
-	if !t.d.logOnly {
-		return
-	}
 	var p struct {
 		ID      string         `json:"id"`
 		Error   bool           `json:"error"`
@@ -830,6 +852,12 @@ func (t *Translator) toolResult(e events.Event, ts float64, at int64) {
 		Meta    map[string]any `json:"meta"`
 	}
 	if json.Unmarshal(e.Data, &p) != nil {
+		return
+	}
+	if isMain(e.Agent) {
+		t.planResult(e.Agent, p.ID, p.Error, ts, at)
+	}
+	if !t.d.logOnly {
 		return
 	}
 	if pt := t.d.pend[callKey(uiID(e.Agent), p.ID)]; pt != nil {

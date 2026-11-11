@@ -1744,13 +1744,17 @@ func (s *Swarm) planNudge(agentID string) string {
 func listedJoin(parts []string, sep, id string) string {
 	var b strings.Builder
 	rest := 0
+	sepRunes := utf8.RuneCountInString(sep)
 	for i, p := range parts {
-		if i > 0 {
-			p = sep + p
-		}
 		if rest > 0 || b.Len() > listedRunes*4 { // runes are at most 4 bytes: past this the head is complete
+			if i > 0 {
+				rest += sepRunes
+			}
 			rest += utf8.RuneCountInString(p)
 			continue
+		}
+		if i > 0 {
+			b.WriteString(sep)
 		}
 		b.WriteString(p)
 	}

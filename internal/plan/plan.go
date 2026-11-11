@@ -123,12 +123,23 @@ func NormalizeSaved(in []Item, delegated bool) ([]Item, error) {
 	}
 	clipped := make([]Item, len(in))
 	for i, it := range in {
+		it.Step = cleanStep(it.Step) // as the tool counted it: leading spaces do not count toward the ceiling
 		if r := []rune(it.Step); len(r) > MaxStepRune {
 			it.Step = string(r[:MaxStepRune-1]) + "…"
 		}
 		clipped[i] = it
 	}
 	return normalize(clipped, !delegated)
+}
+
+// cleanStep is a step's text without control characters, its runs of space one space.
+func cleanStep(s string) string {
+	return strings.Join(strings.Fields(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) && !unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, s)), " ")
 }
 
 func normalize(in []Item, oneDoing bool) ([]Item, error) {
@@ -141,12 +152,7 @@ func normalize(in []Item, oneDoing bool) ([]Item, error) {
 	out := make([]Item, 0, len(in))
 	doing := 0
 	for i, it := range in {
-		step := strings.Join(strings.Fields(strings.Map(func(r rune) rune {
-			if unicode.IsControl(r) && !unicode.IsSpace(r) {
-				return -1
-			}
-			return r
-		}, it.Step)), " ")
+		step := cleanStep(it.Step)
 		if step == "" {
 			return nil, fmt.Errorf("step %d is empty", i+1)
 		}

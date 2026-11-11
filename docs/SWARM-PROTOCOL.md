@@ -294,7 +294,7 @@ pool's scope: when two of its children overlap it parts them), and assign existi
 pool members. A pool member that is not
 writing inside its own child task (planning, reconciliation) is judged under the
 plan profile with the research and checks a read-only role keeps (web fetch and
-search, the project's tests and static checks) and the team's own verification command (`swarm.verify`, up to `{dirs}`), so
+search, the project's tests and static checks) and the team's own verification command (`swarm.verify`: each command of a plain `&&` chain, one ending in `{dirs}` with paths in the workspace after it and without a checker's writing options), so
 that a member asked to check the combined result can run what judges it, and then by its own permissions,
 so a pool never grants more than the session does. Without a permission engine (tests, embedding) read-only roles fall back
 to a strict allowlist of one plain inspection command (no operators, redirections, substitutions, exec flags, or
@@ -422,8 +422,9 @@ Statuses: `todo -> doing -> review -> done`, with `blocked` and `failed` as side
   dependencies instead.
 * **What agents write is kept as written.** The board's bounds are ceilings for memory only (100000 tasks, 1000
   dependencies and 1000 scope entries per task, 16384 characters for a note, a status line, a result or an
-  assumption, 1 MiB for a description or a report), set far above what agents write. Only input over a ceiling is
-  refused (a note, with where to put the detail instead) or cut (a report, to its first 1 MiB). What every agent's
+  assumption, 1000 distinct assumptions per submission, 1048576 characters for a description or a report). Only input over a ceiling is refused (a note, with where to put the detail instead) or cut
+  (a report to its first 1048576 characters and an assumption to its first 16384, each ending in an ellipsis; blank
+  and repeated assumptions are dropped and those past the thousandth are not kept). What every agent's
   prompt carries is bounded by how it is shown instead: a title over 160 characters shows its opening, a list of tasks
   shows the first 400 characters of a line, result or evidence with a pointer to `task get`, which shows the task whole,
   a note over 400 characters shows its opening with a pointer to `note read=<id>`, and 48 pending notes are shown (8
@@ -584,7 +585,7 @@ An agreement is not refused for its length (a planning task may not write files,
 real contract); 1 MiB is a ceiling for memory only, and combined inherited agreements 16 MiB. The board keeps every
 agreement whole. What a dependent's assignment card carries is bounded instead: the opening of each agreement up to
 24,000 bytes, cut at a line break, and 48,000 bytes for all of them, with a line saying how much more there is and that
-`task get` on the task that made it shows all of it; agreements past that bound are named on one line. A task description is kept whole up to the same 1 MiB ceiling; its
+`task get` on the task that made it shows all of it; agreements past that bound are named on one line (the first 200 ids and a count), with `task get` on the assigned task, which lists every inherited agreement whole. A task description is kept whole up to the same 1 MiB ceiling; its
 owner's card carries the first 16,000 characters and points to `task get` for the rest. Tasks assigned to one worker,
 including blocked work and worktree instructions, must fit 200,000 bytes of assignment text. Compaction preserves
 harness assignments up to a fixed 100,000-byte bound, independently of token

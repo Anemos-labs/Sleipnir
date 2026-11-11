@@ -46,6 +46,8 @@ func TestUnsentKeyNamesDeliveriesOnly(t *testing.T) {
 		{"task", `{"action":"done","id":"T4"}`, "task:done:T4", true},
 		{"task", `{"action":"list"}`, "", false},
 		{"note", `{"withdraw":3}`, "", false},
+		{"note", `{"read":3}`, "", false},
+		{"note", `{"text":"x"}`, "note", true},
 		{"pool", `{"action":"propose","id":"T2"}`, "pool:propose:T2", true},
 		{"wait", `{}`, "", false},
 	} {
@@ -53,5 +55,32 @@ func TestUnsentKeyNamesDeliveriesOnly(t *testing.T) {
 		if key != tc.key || ok != tc.ok {
 			t.Errorf("%s %s: key %q ok %v", tc.tool, tc.in, key, ok)
 		}
+	}
+}
+
+// A long refusal is whole in the tool's answer; the line the live view repeats every turn shows its opening.
+func TestALongRefusalIsShownInPartInTheView(t *testing.T) {
+	b := unsentBook{now: time.Now}
+	b.record("be-1", "task:done:T1", "your task done of T1", strings.Repeat("verify failed ", 2000)+"END")
+	lines := b.lines("be-1")
+	if len(lines) != 2 || strings.Contains(lines[1], "END") || len([]rune(lines[1])) > listedRunes+200 || !strings.Contains(lines[1], "more characters") {
+		t.Fatalf("view: %.600q", lines)
+	}
+}
+
+// A note read through the wrapped tool leaves an earlier refused note in the view.
+func TestANoteReadKeepsAnEarlierRefusedNote(t *testing.T) {
+	sw := New(Config{SessionID: "t"}, Deps{}, nil)
+	id, err := sw.Board.AddNote("w-1", "shared", "backend", "a fact")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sw.unsent.record("w-2", "note", "your note", "refused for a reason")
+	res := secRevCall(t, unsentTool{inner: &noteTool{s: sw}, s: sw}, "w-2", "backend", map[string]any{"read": id})
+	if res.IsError {
+		t.Fatalf("note read: %s", res.Text)
+	}
+	if lines := sw.unsent.lines("w-2"); len(lines) != 2 || !strings.Contains(lines[1], "refused for a reason") {
+		t.Fatalf("view after a note read: %q", lines)
 	}
 }

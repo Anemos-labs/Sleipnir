@@ -336,6 +336,7 @@ func NewEngine(cfg Config) (*Engine, error) {
 	if cfg.Tmp != "" {
 		rs.tmp = cleanAbs(cfg.Tmp)
 		rs.tmpReal = realPath(rs.tmp)
+		rs.projectRoots = len(rs.roots)
 		rs.roots = append(rs.roots, rootPair{lex: rs.tmp, real: rs.tmpReal})
 	}
 	rs.addTreeParents(cfg.TreeParents)

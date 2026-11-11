@@ -10,28 +10,30 @@ they do not indicate whether a change has been released.
 - Creating a planning task with a scope tells the manager that its owner
   writes none of those files and to make it a work task when the files are
   the deliverable; a planning task's card says every write is refused,
-  whatever its description says. A manager told its architect to write the
-  API contract in a planning task: ten minutes of writing were refused while
-  fifteen tasks waited on the plan.
+  whatever its description says.
 - A pool member whose pool is read-only to it (planning, reconciliation) may run
-  the team's verification command (each command of a `&&` chain; a `{dirs}`
-  template only when `{dirs}` ends it), `go build -o` to `$TMPDIR`, and
+  the team's verification command (each command of a plain `&&` chain; a
+  `{dirs}` template only when `{dirs}` ends it, with paths in the workspace and
+  without a checker's writing options), `go build -o` to `$TMPDIR`, and
   `pnpm exec tsc --noEmit` and `pnpm exec eslint` without their writing
-  options. Members asked to check the combined result before confirming it
-  were refused the very command that judges it.
+  options (`--fix`, `--cache-location`, `--cache-file` among them).
 - Plan mode (read-only agents, and pool members before their child task) lets
-  a command write to the session's scratch directory (`$TMPDIR`), `mkdir` and
-  `cp` there included: a reviewer writing a config to validate there changed
-  nothing in the project, and was refused. A scratch directory that holds the
-  project is not scratch: plan mode writes in the project stay refused.
-- Limits on what agents write are ceilings for memory only, set far above what
-  any agent writes, not reasons to refuse or cut. A plan takes up to 10000 steps
+  a command write to the session's scratch directory (`$TMPDIR`), `mkdir`,
+  `touch` and `cp` of files there included; commands that can make links (`ln`,
+  `mv`, `cp -s`, `-l`, `-R`, `-a`) are not. A scratch directory that holds the
+  project, or is the project, and a path in it that holds the project are not
+  scratch: plan mode writes in the project stay refused.
+- Limits on what agents write are ceilings for memory only, not reasons to
+  refuse or cut. A plan takes up to 10000 steps
   of up to 16384 characters (it was 24 steps of 160 characters); a saved plan
-  with a longer step still replays, the step cut to the ceiling. Notes, status lines, results, evidence and assumptions are
+  with a longer step still replays, the step cut to the ceiling, and a replay
+  keeps the last plan the tool accepted (a call it refused is not restored). Notes, status lines, results, evidence and assumptions are
   kept up to 16384 characters (they were cut at 140 to 320, a note over 300 was
   refused), reports up to 1 MiB (16000), a task's dependencies and scope entries
   up to 1000 (16), the board up to 100000 tasks (1000), and the `memory` tool up
-  to 1000 notes of 16384 characters (40 of 300). A list of tasks shows the first
+  to 1000 notes of 16384 characters (40 of 300); a memory write that would take
+  the notes file, with its text written by hand, over 2 MiB is refused instead of
+  leaving a file that cannot be read. A list of tasks shows the first
   400 characters of each line, result or evidence and points to `task get`. A
   mailman digest longer than `MailmanDigestChars` is kept: that length is what
   the mailman is asked for; one longer than the recipient's mail limit is

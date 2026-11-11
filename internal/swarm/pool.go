@@ -739,10 +739,15 @@ func (s *Swarm) poolChecks() []string {
 }
 
 // verifyAllowRules are the allow rules that match the verification command cmd, one for each command of a "&&" chain: the
-// command itself, or, for one that ends in {dirs}, the command up to {dirs} with any directories after it. A command with
+// command itself, or, for one that ends in {dirs}, the command up to {dirs} with paths in the workspace after it and none of the
+// options that make a known checker write. A command with
 // arguments after {dirs} ("pnpm --dir {dirs} test") gets no rule: a prefix rule up to {dirs} would also match "pnpm --dir web add
 // a-package". Nor does a rule that does not parse: one bad rule would make the engine refuse the whole list, ordinary reads too.
 func verifyAllowRules(cmd string) []string {
+	// Only a plain chain is split: quotes, expansions and other operators would make "&&" text that is not a chain ("echo 'a && b'").
+	if strings.ContainsAny(cmd, "'\"`$\\;|<>\n#") || strings.Contains(strings.ReplaceAll(cmd, "&&", ""), "&") {
+		return nil
+	}
 	var rules []string
 	for _, part := range strings.Split(cmd, "&&") {
 		r := verifyAllowRule(part)
@@ -768,7 +773,7 @@ func verifyAllowRule(cmd string) string {
 		if head == "" || strings.TrimSpace(cmd[i+len(verifyDirsToken):]) != "" {
 			return ""
 		}
-		return "Bash(" + head + ":*)"
+		return "Bash(" + head + ":workspace)" // its paths in the workspace, without the options that make a checker write (--fix)
 	}
 	return "Bash(" + cmd + ")"
 }

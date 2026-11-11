@@ -100,10 +100,25 @@ func TestPlanModeWritesOnlyToTheScratchDirectory(t *testing.T) {
 	if d := e.Check(context.Background(), f.request(bash("echo x > notes.txt"))); d.Allow {
 		t.Error("plan mode let a command write in the workspace")
 	}
-	for _, cmd := range []string{"mkdir build", `cp go.mod "$TMPDIR/x" && mkdir build`} {
+	// A link made in the scratch directory would let a write after it, judged before it exists, reach the project.
+	for _, cmd := range []string{"mkdir build", `cp go.mod "$TMPDIR/x" && mkdir build`,
+		`ln -s "$PWD" "$TMPDIR/link" && printf x > "$TMPDIR/link/main.go"`,
+		`mv "$TMPDIR/a" "$TMPDIR/link" && printf x > "$TMPDIR/link/main.go"`,
+		`cp -s "$TMPDIR/a" "$TMPDIR/l"`, `cp -l "$TMPDIR/a" "$TMPDIR/l"`, `cp -R "$TMPDIR/a" "$TMPDIR/c"`, `cp -a "$TMPDIR/a" "$TMPDIR/c"`} {
 		if d := e.Check(context.Background(), f.request(bash(cmd))); d.Allow {
 			t.Errorf("plan mode allowed %s", cmd)
 		}
+	}
+}
+
+// A path in $TMPDIR that holds the project is not scratch either: writing there could reach the project's files.
+func TestPlanModeScratchWriteToAPathThatHoldsTheProjectIsRefused(t *testing.T) {
+	f := newFixture(t)
+	root, _ := filepath.EvalSymlinks(f.root)
+	parent := filepath.Dir(filepath.Dir(root))
+	e := f.engine(t, Config{Mode: ModePlan, Tmp: parent})
+	if d := e.Check(context.Background(), f.request(bash("touch "+filepath.Dir(root)))); d.Allow {
+		t.Error("plan mode allowed a write to the directory that holds the project")
 	}
 }
 
@@ -120,6 +135,18 @@ func TestPlanModeScratchThatHoldsTheProjectIsNotScratch(t *testing.T) {
 	}
 	if d := e.Check(context.Background(), f.request(bash("echo x > "+filepath.Join(parent, "elsewhere.txt")))); !d.Allow {
 		t.Errorf("a write in $TMPDIR outside the project: %s", d.Reason)
+	}
+}
+
+// A project at $TMPDIR itself has no scratch directory apart from it.
+func TestPlanModeScratchThatIsTheProjectIsNotScratch(t *testing.T) {
+	f := newFixture(t)
+	root, _ := filepath.EvalSymlinks(f.root)
+	e := f.engine(t, Config{Mode: ModePlan, Tmp: root})
+	for _, cmd := range []string{"echo x > notes.txt", "mkdir build", `echo x > "$TMPDIR/notes.txt"`, `mkdir -p "$TMPDIR/out"`} {
+		if d := e.Check(context.Background(), f.request(bash(cmd))); d.Allow {
+			t.Errorf("plan mode allowed %s with the project at $TMPDIR", cmd)
+		}
 	}
 }
 
@@ -143,7 +170,8 @@ func TestReadOnlyChecksIncludeABuildToTheScratchDirectory(t *testing.T) {
 	}
 	// A checker's writing options take it off its rule; a project's lint script may take --fix.
 	for _, cmd := range []string{"pnpm exec tsc --noEmit --generateTrace trace", "pnpm exec eslint --fix src",
-		"npm run lint -- --fix", "pnpm lint --fix"} {
+		"npm run lint -- --fix", "pnpm lint --fix", "pnpm exec eslint --cache-location package.json src",
+		"pnpm exec eslint --cache-file=package.json src"} {
 		if d := po.Check(context.Background(), f.request(bash(cmd))); d.Allow {
 			t.Errorf("a read-only check allowed %s: %s", cmd, d.Reason)
 		}

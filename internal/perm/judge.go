@@ -423,6 +423,39 @@ func (rs *resolver) scratchOnly(all []access) bool {
 	return wrote
 }
 
+// scratchMaker reports whether a file-writing command only makes new directories or plain files: mkdir, touch, and cp of files
+// without options that make links or copy trees. A link it could make (ln, mv of a link, cp -s, -l, -R, -a) would let a later write
+// in the same command, judged before the link exists, reach through the scratch directory into the project.
+func scratchMaker(u *unit) bool {
+	if u.simple == nil {
+		return false
+	}
+	switch u.name {
+	case "mkdir", "touch":
+		return true
+	case "cp":
+		for _, a := range u.simple.Args {
+			if a == "--" {
+				break
+			}
+			if !strings.HasPrefix(a, "-") || a == "-" {
+				continue
+			}
+			if strings.HasPrefix(a, "--") {
+				if a != "--force" && a != "--verbose" && a != "--no-clobber" {
+					return false
+				}
+				continue
+			}
+			if strings.Trim(a[1:], "fvnip") != "" { // -f, -v, -n, -i and -p (mode and times) only
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
 // clipText retains at most n runes and appends an ellipsis when needed; n must be nonnegative.
 func clipText(s string, n int) string {
 	r := []rune(s)
@@ -468,7 +501,7 @@ func (ev *evaluator) decideCommand(u *unit) verdict {
 		res = allow(ev.modeReason(genericSafe))
 	case u.class == cmdFSWrite && mode == ModeAcceptEdits:
 		res = allow(ev.modeReason(genericFSWrite))
-	case mode == ModePlan && u.class == cmdFSWrite && ev.rs.scratchOnly(u.accesses):
+	case mode == ModePlan && u.class == cmdFSWrite && scratchMaker(u) && ev.rs.scratchOnly(u.accesses):
 		// mkdir "$TMPDIR/out", cp a fixture there: the access checks below allow each write in the scratch directory.
 		res = allow("writes only in the session's scratch directory ($TMPDIR)")
 	case mode == ModePlan:

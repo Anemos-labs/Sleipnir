@@ -489,6 +489,9 @@ func WriteNotes(path string, notes []string) error {
 			put()
 		}
 	}
+	if b.Len() > MaxFileBytes { // text written by hand counts too: a file over this would not be read again
+		return fmt.Errorf("memory: the notes file would be %d bytes, over the %d-byte ceiling of a notes file (its text besides the notes counts too); nothing was saved", b.Len(), MaxFileBytes)
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("memory: %w", err)
 	}

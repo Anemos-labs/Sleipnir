@@ -2,6 +2,7 @@ package session
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
@@ -49,5 +50,32 @@ func TestAResumedSessionKeepsItsPlans(t *testing.T) {
 	}
 	if got := store.Get("main"); len(got) != 0 {
 		t.Errorf("a plan from before the goal: %+v", got)
+	}
+}
+
+// A replay keeps the last plan the tool accepted: a later call it refused (a step over the ceiling) is not restored clipped, and a
+// step it accepted is counted as it counted it, without its leading spaces.
+func TestAReplayKeepsTheLastAcceptedPlan(t *testing.T) {
+	dir := t.TempDir()
+	l, err := events.Open(dir, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	emit := func(typ string, data map[string]any) {
+		if _, err := l.Emit("be-1", typ, data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	emit(events.TypeToolCall, map[string]any{"id": "c1", "name": "plan", "input": map[string]any{"items": []map[string]any{{"step": strings.Repeat(" ", plan.MaxStepRune) + "task"}}}})
+	emit(events.TypeToolResult, map[string]any{"id": "c1", "name": "plan", "error": false})
+	emit(events.TypeToolCall, map[string]any{"id": "c2", "name": "plan", "input": map[string]any{"items": []map[string]any{{"step": strings.Repeat("x", plan.MaxStepRune+1)}}}})
+	emit(events.TypeToolResult, map[string]any{"id": "c2", "name": "plan", "error": true})
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store := plan.NewStore()
+	restorePlans(filepath.Join(dir, "events.jsonl"), store)
+	if got := store.Get("be-1"); len(got) != 1 || got[0].Step != "task" {
+		t.Errorf("restored: %+v", got)
 	}
 }

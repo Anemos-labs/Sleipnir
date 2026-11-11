@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -95,7 +96,11 @@ func (b *unsentBook) lines(agent string) []string {
 	b.by[agent] = keep
 	out := []string{"NOT SENT: the harness refused these calls and nothing happened: nobody has what they carried until you send it again in a form it accepts:"}
 	for _, r := range keep {
-		out = append(out, fmt.Sprintf("- %s, %s ago: %s", r.what, now.Sub(r.at).Round(time.Minute).String(), r.why))
+		why := r.why
+		if head, rest := inlineHead(why, listedRunes); rest > 0 { // the tool's answer had it whole; this line repeats in every turn
+			why = fmt.Sprintf("%s … (%d more characters, in the refusal itself)", head, rest)
+		}
+		out = append(out, fmt.Sprintf("- %s, %s ago: %s", r.what, now.Sub(r.at).Round(time.Minute).String(), why))
 	}
 	return out
 }
@@ -104,20 +109,22 @@ func (b *unsentBook) lines(agent string) []string {
 // kind clears, and how the record names it. ok false: the call delivers nothing (a read, a list, a wait).
 func unsentKey(tool string, input json.RawMessage) (key, what string, ok bool) {
 	var in struct {
-		Action, ID, To, Read, Task, Agent string
-		Withdraw                          int
+		Action, ID, To, Task, Agent string
+		Withdraw                    int
+		Read                        json.RawMessage // mail read=<id> is a string, note read=<id> a number
 	}
 	_ = json.Unmarshal(input, &in)
+	reads := len(in.Read) > 0 && !slices.Contains([]string{`""`, "null", "0"}, strings.TrimSpace(string(in.Read)))
 	id := cleanText(strings.TrimSpace(in.ID), 20)
 	switch tool {
 	case "mail":
-		if strings.TrimSpace(in.Read) != "" {
+		if reads {
 			return "", "", false
 		}
 		to := cleanText(strings.TrimSpace(in.To), 40)
 		return "mail:" + to, "your mail to " + to, true
 	case "note":
-		if in.Withdraw != 0 {
+		if in.Withdraw != 0 || reads {
 			return "", "", false
 		}
 		return "note", "your note", true
