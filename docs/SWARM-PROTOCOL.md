@@ -1193,7 +1193,8 @@ The harness's commit of a worker's tree (at `done`, at a handover, and when `ses
 change except untracked files inside a dependency store: a directory named `node_modules`, `bower_components`, `.next`,
 `.turbo`, `.parcel-cache`, `.venv`, `venv`, `__pycache__`, `.pytest_cache`, `.mypy_cache` or `.gradle`, at any depth
 (`gitx.DependencyStores`), and new untracked files that a build wrote (a native executable or compiled object: ELF,
-Mach-O, a Java class, or a PE with an executable's name or mode), which stay in the tree untracked. An `npm install` or a virtual environment in a project whose `.gitignore` does not cover it stays in
+Mach-O, a Java class, or a PE with an executable's name or mode), which stay in the tree untracked. The signature is a heuristic: it cannot tell a build's output from a binary fixture the task means to add, so such a
+fixture is kept by staging it (`git add`); a staged or tracked file is committed as usual. An `npm install` or a virtual environment in a project whose `.gitignore` does not cover it stays in
 the worker's tree while that tree exists and never reaches the integration branch (`sessions prune` deletes the tree after
 salvaging, so the store goes with it); those files are not held to the size and nested-repository checks
 either. Files the project already tracks inside such a directory are committed as usual, and generic names a project may use

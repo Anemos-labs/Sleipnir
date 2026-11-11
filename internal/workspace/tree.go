@@ -181,14 +181,15 @@ func (t *Tree) commitLocked(ctx context.Context, msg string) (string, error) {
 	if strings.TrimSpace(msg) == "" {
 		msg = "sleipnir: work by " + t.Agent
 	}
-	if err := t.checkFileSizes(ctx); err != nil {
+	built, err := t.checkFileSizes(ctx)
+	if err != nil {
 		return "", err
 	}
 	if err := t.onOwnBranchLocked(ctx, "commit"); err != nil {
 		return "", err
 	}
 	opts := workCommit
-	opts.Leave = t.m.builtExecutables(ctx, t.repo, t.Path)
+	opts.Leave = built
 	sha, err := t.repo.CommitAllWith(ctx, t.m.withAgentTrailer(msg, t.Agent), t.author(), opts)
 	if err != nil {
 		return "", err
@@ -200,8 +201,8 @@ func (t *Tree) commitLocked(ctx context.Context, msg string) (string, error) {
 }
 
 // checkFileSizes refuses to record what must not become history: files above the
-// size limit and nested repositories.
-func (t *Tree) checkFileSizes(ctx context.Context) error {
+// size limit and nested repositories. It returns the untracked executables a build wrote, which the commit leaves out.
+func (t *Tree) checkFileSizes(ctx context.Context) ([]string, error) {
 	return t.m.checkCommittable(ctx, t.repo, t.Path)
 }
 

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -398,7 +399,8 @@ func (m *Manager) salvage(ctx context.Context, repo *gitx.Repo, mk *marker) erro
 	} else if cur != mk.Branch {
 		return fmt.Errorf("workspace: the tree has %q checked out, not its branch %q", cur, mk.Branch)
 	}
-	if err := m.checkCommittable(ctx, repo, repo.Root()); err != nil {
+	built, err := m.checkCommittable(ctx, repo, repo.Root())
+	if err != nil {
 		return err
 	}
 	before, err := repo.Head(ctx)
@@ -406,7 +408,9 @@ func (m *Manager) salvage(ctx context.Context, repo *gitx.Repo, mk *marker) erro
 		return err
 	}
 	msg := m.withAgentTrailer("Save unfinished work\n\nThe session that made these changes ended before they were finished.", mk.Agent)
-	after, err := repo.CommitAllWith(ctx, msg, m.agentAuthor(mk.Agent), workCommit)
+	opts := workCommit
+	opts.Leave = built
+	after, err := repo.CommitAllWith(ctx, msg, m.agentAuthor(mk.Agent), opts)
 	if err != nil || after == "" || after == before {
 		return err
 	}
@@ -566,17 +570,15 @@ func (m *Manager) checkHistory(ctx context.Context, repo *gitx.Repo, base, to st
 // ignore rules for them would otherwise turn into history.
 var workCommit = gitx.CommitOptions{LeaveUntrackedStores: true}
 
-// builtExecutables lists the new untracked files under root that are native executables or compiled objects (ELF, Mach-O, a
+// builtExecutables lists the untracked files (as a status listed them, relative to root) that are native executables or compiled objects (ELF, Mach-O, a
 // Windows PE, a Java class): what a build writes, never source. They are left out of an agent's commit and stay in its tree.
+// The signature is a heuristic, not proof that a build wrote the file: a binary fixture meant for history is kept by staging it
+// (git add), since only untracked files are listed here.
 // A team's `go build ./cmd/app` put a 12 MB binary named app at the root of the tree; the commit recorded it, and the merge
 // queue refused the work five times because another task claimed that path for its .gitignore line.
-func (m *Manager) builtExecutables(ctx context.Context, repo *gitx.Repo, root string) []string {
-	st, err := repo.StatusWith(ctx, gitx.StatusOptions{Untracked: "all", MaxBytes: 32 << 20})
-	if err != nil || st.Truncated {
-		return nil
-	}
+func builtExecutables(root string, untracked []string) []string {
 	var out []string
-	for _, p := range st.Untracked {
+	for _, p := range untracked {
 		if strings.HasSuffix(p, "/") || gitx.InDependencyStore(p) {
 			continue
 		}
@@ -614,21 +616,22 @@ func isExecutableFile(name string) bool {
 // what would be recorded may be a nested repository or exceed the size limit (once
 // in history a file stays in the repository for good). It works on any repository
 // handle.
-func (m *Manager) checkCommittable(ctx context.Context, repo *gitx.Repo, root string) error {
+func (m *Manager) checkCommittable(ctx context.Context, repo *gitx.Repo, root string) (built []string, err error) {
 	limit := m.maxFileBytes()
 	st, err := repo.StatusWith(ctx, gitx.StatusOptions{Untracked: "all", MaxBytes: 32 << 20})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// A listing cut short says nothing about the files it did not list.
 	if st.Truncated {
-		return &TooLargeError{Limit: limit, TooMany: max(1, len(st.Staged)+len(st.Unstaged)+len(st.Untracked))}
+		return nil, &TooLargeError{Limit: limit, TooMany: max(1, len(st.Staged)+len(st.Unstaged)+len(st.Untracked))}
 	}
-	// Untracked files in a dependency store are not recorded (workCommit), so
+	// Untracked files in a dependency store, and the executables a build wrote, are not recorded (workCommit, Leave), so
 	// they are not examined either.
+	built = builtExecutables(root, st.Untracked)
 	kept := st.Untracked[:0:0]
 	for _, p := range st.Untracked {
-		if !gitx.InDependencyStore(p) {
+		if !gitx.InDependencyStore(p) && !slices.Contains(built, p) {
 			kept = append(kept, p)
 		}
 	}
@@ -643,10 +646,10 @@ func (m *Manager) checkCommittable(ctx context.Context, repo *gitx.Repo, root st
 	}
 	if len(nested) > 0 {
 		sort.Strings(nested)
-		return &NestedRepoError{Paths: nested}
+		return nil, &NestedRepoError{Paths: nested}
 	}
 	if limit < 0 {
-		return nil
+		return built, nil
 	}
 	seen := map[string]bool{}
 	var big []string
@@ -670,7 +673,7 @@ func (m *Manager) checkCommittable(ctx context.Context, repo *gitx.Repo, root st
 	}
 	if len(big) > 0 {
 		sort.Strings(big)
-		return &TooLargeError{Files: big, Limit: limit}
+		return nil, &TooLargeError{Files: big, Limit: limit}
 	}
-	return nil
+	return built, nil
 }
