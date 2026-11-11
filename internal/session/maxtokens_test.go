@@ -86,16 +86,19 @@ func TestJudgeRoomKeepsTheEvidenceRoomItHad(t *testing.T) {
 	for _, c := range []struct {
 		name         string
 		limit, in, w int
+		guessed      bool
 		want         int
 		ok           bool
 	}{
-		{"room to spare", 12000, 10000, 1_000_000, 12000, true},
-		{"a 32k window and 17000 tokens of evidence", 12000, 17000, 32768, 7576, true},
-		{"evidence that fitted beside 4000 tokens", 12000, 20500, 32768, 4076, true},
-		{"evidence that did not", 12000, 21000, 32768, 0, false},
-		{"a model limit under the floor", 2000, 22000, 32768, 2000, true},
+		{"room to spare", 12000, 10000, 1_000_000, false, 12000, true},
+		{"a 32k window and 17000 tokens of evidence", 12000, 17000, 32768, false, 7576, true},
+		{"a guessed 32k window does not lower the limit", 12000, 17000, 32768, true, 12000, true},
+		{"a guessed window still says when the evidence is too much", 12000, 21000, 32768, true, 0, false},
+		{"evidence that fitted beside 4000 tokens", 12000, 20500, 32768, false, 4076, true},
+		{"evidence that did not", 12000, 21000, 32768, false, 0, false},
+		{"a model limit under the floor", 2000, 22000, 32768, false, 2000, true},
 	} {
-		got, ok := judgeRoom(c.limit, c.in, c.w)
+		got, ok := judgeRoom(c.limit, c.in, c.w, c.guessed)
 		if got != c.want || ok != c.ok {
 			t.Errorf("%s: judgeRoom = %d, %v, want %d, %v", c.name, got, ok, c.want, c.ok)
 		}

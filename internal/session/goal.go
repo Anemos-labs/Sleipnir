@@ -209,7 +209,7 @@ func (s *Session) judgeOn(ctx context.Context, g *goal.State, j judgeRunner, ans
 			}
 			// The output limit gives way to the evidence as it grows, down to judgeMinTokens: the evidence a judge could read
 			// before its limit was raised, it still can.
-			out, ok := judgeRoom(judgeOutputTokens(j.m), in, window)
+			out, ok := judgeRoom(judgeOutputTokens(j.m), in, window, j.m.WindowGuessed)
 			if !ok {
 				return goal.Verdict{Kind: goal.Continue}, fmt.Errorf("evidence inspection reached the model context budget")
 			}
@@ -384,12 +384,16 @@ func judgeOutputTokens(m cost.Model) int {
 
 // judgeRoom is the output limit of a judge's request whose input is in tokens, in a window of that many tokens: limit, lowered
 // as far as judgeMinTokens (or limit, when smaller) to keep input and output within three quarters of the window. ok is false
-// when even that does not fit.
-func judgeRoom(limit, in, window int) (int, bool) {
+// when even that does not fit. A guessed window only says when the evidence is too much, as it did before: it does not lower
+// the limit, since the real window may well be larger.
+func judgeRoom(limit, in, window int, guessed bool) (int, bool) {
 	floor := min(judgeMinTokens, limit)
 	room := window*3/4 - in
 	if room < floor {
 		return 0, false
+	}
+	if guessed {
+		return limit, true
 	}
 	return min(limit, room), true
 }
