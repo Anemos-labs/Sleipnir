@@ -178,7 +178,7 @@ func (s *Session) judgeOn(ctx context.Context, g *goal.State, j judgeRunner, ans
 	prompt := &core.Prompt{
 		Model:    j.m.ID,
 		System:   []core.Block{core.Text(goal.JudgeSystem)},
-		Params:   core.Params{MaxTokens: judgeMaxTokens},
+		Params:   core.Params{MaxTokens: judgeOutputTokens(j.m)},
 		Messages: []core.Message{{Role: core.RoleUser, Blocks: []core.Block{core.Text(goal.JudgePrompt(g, s.GoalPlan(), answer, []string{evidence}))}}},
 	}
 	roster, err := s.goalEvidence(ctx, g, cutoff, evidenceRequest{Record: cutoff})
@@ -201,7 +201,7 @@ func (s *Session) judgeOn(ctx context.Context, g *goal.State, j judgeRunner, ans
 	pressed := false // a verdict of continue before any evidence request was sent back once to search first
 	for round := 0; round < judgeRounds+judgeRereads+2; round++ {
 		if window := j.m.ContextTokens; window > 0 {
-			tokens := est.Tokens(goal.JudgeSystem) + judgeMaxTokens
+			tokens := est.Tokens(goal.JudgeSystem) + prompt.Params.MaxTokens
 			for _, message := range prompt.Messages {
 				for _, block := range message.Blocks {
 					tokens += est.Tokens(block.PlainText()) + 8
@@ -363,9 +363,24 @@ func (a *judgeAsked) note(req evidenceRequest, n int) (string, *evidenceRequest)
 	return preface + "\n", &fresh
 }
 
-// judgeMaxTokens bounds a judge's answer. A model that reasons before it answers spends part of it on that: at 1200 a reasoning
-// judge could be cut off before its JSON, which read as "continue" with no reason.
-const judgeMaxTokens = 4000
+// judgeMaxTokens bounds a judge's answer. A model that reasons before it answers spends most of it on that: at 1200 a reasoning
+// judge could be cut off before its JSON, which read as "continue" with no reason, and at 4000 one that weighed a large goal's
+// evidence still was, round after round. It stays below an agent's limit because the judge's requests are not streamed: a
+// reasoning model at tens of tokens a second must finish well inside the endpoint's request timeout.
+const judgeMaxTokens = 16000
+
+// judgeMinTokens is the least a judge's output limit is lowered to for a small window: what it was given before judgeMaxTokens.
+const judgeMinTokens = 4000
+
+// judgeOutputTokens is the output limit of a judge's requests on model m: judgeMaxTokens, or m's own limit if smaller, and no
+// more than a quarter of a known window (but not under judgeMinTokens), which leaves the evidence its room.
+func judgeOutputTokens(m cost.Model) int {
+	limit := min(judgeMaxTokens, defaultMaxTokens(m))
+	if m.ContextTokens > 0 {
+		limit = max(min(limit, m.ContextTokens/4), min(judgeMinTokens, limit))
+	}
+	return limit
+}
 
 // judgeRereads is how many answers in a row the judge may give that are neither an evidence request nor a verdict before the
 // judgment fails (and the goal pauses); judgeReread is what it is told each time.

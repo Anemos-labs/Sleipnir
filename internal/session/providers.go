@@ -762,14 +762,15 @@ func findEntry(entries []gateway.Entry, id string) (gateway.Entry, bool) {
 // and is older than catalogRecheck is downloaded again: an endpoint whose list left a model
 // out for a moment, or that added one since, kept it described as an unknown model (a 200k
 // window guessed, a 16000-token output limit, estimated prices) for the six hours the copy
-// was trusted.
+// was trusted. An expired copy that passes gateway.Vet stands in for a download that fails:
+// it is what the endpoint last said, and better than the fallback's guesses.
 func loadCatalog(ctx context.Context, cacheDir, baseURL, id string) []gateway.Entry {
 	var path string
 	var kept []gateway.Entry
 	if cacheDir != "" {
 		sum := sha256.Sum256([]byte(baseURL))
 		path = filepath.Join(cacheDir, "catalog-"+hex.EncodeToString(sum[:6])+".json")
-		if st, err := os.Stat(path); err == nil && time.Since(st.ModTime()) < catalogTTL {
+		if st, err := os.Stat(path); err == nil {
 			if b, err := os.ReadFile(path); err == nil {
 				var es []gateway.Entry
 				// The copy on disk is not trusted more than the network: the same
@@ -777,9 +778,13 @@ func loadCatalog(ctx context.Context, cacheDir, baseURL, id string) []gateway.En
 				// download could not.
 				if json.Unmarshal(b, &es) == nil {
 					if es = gateway.Vet(es); len(es) > 0 {
-						if _, listed := findEntry(es, id); id == "" || listed || time.Since(st.ModTime()) < catalogRecheck || recheckedLately(path) {
+						age := time.Since(st.ModTime())
+						_, listed := findEntry(es, id)
+						if age < catalogTTL && (id == "" || listed || age < catalogRecheck) || recheckedLately(path) {
 							return es
 						}
+						// An expired copy is still what the endpoint last said: when it cannot be downloaded again, its
+						// windows and output limits are better than the fallback's guesses (a 200k window, 16000 tokens out).
 						kept = es
 					}
 				}

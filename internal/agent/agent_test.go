@@ -88,6 +88,7 @@ type rigOpts struct {
 	compactorModel  cost.Model
 	compactorHealth *agent.CompactorHealth // shared by the rigs that stand for one session's agents
 	effort          *provider.EffortSetting
+	ceiling         int // agent.Config.MaxTokensCeiling
 }
 
 func newRig(t *testing.T, opts rigOpts, r mock.Responder) *rig {
@@ -133,7 +134,7 @@ func newRig(t *testing.T, opts rigOpts, r mock.Responder) *rig {
 		ID:               "be-1", Role: "backend", Model: model, Provider: client, Tools: reg, ToolSpecs: specs,
 		Const:  kv.NewLayer("const", kv.KindConst, 1, []kv.Segment{{Text: strings.Repeat("You are Sleipnir, a careful coding agent. ", 120)}}),
 		Shared: kv.NewLayer("shared", kv.KindShared, 1, []kv.Segment{{Key: "project", Text: strings.Repeat("The repo is a Go service with a users API. ", 150), Vol: kv.VolEpoch}}),
-		Params: core.Params{MaxTokens: 512}, Effort: opts.effort,
+		Params: core.Params{MaxTokens: 512}, MaxTokensCeiling: opts.ceiling, Effort: opts.effort,
 		Events: log, Planner: opts.planner, NoCompaction: opts.noCompact, Notes: opts.notes,
 		SessionID: "testsession", MaxSteps: opts.steps, BudgetUSD: opts.budget,
 		Now: time.Now, Blobs: opts.blobs, CaptureTokens: opts.capture, TrainingLogs: opts.training, Hooks: opts.hooks,

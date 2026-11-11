@@ -572,6 +572,37 @@ func TestAKeptCatalogueWithoutTheModelIsDownloadedAgain(t *testing.T) {
 	}
 }
 
+// An expired kept catalogue stands in for a download that fails: what the endpoint last said of a model (a 1M-token window, a
+// 65536-token output limit) is better than the fallback's guesses (200k, 16000), which cut a reasoning model off at half its limit.
+func TestAnExpiredCatalogueStandsInForAFailedDownload(t *testing.T) {
+	var down atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if down.Load() {
+			http.Error(w, "down", http.StatusBadGateway)
+			return
+		}
+		fmt.Fprint(w, `{"data":[{"id":"acme/a","context_length":1000000,"architecture":{"modality":"text->text"},
+			"pricing":{"prompt":"0.000001","completion":"0.000004"},
+			"top_provider":{"context_length":1000000,"max_completion_tokens":65536},"supported_parameters":["tools"]}]}`)
+	}))
+	defer srv.Close()
+	cache := t.TempDir()
+	session.EnrichModel(context.Background(), cache, srv.URL, cost.Fallback("acme/a"))
+	files, _ := filepath.Glob(filepath.Join(cache, "catalog-*.json"))
+	if len(files) != 1 {
+		t.Fatalf("cache files %v", files)
+	}
+	old := time.Now().Add(-7 * time.Hour)
+	if err := os.Chtimes(files[0], old, old); err != nil {
+		t.Fatal(err)
+	}
+	down.Store(true)
+	got := session.EnrichModel(context.Background(), cache, srv.URL, cost.Fallback("acme/a"))
+	if got.ContextTokens != 1000000 || got.MaxOutput != 65536 || got.WindowGuessed {
+		t.Fatalf("an expired copy must stand in for a failed download: window %d (guessed %v), max output %d", got.ContextTokens, got.WindowGuessed, got.MaxOutput)
+	}
+}
+
 func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
 
 func TestReconIgnoresTestdataAndListsOnlyRealBinaries(t *testing.T) {
