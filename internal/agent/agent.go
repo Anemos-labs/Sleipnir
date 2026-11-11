@@ -1109,6 +1109,21 @@ func (a *Agent) outputLimit() int {
 	return a.cfg.Params.MaxTokens
 }
 
+// requestOutputLimit is outputLimit for the next main request: a raised limit is lowered to the room the latest prompt leaves in a
+// known window (less a twentieth of it, for what the next prompt adds), so that the prompt and the limit still fit in it; never
+// under Params.MaxTokens.
+func (a *Agent) requestOutputLimit() int {
+	base, limit := a.cfg.Params.MaxTokens, a.outputLimit()
+	w := a.cfg.Model.ContextTokens
+	if limit <= base || w <= 0 {
+		return limit
+	}
+	a.mu.Lock()
+	in := a.promptTokens
+	a.mu.Unlock()
+	return max(base, min(limit, w-in-w/20))
+}
+
 // raiseOutputLimit raises the output limit of the agent's later requests to MaxTokensCeiling after a response was cut off at
 // the limit, and reports whether it did (false when it already had, or the ceiling is no higher). A reasoning model that thought
 // past the limit on a hard step was cut off with nothing to show for it, and asked to carry on at the same limit it reasons again

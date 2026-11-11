@@ -15,10 +15,11 @@ they do not indicate whether a change has been released.
   limit, reasoned again from the top and was cut off again, until the run
   ended with the output-limit error. The limit only caps what the model may
   write: no prompt bytes change.
-- A goal judge's output limit is 16000 tokens (its model's own limit if
-  smaller, and no more than a quarter of a small window, never under the
-  4000 it had): a reasoning judge weighing a large goal's evidence was cut
-  off before its verdict.
+- A goal judge's output limit is 12000 tokens (its model's own limit if
+  smaller), lowered as the evidence grows down to the 4000 it had, so the
+  evidence that fitted before still does: a reasoning judge weighing a large
+  goal's evidence was cut off before its verdict. A raised agent limit is
+  likewise lowered to the room the latest prompt leaves in the window.
 - A kept model catalogue older than six hours stands in for a download that
   fails: a model no longer falls back to a guessed 200k window and a
   16000-token output limit because the endpoint's list could not be read at

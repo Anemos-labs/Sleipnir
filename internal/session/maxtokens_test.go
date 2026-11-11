@@ -64,21 +64,40 @@ func TestMaxTokensCeiling(t *testing.T) {
 	}
 }
 
-// A judge reasons over the evidence before its verdict: 16000 tokens, its model's own limit if smaller, and no more than a
-// quarter of a small window (but never under the 4000 it had).
+// A judge reasons over the evidence before its verdict: 12000 tokens, or its model's own limit if smaller.
 func TestJudgeOutputTokens(t *testing.T) {
 	for _, c := range []struct {
 		name string
 		m    cost.Model
 		want int
 	}{
-		{"a 1M-token window", cost.Model{ContextTokens: 1_048_576, MaxOutput: 65536}, 16000},
+		{"a 1M-token window", cost.Model{ContextTokens: 1_048_576, MaxOutput: 65536}, 12000},
 		{"the model's maximum is smaller", cost.Model{ContextTokens: 1_000_000, MaxOutput: 8192}, 8192},
-		{"a 32k window", cost.Model{ContextTokens: 32768, MaxOutput: 32768}, 8192},
-		{"an 8k window", cost.Model{ContextTokens: 8192}, 4000},
+		{"a guessed window", cost.Model{ContextTokens: 32768, WindowGuessed: true, MaxOutput: 65536}, 12000},
 	} {
 		if got := judgeOutputTokens(c.m); got != c.want {
 			t.Errorf("%s: judgeOutputTokens = %d, want %d", c.name, got, c.want)
+		}
+	}
+}
+
+// The judge's limit gives way to the evidence, down to the 4000 tokens it had: whatever fitted then still reaches the judge.
+func TestJudgeRoomKeepsTheEvidenceRoomItHad(t *testing.T) {
+	for _, c := range []struct {
+		name         string
+		limit, in, w int
+		want         int
+		ok           bool
+	}{
+		{"room to spare", 12000, 10000, 1_000_000, 12000, true},
+		{"a 32k window and 17000 tokens of evidence", 12000, 17000, 32768, 7576, true},
+		{"evidence that fitted beside 4000 tokens", 12000, 20500, 32768, 4076, true},
+		{"evidence that did not", 12000, 21000, 32768, 0, false},
+		{"a model limit under the floor", 2000, 22000, 32768, 2000, true},
+	} {
+		got, ok := judgeRoom(c.limit, c.in, c.w)
+		if got != c.want || ok != c.ok {
+			t.Errorf("%s: judgeRoom = %d, %v, want %d, %v", c.name, got, ok, c.want, c.ok)
 		}
 	}
 }

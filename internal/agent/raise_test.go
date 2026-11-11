@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/anemos-labs/sleipnir/internal/cost"
 	"github.com/anemos-labs/sleipnir/internal/provider/mock"
 )
 
@@ -65,5 +66,34 @@ func TestWithoutACeilingTheLimitIsNotRaised(t *testing.T) {
 	}
 	if len(limits) != 2 || limits[1] != 512 {
 		t.Fatalf("limits asked %v, want the configured 512 throughout", limits)
+	}
+}
+
+// A raised limit is lowered to the room the latest prompt leaves in the window: the prompt and the limit must still fit in it.
+func TestARaisedLimitLeavesThePromptItsRoom(t *testing.T) {
+	m, _ := cost.Defaults().Lookup("mock-1")
+	m.Cache = cost.OpenAICacheModel()
+	m.ContextTokens = 4000
+	var mu sync.Mutex
+	var limits []int
+	in := 0 // the prompt of the first request, as the second is sent
+	var r *rig
+	r = newRig(t, rigOpts{noCompact: true, ceiling: 1 << 20, model: &m}, func(c *mock.Call) mock.Reply {
+		mu.Lock()
+		defer mu.Unlock()
+		limits = append(limits, maxTokensOf(t, c))
+		if len(limits) == 2 {
+			in = r.agent.PromptTokens()
+		}
+		if len(limits) == 1 {
+			return mock.Reply{Text: "cut", Finish: "length"}
+		}
+		return mock.Reply{Text: "done."}
+	})
+	if _, err := r.agent.Run(context.Background(), "solve it"); err != nil {
+		t.Fatal(err)
+	}
+	if want := max(512, 4000-in-200); in == 0 || len(limits) != 2 || limits[1] != want || limits[1] >= 1<<20 {
+		t.Fatalf("limits asked %v (prompt %d tokens), want the second to be %d: the room the window leaves", limits, in, want)
 	}
 }
