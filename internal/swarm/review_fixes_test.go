@@ -103,6 +103,12 @@ func TestInlineHeadBytesCutsOnARuneBoundary(t *testing.T) {
 	if head, rest := inlineHeadBytes(text, 2); head != "" || rest != utf8.RuneCountInString(text) {
 		t.Fatalf("a 2-byte budget gave %q, %d left", head, rest)
 	}
+	if head, rest := inlineHeadBytes("ab  cd", 4); head != "ab" || rest != 4 {
+		t.Fatalf("trimmed spaces are not counted as left out: %q, %d", head, rest)
+	}
+	if head, rest := inlineHead("ab  cd", 4); head != "ab" || rest != 4 {
+		t.Fatalf("trimmed spaces are not counted as left out: %q, %d", head, rest)
+	}
 	card := agreementCard([]TaskAgreement{{Task: "T1", Text: text}, {Task: "T2", Text: text}, {Task: "T3", Text: "x"}})
 	if len(card) > agreementCardBytes+2000 || !utf8.ValidString(card) {
 		t.Fatalf("a card of %d bytes", len(card))
