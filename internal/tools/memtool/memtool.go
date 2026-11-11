@@ -31,6 +31,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -107,7 +108,7 @@ func (*Tool) Spec() core.ToolSpec {
 		Description: "Your long-term memory: short notes shown to you at the start of every future session. " +
 			"add one when you learn something lasting. scope user (the default) is for every project: how the user wants things done, a fact about their setup. " +
 			"scope project is for this project only: a fact about this code base, a mistake not to repeat here. " +
-			"One fact per note, under 300 characters. Never save task progress, anything the code or the project files already say, or secrets. " +
+			"One fact per note, at most " + strconv.Itoa(MaxNoteRunes) + " characters. Never save task progress, anything the code or the project files already say, or secrets. " +
 			"remove a note that is wrong or stale; list shows them all. The user sees each change and can edit or remove it.",
 		InputSchema: json.RawMessage(schema),
 	}
