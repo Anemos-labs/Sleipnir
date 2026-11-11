@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/lore"
+	"github.com/anemos-labs/sleipnir/internal/memory"
 	"github.com/anemos-labs/sleipnir/internal/session"
 	"github.com/anemos-labs/sleipnir/internal/tools/memtool"
 	"github.com/anemos-labs/sleipnir/internal/web/wire"
@@ -256,5 +257,18 @@ func TestMemoryNotesWrittenByHandOverTheCeilingCanBeShortened(t *testing.T) {
 	e.ok(http.MethodPut, "/api/sessions/t1/memory/notes", wire.MemoryNotesWrite{Notes: notes[1:], Version: v.Notes.Version}, nil, &v)
 	if len(v.Notes.Notes) != len(notes)-1 {
 		t.Fatalf("after removing one: %d notes", len(v.Notes.Notes))
+	}
+}
+
+// An instruction file near the size limit whose every character JSON escapes is still saved, not refused for its body size.
+func TestAnInstructionFileOfEscapedTextUpToTheLimitIsSaved(t *testing.T) {
+	e := memEnv(t)
+	text := strings.Repeat(`<\`, (memory.MaxFileBytes-1024)/2) // "<" is six bytes in Go's JSON (<) and "\" two
+	var v wire.MemoryView
+	e.ok(http.MethodGet, "/api/memory", nil, nil, &v)
+	e.ok(http.MethodPut, "/api/memory/file", wire.MemoryFileWrite{Path: "~/.sleipnir/SLEIPNIR.md", Text: text, Version: fileRow(t, v, "~/.sleipnir/SLEIPNIR.md").Version}, nil, &v)
+	b, err := os.ReadFile(filepath.Join(e.home, ".sleipnir", "SLEIPNIR.md"))
+	if err != nil || string(b) != text {
+		t.Fatalf("SLEIPNIR.md was not saved whole: %d of %d bytes (%v)", len(b), len(text), err)
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/agent"
 	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/tui/state"
 )
 
@@ -614,4 +615,36 @@ func TestARestartLeavesANewAssignmentOfTheTaskItKept(t *testing.T) {
 			t.Fatal("the worker was restarted on a new assignment")
 		}
 	})
+}
+
+// A pool member without a task of its own whose run ends on an outage of its model is still restarted in its pool, even while a
+// member of its role runs on another model: the pool waits on its vote, and nothing would hand that back to the manager.
+func TestAPoolMemberWithoutATaskIsRestartedInItsPoolAfterAnOutage(t *testing.T) {
+	clock := newFakeClock()
+	var broken atomic.Bool
+	broken.Store(true)
+	cfg := Config{PersistentPools: true, MaxWorkers: 3, Team: []string{"backend", "backend", "backend"}}
+	r := newClockRig(t, cfg, clock, func(ctx context.Context, c *rvCall) rvReply {
+		if c.Agent == "be-3" && broken.Load() {
+			return rvReply{Err: &provider.Error{Kind: provider.ErrServer, Status: 503, Message: "No endpoints are currently available"}}
+		}
+		<-ctx.Done()
+		return rvReply{Text: "stopped"}
+	})
+	r.sw.StartManager()
+	r.sw.spawnMu.Lock()
+	if _, err := r.sw.ensurePool("backend"); err != nil {
+		t.Fatal(err)
+	}
+	r.sw.spawnMu.Unlock()
+	r.sw.get("be-1").model.ID = "other/model" // a member of its role runs on another model
+	if _, err := r.sw.Spawn(SpawnReq{Role: "backend", Title: "build the API", Files: []string{"api/**"}, By: "mgr"}); err != nil {
+		t.Fatal(err)
+	}
+	parent := r.sw.Board.Snapshot().Tasks[0]
+	member := "be-3"
+	rvWait(t, member+"'s run to fail", func() bool { _, out := r.sw.inOutage(r.sw.get(member)); return r.idle(member) && out })
+	if p := pendingOf(r, member); p == nil || p.pool != parent.ID {
+		t.Fatalf("pending restart = %+v, want one in pool %s", p, parent.ID)
+	}
 }

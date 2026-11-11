@@ -109,10 +109,12 @@ func (s *Swarm) planRestart(m *member, rs *runState, tasks map[string]uint64, ki
 	if !ok || rs.stopped || s.alive() != nil || s.startErr() != nil || s.wk.heldNow() {
 		return nil, 0
 	}
-	if s.outageElsewhere(m, err) {
+	if openPoolOf(s.Board.Snapshot(), m.id) == "" && s.outageElsewhere(m, err) {
 		// Its model's endpoint is failing and a member of its role runs on another model: the work goes back to the manager, whose
 		// assignments go to that member (outageSteer), rather than to a restart on the model that just failed. A team waited half
-		// an hour on a worker the harness restarted again and again on a model the gateway kept cutting off.
+		// an hour on a worker the harness restarted again and again on a model the gateway kept cutting off. A member of an open
+		// pool is not handed back: its pool waits on it, so it is restarted in the pool below, and once its restarts run out the
+		// manager is asked to resume or excuse it.
 		rs.handBack = true
 		return nil, 0
 	}

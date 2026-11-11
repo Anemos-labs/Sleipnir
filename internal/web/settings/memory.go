@@ -56,7 +56,8 @@ func (s *service) registerMemory() {
 		s.srv.HandleFunc("GET "+pre, s.handleMemory, web.RouteOpts{})
 		// notesBody fits a whole notes file, every character of it escaped in JSON.
 		s.srv.HandleFunc("PUT "+pre+"/notes", s.handleMemoryNotes, web.RouteOpts{MaxBody: notesBody})
-		s.srv.HandleFunc("PUT "+pre+"/file", s.handleMemoryFile, web.RouteOpts{MaxBody: memory.MaxFileBytes + 16<<10})
+		// An instruction file up to memory.MaxFileBytes, every character of it escaped in JSON (the text check is the handler's).
+		s.srv.HandleFunc("PUT "+pre+"/file", s.handleMemoryFile, web.RouteOpts{MaxBody: 6*memory.MaxFileBytes + 64<<10})
 		s.srv.HandleFunc("DELETE "+pre+"/lessons/{lesson}", s.handleMemoryLesson, web.RouteOpts{NoBody: true})
 	}
 }
