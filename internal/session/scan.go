@@ -403,7 +403,7 @@ func (s *Session) ScanRuns() []wire.ScanRun {
 		}
 		out = append(out, wire.ScanRun{Slug: r.Slug, Commit: r.Commit, Depth: r.Depth, Focus: r.Focus, Phase: rep.Phase, Created: r.Created,
 			Team: r.Team(), Workers: workers, Problems: rep.Blocking(), Files: c.Files, Funcs: c.Funcs, Lines: c.Lines, Shards: c.Shards, Mapped: c.Mapped,
-			Hunted: c.Hunted, Points: c.Points, Edges: c.Edges, Leads: c.Leads, Open: c.Open, Confirmed: c.Confirmed, Unproven: c.Unproven,
+			Hunted: c.Hunted, Seams: c.Seams, SeamsDue: c.SeamsDue, SeamsChecked: c.SeamsChecked, Points: c.Points, Edges: c.Edges, Leads: c.Leads, Open: c.Open, Confirmed: c.Confirmed, Unproven: c.Unproven,
 			Rejected: c.Rejected, BySeverity: c.BySeverity, Active: r.Slug == active, Previous: r.Previous, Review: r.IsReview()})
 	}
 	return out

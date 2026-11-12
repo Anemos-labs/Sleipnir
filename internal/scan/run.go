@@ -25,7 +25,9 @@ type Run struct {
 	Shards    []Shard   `json:"shards"`
 	Points    []Point   `json:"points"`
 	Edges     []Edge    `json:"edges"`
-	Leads     []Lead    `json:"leads"`
+	// Seams are where the edges join two shards: audit targets of their own (seams.go).
+	Seams []Seam `json:"seams,omitempty"`
+	Leads []Lead `json:"leads"`
 	// Reported is the version of the ledger the last report action saw, and whether it found problems.
 	Reported *Mark `json:"reported,omitempty"`
 	Version  int   `json:"version"`

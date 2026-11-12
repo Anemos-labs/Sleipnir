@@ -111,7 +111,7 @@ func Scans() ScanView {
 	c := rep.Counts
 	return ScanView{On: true, Depths: session.ScanDepths(), Runs: []wire.ScanRun{{Slug: r.Slug, Commit: r.Commit, Depth: r.Depth, Phase: rep.Phase,
 		Created: r.Created, Team: r.Team(), Workers: 4, Problems: rep.Blocking(), Files: c.Files, Funcs: c.Funcs, Lines: c.Lines, Shards: c.Shards,
-		Mapped: c.Mapped, Hunted: c.Hunted, Points: c.Points, Edges: c.Edges, Leads: c.Leads, Open: c.Open, Confirmed: c.Confirmed,
+		Mapped: c.Mapped, Hunted: c.Hunted, Seams: c.Seams, SeamsDue: c.SeamsDue, SeamsChecked: c.SeamsChecked, Points: c.Points, Edges: c.Edges, Leads: c.Leads, Open: c.Open, Confirmed: c.Confirmed,
 		Unproven: c.Unproven, Rejected: c.Rejected, BySeverity: c.BySeverity, Active: true}}}
 }
 

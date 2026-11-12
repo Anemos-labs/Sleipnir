@@ -37,15 +37,19 @@ type Counts struct {
 	Lanes      map[string]int `json:"lanes"`
 	Edges      int            `json:"edges"`
 	Inferred   int            `json:"inferred"`
-	Leads      int            `json:"leads"`
-	Open       int            `json:"open"`
-	Confirmed  int            `json:"confirmed"`
-	Unproven   int            `json:"unproven"`
-	Rejected   int            `json:"rejected"`
-	Disputed   int            `json:"disputed"`
-	Deferred   int            `json:"deferred"`
-	Proofs     int            `json:"proofs"`
-	Reproduced int            `json:"reproduced"`
+	// Seams counts the seams (edges joining two shards), SeamsDue those the hunt must check, SeamsChecked those checked.
+	Seams        int `json:"seams"`
+	SeamsDue     int `json:"seams_due"`
+	SeamsChecked int `json:"seams_checked"`
+	Leads        int `json:"leads"`
+	Open         int `json:"open"`
+	Confirmed    int `json:"confirmed"`
+	Unproven     int `json:"unproven"`
+	Rejected     int `json:"rejected"`
+	Disputed     int `json:"disputed"`
+	Deferred     int `json:"deferred"`
+	Proofs       int `json:"proofs"`
+	Reproduced   int `json:"reproduced"`
 	// BySeverity counts the findings: the confirmed leads and the unproven ones, as a report counts them.
 	BySeverity map[string]int `json:"by_severity"`
 }
@@ -88,6 +92,16 @@ func Check(r *Run) Report {
 			c.Hunted++
 		} else {
 			add(PhaseHunt, s.ID, "%s is not hunted (%s)", s.ID, shardSpan(s))
+		}
+	}
+	due := r.SeamsDue()
+	c.Seams, c.SeamsDue = len(r.Seams), len(due)
+	for i := range r.Seams {
+		sm := &r.Seams[i]
+		if sm.Checked != "" {
+			c.SeamsChecked++
+		} else if due[sm.ID] {
+			add(PhaseHunt, sm.ID, "%s is not checked: the contract where %s meets %s (%d %s)", sm.ID, r.sideName(sm.A), r.sideName(sm.B), len(sm.Edges), plural(len(sm.Edges), "edge", "edges"))
 		}
 	}
 	c.Points, c.Edges = len(r.Points), len(r.Edges)

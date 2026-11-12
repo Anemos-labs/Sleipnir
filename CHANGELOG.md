@@ -7,6 +7,19 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- A deep scan or review checks **seams**: the edges mappers record between
+  code of two shards are grouped by the pair of shards into audit targets
+  (`scan seams`, `scan seam`), and the hunt is not complete until each seam
+  due (at most one per shard, those with the most edges first) is closed with
+  a note of the contract and quotes from both sides. A hunter reads one shard,
+  so a hole between two (a bound, a sentinel value, a unit or a check each
+  side expects the other to keep) was in no one's hands. In a review, an edge
+  from a changed file to code outside the change makes a seam too. The brief
+  asks mappers for the edges that leave a shard and hunters to bound every
+  size, count and dimension that comes from input. A ledger made before has
+  no seams and needs none. The scan tool's description and schema grow by the
+  two actions; no other prompt bytes change.
+
 - Tool-call deltas of the chat-completions dialect that carry no `index` are
   told apart by their `id`: a new id opens a new call, a delta without an id or
   with the current one continues it. Deltas with an index are keyed by it as
