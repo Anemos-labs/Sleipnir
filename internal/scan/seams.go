@@ -66,6 +66,20 @@ func (r *Run) endFile(end string) string {
 	if err != nil {
 		return ""
 	}
+	if r.File(c) == nil { // a path written short (exportSvg.ts, io/exportSvg.ts) names the one inventory file it ends
+		found := ""
+		for _, fi := range r.Inventory.Files {
+			if strings.HasSuffix(fi.Path, "/"+c) {
+				if found != "" {
+					return c
+				}
+				found = fi.Path
+			}
+		}
+		if found != "" {
+			return found
+		}
+	}
 	return c
 }
 

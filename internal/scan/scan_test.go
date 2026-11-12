@@ -871,6 +871,16 @@ func TestSeamsAreBoundedAndEndWithTheHunt(t *testing.T) {
 	if len(r.Seams) != 1 || len(r.Seams[0].Edges) != 4 || r.Seams[0].A != "S1" || r.Seams[0].B != "S2" {
 		t.Fatalf("seams: %+v", r.Seams)
 	}
+	if s := r.addEdgeToSeams(Edge{ID: "E8", From: "d1/a.go:F", To: "d2/a.go:G2", Relation: "reads"}, nil); s == nil || s.ID != "X1" {
+		t.Fatalf("an edge between the same shards: %+v", s)
+	}
+	r.Inventory.Files = []File{{Path: "d1/a.go"}, {Path: "d2/a.go"}, {Path: "d2/b.go"}}
+	if f := r.endFile("b.go:G"); f != "d2/b.go" {
+		t.Fatalf("a short path names the one file it ends: %q", f)
+	}
+	if f := r.endFile("a.go:G"); f != "a.go" {
+		t.Fatalf("a short path that ends two files was resolved: %q", f)
+	}
 	if r.addEdgeToSeams(Edge{ID: "E9", From: "d1/a.go:F", To: "d1/a.go:H", Relation: "calls"}, nil) != nil {
 		t.Fatal("an edge inside one shard made a seam")
 	}
