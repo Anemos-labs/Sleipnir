@@ -31,6 +31,10 @@ type Options struct {
 	CacheKeyBody bool
 	// SessionHeader sends the cache key as X-Session-Id (gateway affinity).
 	SessionHeader bool
+	// SessionHeaderName, when set, sends the cache key under this header name instead (an endpoint that
+	// routes and caches a conversation by its own header, such as OpenCode Go's x-opencode-session). It
+	// implies SessionHeader.
+	SessionHeaderName string
 	// CacheControlParts adds cache_control markers to content parts at
 	// breakpoints, for gateways that front Anthropic models.
 	CacheControlParts bool
@@ -48,6 +52,17 @@ type Options struct {
 	Media core.MediaFunc
 	// NoImages sends a note in place of every image (provider.Profile.NoImages).
 	NoImages bool
+}
+
+// sessionHeader is the header that carries the routing key, or "" when none is sent.
+func (o Options) sessionHeader() string {
+	if o.SessionHeaderName != "" {
+		return o.SessionHeaderName
+	}
+	if o.SessionHeader {
+		return "X-Session-Id"
+	}
+	return ""
 }
 
 // defaults fills missing chat-wire role and token-limit field names without replacing explicit

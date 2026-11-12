@@ -228,13 +228,14 @@ Types are JSON types. "Applied" says where the key has an effect: `yes` everywhe
 ### `providers`
 
 An object of named endpoints. A name may not be empty, contain whitespace or contain `/` (model references are
-`provider/model`). Three providers exist without being configured, each usable as soon as its key variable is set:
+`provider/model`). These providers exist without being configured, each usable as soon as its key variable is set:
 
 | Name | `base_url` | `api_key_env` | Options and headers |
 |---|---|---|---|
 | `heimdallm` | `https://api-staging.heimdallm.com/api/v1` | `HEIMDALLM_API_KEY` | `session_header`, `cache_key_body`; header `X-Title: Sleipnir` |
 | `openrouter` | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` | `session_header`; header `X-Title: Sleipnir` |
 | `openai` | `https://api.openai.com/v1` | `OPENAI_API_KEY` | `cache_key_body` |
+| `opencode-go` | `https://opencode.ai/zen/go/v1` | `OPENCODE_API_KEY` | `session_header_name: x-opencode-session` |
 
 A configured entry with the same name and **its own `base_url`** replaces the built-in one entirely: it defines the provider outright and
 inherits nothing, in particular not the built-in key variable. An entry with **no `base_url`** (typically one that only sets `allow_hosts`) extends
@@ -537,6 +538,7 @@ suspecting the endpoint.
 | Option | Type | Default | Effect |
 |---|---|---|---|
 | `session_header` | bool | `false` | Send the session's routing key as an `X-Session-Id` header, so a gateway keeps a conversation on the engine that holds its cache |
+| `session_header_name` | string | none | Send the routing key under this header instead of `X-Session-Id`, for an endpoint that routes and caches a conversation by a header of its own (OpenCode Go: `x-opencode-session`). Implies `session_header` |
 | `cache_key_body` | bool | `false` | Send the same key as `prompt_cache_key` in the body (OpenAI, Heimdallm) |
 | `system_role` | string | `system` | Role name of the system message; `developer` for OpenAI reasoning models |
 | `max_tokens_field` | string | `max_tokens` | `max_tokens` or `max_completion_tokens`, the request member that carries the output limit (32000 for a model whose known window is 128k tokens or more, 16000 otherwise, or the model's maximum if smaller; each team member, the fallback model and a compactor model of its own by their own model). After a response is cut off at it, that agent's requests ask for the model's reported maximum, up to 64000 tokens and a quarter of its window |

@@ -58,6 +58,12 @@ var builtinProviders = map[string]config.Provider{
 		Options: map[string]any{"session_header": true},
 		Headers: map[string]string{"X-Title": "Sleipnir"},
 	},
+	// The OpenCode Go plan. Its endpoint asks for a stable session id per conversation in x-opencode-session
+	// and answers a request without one with 400; the key is the one `opencode` (OpenCode Zen) uses.
+	"opencode-go": {
+		Dialect: config.DialectOpenAIChat, BaseURL: "https://opencode.ai/zen/go/v1", APIKeyEnv: "OPENCODE_API_KEY",
+		Options: map[string]any{"session_header_name": "x-opencode-session"},
+	},
 	"openai": {
 		Dialect: config.DialectOpenAIChat, BaseURL: "https://api.openai.com/v1", APIKeyEnv: "OPENAI_API_KEY",
 		Options: map[string]any{"cache_key_body": true},
@@ -458,6 +464,7 @@ func optStrings(m map[string]any, k string) []string {
 func buildChat(ref ModelRef, p config.Provider, base, key string, o ProviderOptions) provider.Provider {
 	oo := openaichat.Options{
 		SessionHeader:        optBool(p.Options, "session_header"),
+		SessionHeaderName:    optString(p.Options, "session_header_name"),
 		CacheKeyBody:         optBool(p.Options, "cache_key_body"),
 		SystemRole:           optString(p.Options, "system_role"),
 		MaxTokensField:       optString(p.Options, "max_tokens_field"),

@@ -64,7 +64,9 @@ type reasoningItem struct {
 }
 
 type toolDelta struct {
-	Index    int    `json:"index"`
+	// Index is nil when the endpoint leaves it out: some send each call whole in one delta of its own, told
+	// apart only by its id, and a plain (non-streamed) message never carries one.
+	Index    *int   `json:"index"`
 	ID       string `json:"id"`
 	Type     string `json:"type"`
 	Function struct {
@@ -281,6 +283,12 @@ type accumulator struct {
 
 	lim        provider.StreamLimits
 	thinkBytes int // reasoning text plus reasoning_details payloads
+
+	// The tool call that deltas without an index add to, and the id it was opened with: a delta without an
+	// index that names another id opens a new call (see callKey).
+	looseKey int
+	looseID  string
+	loose    bool
 }
 
 type callAcc struct {
@@ -443,30 +451,53 @@ func (a *accumulator) applyDelta(d *delta, on func(provider.Event)) error {
 		}
 	}
 	for _, tc := range d.ToolCalls {
-		c, ok := a.calls[tc.Index]
+		key := a.callKey(tc)
+		c, ok := a.calls[key]
 		if !ok {
 			if len(a.calls) >= a.lim.MaxToolCalls {
 				return provider.LimitExceededCount("tool calls", a.lim.MaxToolCalls)
 			}
 			c = &callAcc{}
-			a.calls[tc.Index] = c
+			a.calls[key] = c
 		}
 		if tc.ID != "" {
 			c.id = tc.ID
 		}
 		if tc.Function.Name != "" {
 			c.name = tc.Function.Name
-			on(provider.Event{Kind: provider.EvToolStart, Index: tc.Index, ToolID: c.id, ToolName: c.name})
+			on(provider.Event{Kind: provider.EvToolStart, Index: key, ToolID: c.id, ToolName: c.name})
 		}
 		if tc.Function.Arguments != "" {
 			if c.args.Len()+len(tc.Function.Arguments) > a.lim.MaxToolArgBytes {
 				return provider.LimitExceeded("tool call arguments", int64(a.lim.MaxToolArgBytes))
 			}
 			c.args.WriteString(tc.Function.Arguments)
-			on(provider.Event{Kind: provider.EvToolDelta, Index: tc.Index, Text: tc.Function.Arguments})
+			on(provider.Event{Kind: provider.EvToolDelta, Index: key, Text: tc.Function.Arguments})
 		}
 	}
 	return nil
+}
+
+// callKey is the call a tool-call delta belongs to. A delta with an index belongs to that index, as the wire
+// format specifies. A delta without one continues the call that the last such delta opened, unless it names a
+// different id: then it opens a call after every call seen so far. Endpoints that leave the index out send each
+// call whole under its own id (several in one response), and a plain message lists its calls without indexes;
+// keyed by a missing index, read as 0, all of them were appended into one call whose arguments were not JSON.
+func (a *accumulator) callKey(tc toolDelta) int {
+	if tc.Index != nil {
+		return *tc.Index
+	}
+	if a.loose && (tc.ID == "" || tc.ID == a.looseID) {
+		return a.looseKey
+	}
+	k := 0
+	for i := range a.calls {
+		if i >= k {
+			k = i + 1
+		}
+	}
+	a.looseKey, a.looseID, a.loose = k, tc.ID, true
+	return k
 }
 
 // addThinking accounts n more bytes of reasoning against the text limit.
