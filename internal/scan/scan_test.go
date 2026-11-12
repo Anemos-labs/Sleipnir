@@ -1024,3 +1024,41 @@ func TestSeamsDueAreTheBusiestAndTheReportSaysSo(t *testing.T) {
 		}
 	}
 }
+
+// An optional seam that outgrows the due ones once the hunt is complete stays optional: the scan that ended stays ended.
+func TestASeamThatGrowsAfterTheHuntStaysOptional(t *testing.T) {
+	r := &Run{Depth: "standard"}
+	for i := 1; i <= 4; i++ {
+		r.Shards = append(r.Shards, Shard{ID: fmt.Sprintf("S%d", i), Files: []string{fmt.Sprintf("d%d/a.go", i)}, Mapped: "m"})
+	}
+	add := func(id string, from, to int) {
+		e := Edge{ID: id, From: fmt.Sprintf("d%d/a.go:F%s", from, id), To: fmt.Sprintf("d%d/a.go:G", to), Relation: "calls"}
+		r.Edges = append(r.Edges, e)
+		r.addEdgeToSeams(e, nil)
+	}
+	n := 0
+	for k, p := range [][2]int{{1, 2}, {1, 3}, {2, 3}, {3, 4}} { // four seams of 5, 4, 3 and 2 edges: the cap of 4 holds them all
+		for j := 0; j < 5-k; j++ {
+			n++
+			add(fmt.Sprintf("E%d", n), p[0], p[1])
+		}
+	}
+	n++
+	add(fmt.Sprintf("E%d", n), 1, 4) // a fifth seam of one edge: optional
+	for i := range r.Shards {
+		r.Shards[i].Hunted = "h"
+	}
+	for i := 0; i < 4; i++ {
+		r.Seams[i].Checked = "checked"
+	}
+	if !r.HuntClosed() || r.SeamsDue()["X5"] {
+		t.Fatalf("the hunt is not closed with the four due seams checked: %v", r.SeamsDue())
+	}
+	for j := 0; j < 6; j++ {
+		n++
+		add(fmt.Sprintf("E%d", n), 1, 4)
+	}
+	if !r.Seams[4].Late || !r.HuntClosed() {
+		t.Fatalf("a seam that grew after the hunt reopened it: %+v", r.Seams[4])
+	}
+}

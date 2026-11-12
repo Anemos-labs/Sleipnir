@@ -139,18 +139,23 @@ func (r *Run) addEdgeToSeams(e Edge, exists func(string) bool) *Seam {
 	if !ok {
 		return nil
 	}
+	closed := r.HuntClosed()
 	for i := range r.Seams {
 		if s := &r.Seams[i]; s.A == a && s.B == b {
+			if closed && s.Checked == "" && !r.SeamsDue()[s.ID] {
+				// an optional seam that grows after the hunt stays optional: the scan that ended stays ended. Only a seam
+				// outside the due set is set aside, so the due set itself does not change.
+				s.Late = true
+			}
 			s.Edges = append(s.Edges, e.ID)
 			// a contract checked without this edge did not cover it: the seam is checked again, unless the hunt is over
-			if s.Checked != "" && !r.HuntClosed() {
+			if s.Checked != "" && !closed {
 				s.Checked, s.CheckedBy, s.Contract = "", "", nil
 			}
 			return s
 		}
 	}
-	late := r.HuntClosed()
-	r.Seams = append(r.Seams, Seam{ID: fmt.Sprintf("X%d", len(r.Seams)+1), A: a, B: b, Edges: []string{e.ID}, Late: late})
+	r.Seams = append(r.Seams, Seam{ID: fmt.Sprintf("X%d", len(r.Seams)+1), A: a, B: b, Edges: []string{e.ID}, Late: closed})
 	return &r.Seams[len(r.Seams)-1]
 }
 
