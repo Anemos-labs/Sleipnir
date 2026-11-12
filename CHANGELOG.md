@@ -19,6 +19,11 @@ they do not indicate whether a change has been released.
   size, count and dimension that comes from input. A ledger made before has
   no seams and needs none. The scan tool's description and schema grow by the
   two actions; no other prompt bytes change.
+- `sleipnir scan --start` and `--rerun` warn on stderr when the scan plugin
+  is off where they run, and a session whose goal drives a scan says so when
+  it has no scan tool: the documented `sleipnir swarm N "$(sleipnir scan
+  --start)"` otherwise started a team that looked for a `scan` command in the
+  shell and never touched the ledger.
 
 - Tool-call deltas of the chat-completions dialect that carry no `index` are
   told apart by their `id`: a new id opens a new call, a delta without an id or

@@ -691,8 +691,10 @@ func (s *Session) noteObjective(g *goal.State) {
 	s.mu.Lock()
 	s.objective = g.Objective
 	s.mu.Unlock()
-	if slug := scan.ObjectiveSlug(g.Objective); slug != "" && s.scan != nil {
-		if _, err := s.scan.store.Bind(slug); err != nil {
+	if slug := scan.ObjectiveSlug(g.Objective); slug != "" {
+		if s.scan == nil {
+			s.notice("", "scan: this goal drives the scan "+slug+", but the scan plugin is off, so the team has no scan tool: stop, run sleipnir plugins enable scan, and start the session again")
+		} else if _, err := s.scan.store.Bind(slug); err != nil {
 			s.notice("", "scan: "+err.Error())
 		}
 	}

@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -41,5 +43,23 @@ func TestScanListShowsPreviousSafely(t *testing.T) {
 	}
 	if s := out.String(); strings.ContainsAny(s, "\x1b\x07") || !strings.Contains(s, "old") {
 		t.Fatalf("listing:\n%q", s)
+	}
+}
+
+func TestScanPluginOffIsSaid(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := t.TempDir()
+	if msg := scanPluginOff(dir); !strings.Contains(msg, "sleipnir plugins enable scan") {
+		t.Fatalf("the scan plugin is off by default and nothing said so: %q", msg)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".sleipnir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".sleipnir", "config.json"), []byte(`{"plugins":{"enabled":{"scan":true}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if msg := scanPluginOff(dir); msg != "" {
+		t.Fatalf("the scan plugin is on and a warning was given: %q", msg)
 	}
 }
