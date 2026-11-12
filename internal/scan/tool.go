@@ -532,7 +532,7 @@ func (t *Tool) edge(ctx context.Context, in input, agent string) (string, error)
 		if code, err := t.code(snap); err == nil {
 			for _, end := range []string{from, to} {
 				if f := snap.endFile(end); f != "" && snap.ShardOf(f) == "" {
-					if _, err := code.Read(ctx, f); err == nil {
+					if _, err := code.Read(ctx, f); err == nil || errors.Is(err, errTooLarge) {
 						exists[f] = true
 					}
 				}

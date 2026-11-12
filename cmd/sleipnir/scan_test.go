@@ -49,6 +49,7 @@ func TestScanListShowsPreviousSafely(t *testing.T) {
 func TestScanPluginOffIsSaid(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	dir := t.TempDir()
 	if msg := scanPluginOff(dir); !strings.Contains(msg, "sleipnir plugins enable scan") {
 		t.Fatalf("the scan plugin is off by default and nothing said so: %q", msg)

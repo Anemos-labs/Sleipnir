@@ -142,6 +142,10 @@ func (r *Run) addEdgeToSeams(e Edge, exists func(string) bool) *Seam {
 	for i := range r.Seams {
 		if s := &r.Seams[i]; s.A == a && s.B == b {
 			s.Edges = append(s.Edges, e.ID)
+			// a contract checked without this edge did not cover it: the seam is checked again, unless the hunt is over
+			if s.Checked != "" && !r.HuntClosed() {
+				s.Checked, s.CheckedBy, s.Contract = "", "", nil
+			}
 			return s
 		}
 	}
@@ -153,22 +157,20 @@ func (r *Run) addEdgeToSeams(e Edge, exists func(string) bool) *Seam {
 // seamCap is how many seams a scan must check at most.
 func (r *Run) seamCap() int { return max(minSeamsDue, len(r.Shards)) }
 
-// SeamsDue is the seams the hunt must check: every one already checked, then those with the most edges, up to seamCap. The rest
-// are optional: worth a look, never blocking.
+// SeamsDue is the seams the hunt must check: those made before the hunt was complete, ranked by their edges (the most first,
+// then the oldest), up to seamCap. Checking a seam outside them does not take a place: the rest are optional, worth a look and
+// never blocking.
 func (r *Run) SeamsDue() map[string]bool {
-	due := map[string]bool{}
-	var open []*Seam
+	var ranked []*Seam
 	for i := range r.Seams {
-		switch s := &r.Seams[i]; {
-		case s.Checked != "":
-			due[s.ID] = true
-		case !s.Late:
-			open = append(open, s)
+		if s := &r.Seams[i]; !s.Late {
+			ranked = append(ranked, s)
 		}
 	}
-	sort.SliceStable(open, func(i, j int) bool { return len(open[i].Edges) > len(open[j].Edges) })
-	for _, s := range open {
-		if len(due) >= r.seamCap() {
+	sort.SliceStable(ranked, func(i, j int) bool { return len(ranked[i].Edges) > len(ranked[j].Edges) })
+	due := map[string]bool{}
+	for _, s := range ranked {
+		if len(due) == r.seamCap() {
 			break
 		}
 		due[s.ID] = true
@@ -313,6 +315,7 @@ func (t *Tool) seam(ctx context.Context, in input, agent string) (string, error)
 	if !snap.seamReady(s) {
 		return "", fmt.Errorf("%s joins a shard that is not mapped yet: map %s and %s first", s.ID, s.A, s.B)
 	}
+	edges := len(s.Edges)
 	if len(in.Cites) == 0 {
 		return "", errors.New("cite the contract: at least one quote from each side (cites)")
 	}
@@ -344,9 +347,36 @@ func (t *Tool) seam(ctx context.Context, in input, agent string) (string, error)
 		if cur.Claimed != "" && cur.Claimed != agent {
 			return fmt.Errorf("%s is claimed by %s", cur.ID, cur.Claimed)
 		}
+		if len(cur.Edges) != edges {
+			return fmt.Errorf("%s gained an edge while you checked it: scan show %s, read the new edge, and close it again", cur.ID, cur.ID)
+		}
 		cur.Checked, cur.CheckedBy, cur.Contract, cur.Claimed = note, agent, contract, ""
 		out = fmt.Sprintf("%s checked (%d %s, %d %s quoted).", cur.ID, len(cur.Edges), plural(len(cur.Edges), "edge", "edges"), len(contract), plural(len(contract), "line", "lines"))
 		return nil
 	})
 	return out, err
+}
+
+// seamDoc is a seam as findings.json gives it: the sides, the edges and the contract, with no agent named.
+type seamDoc struct {
+	ID       string   `json:"id"`
+	A        string   `json:"a"`
+	B        string   `json:"b"`
+	Edges    []string `json:"edges"`
+	Due      bool     `json:"due"`
+	Checked  string   `json:"checked,omitempty"`
+	Contract []Cite   `json:"contract,omitempty"`
+}
+
+func seamDocs(r *Run) []seamDoc {
+	red, due := r.redactor(), r.SeamsDue()
+	out := []seamDoc{}
+	for _, s := range r.Seams {
+		d := seamDoc{ID: s.ID, A: s.A, B: s.B, Edges: s.Edges, Due: due[s.ID], Contract: s.Contract}
+		if s.Checked != "" {
+			d.Checked = red(s.Checked)
+		}
+		out = append(out, d)
+	}
+	return out
 }

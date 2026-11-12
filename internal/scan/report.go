@@ -158,7 +158,7 @@ func FindingsDoc(r *Run) map[string]any {
 		doc["base"], doc["changes"] = r.Base, r.Changes
 	}
 	if len(r.Seams) > 0 {
-		doc["seams"] = r.Seams
+		doc["seams"] = seamDocs(r)
 	}
 	return doc
 }
@@ -385,10 +385,11 @@ func Markdown(r *Run) string {
 	}
 	w("| Leads filed | %s |\n\n", thousands(c.Leads))
 	if c.SeamsChecked > 0 {
+		red := r.redactor()
 		w("Seams, where two shards meet, checked from both sides:\n\n| Seam | Sides | Edges | Contract |\n|---|---|--:|---|\n")
 		for _, sm := range r.Seams {
 			if sm.Checked != "" {
-				w("| %s | %s ↔ %s | %d | %s |\n", sm.ID, cell(r.sideName(sm.A)), cell(r.sideName(sm.B)), len(sm.Edges), cell(clip(oneLine(sm.Checked), 300)))
+				w("| %s | %s ↔ %s | %d | %s |\n", sm.ID, cell(r.sideName(sm.A)), cell(r.sideName(sm.B)), len(sm.Edges), cell(clip(oneLine(red(sm.Checked)), 300)))
 			}
 		}
 		w("\n")
@@ -428,7 +429,9 @@ func methodText(r *Run) string {
 	}
 	b.WriteString("Each shard was read in full and mapped: its entry points, trust boundaries, access checks, sinks and security configuration, and how its parts connect. Each was then hunted by following input from where it enters to where it can do harm. ")
 	if len(r.Seams) > 0 {
-		b.WriteString("Where the recorded relations joined two shards, each such seam was checked from both sides for a contract one side assumes and the other does not keep. ")
+		c := Check(r).Counts
+		fmt.Fprintf(&b, "Where the recorded relations joined two shards, the seams with the most relations (%d of the %d found) were due to be checked from both sides for a contract one side assumes and the other does not keep; %d %s checked. ",
+			c.SeamsDue, c.Seams, c.SeamsChecked, plural(c.SeamsChecked, "was", "were"))
 	}
 	b.WriteString("Every quote in this report was checked against the file at the commit. ")
 	fmt.Fprintf(&b, "A lead becomes a finding when %d %s that did not file it confirm it", d.Verifiers, plural(d.Verifiers, "reviewer", "reviewers"))

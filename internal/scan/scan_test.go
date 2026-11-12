@@ -894,6 +894,15 @@ func TestSeamsAreBoundedAndEndWithTheHunt(t *testing.T) {
 	if !r.HuntClosed() {
 		t.Fatal("the hunt stayed open with every seam checked")
 	}
+	r.Seams[0].Checked = ""
+	r.Shards[0].Hunted = "" // an edge to a checked seam while the hunt is open: its contract did not cover it
+	r.Seams[0].Checked, r.Seams[0].CheckedBy = "checked", "be-1"
+	r.Edges = append(r.Edges, Edge{ID: "E11", From: "d1/a.go:F", To: "d2/a.go:K", Relation: "sends"})
+	if s := r.addEdgeToSeams(r.Edges[len(r.Edges)-1], nil); s.Checked != "" || s.CheckedBy != "" {
+		t.Fatalf("a seam that gained an edge stayed checked: %+v", s)
+	}
+	r.Shards[0].Hunted = "hunted"
+	r.Seams[0].Checked = "checked"
 	r.Shards = append(r.Shards, Shard{ID: "S3", Files: []string{"d3/a.go"}, Mapped: "m", Hunted: "h"})
 	if s := r.addEdgeToSeams(Edge{ID: "E10", From: "d3/a.go:F", To: "d2/a.go:G", Relation: "calls"}, nil); s == nil || !s.Late || r.SeamsDue()[s.ID] || !r.HuntClosed() {
 		t.Fatalf("a seam made after the hunt reopened it: %+v", s)
@@ -972,5 +981,46 @@ func TestABinaryIsQuotedByAStringItHolds(t *testing.T) {
 	if _, _, err := CheckCite(context.Background(), code, Cite{File: "bin/agent", Line: 1, Quote: "not in the binary at all"}); err == nil ||
 		!strings.Contains(err.Error(), "as strings prints it") {
 		t.Fatalf("a quote that is not there: %v", err)
+	}
+}
+
+// The seams due are ranked by their edges: a checked seam of few edges does not take the place of one with more, and the report
+// says how many were due and checked, naming no agent.
+func TestSeamsDueAreTheBusiestAndTheReportSaysSo(t *testing.T) {
+	r := &Run{Slug: "s", Depth: "standard"}
+	for i := 1; i <= 3; i++ {
+		r.Shards = append(r.Shards, Shard{ID: fmt.Sprintf("S%d", i), Files: []string{fmt.Sprintf("d%d/a.go", i)}, Mapped: "m"})
+	}
+	n := 0
+	pairs := [][2]int{{1, 2}, {1, 3}, {2, 3}}
+	for k, p := range pairs { // seam k+1 gets 4-k edges
+		for j := 0; j < 4-k; j++ {
+			n++
+			e := Edge{ID: fmt.Sprintf("E%d", n), From: fmt.Sprintf("d%d/a.go:F%d", p[0], j), To: fmt.Sprintf("d%d/a.go:G", p[1]), Relation: "calls"}
+			r.Edges = append(r.Edges, e)
+			r.addEdgeToSeams(e, nil)
+		}
+	}
+	r.Seams = append(r.Seams, Seam{ID: "X4", A: "S1", B: "lib/", Edges: []string{"E99"}, Checked: "checked first, by be-2: lib trusts its caller"})
+	for i := range r.Shards {
+		r.Shards[i].Hunted = "h"
+	}
+	due := r.SeamsDue()
+	if len(due) != 3 || !due["X1"] || !due["X2"] || !due["X3"] || due["X4"] {
+		t.Fatalf("due: %v", due)
+	}
+	if r.HuntClosed() {
+		t.Fatal("checking the one optional seam closed the hunt")
+	}
+	r.Seams[0].Checked, r.Seams[0].CheckedBy = "the contract, checked by rv-1", "rv-1"
+	md := Markdown(r)
+	if !strings.Contains(md, "(3 of the 4 found) were due") || !strings.Contains(md, "2 were checked") {
+		t.Errorf("the method overstates the seams checked:\n%s", md)
+	}
+	fj, _ := json.Marshal(FindingsDoc(r))
+	for name, text := range map[string]string{ReportFile: md, FindingsFile: string(fj)} {
+		if strings.Contains(text, "rv-1") || strings.Contains(text, "be-2") {
+			t.Errorf("%s names an agent", name)
+		}
 	}
 }

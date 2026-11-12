@@ -47,7 +47,7 @@ func (g *gitCode) Read(ctx context.Context, file string) ([]byte, error) {
 		return nil, fmt.Errorf("%s is not a file of the scanned commit", file)
 	}
 	if len(b) > maxCiteFile { // a source file worth citing is far smaller; a huge blob would be split and cached whole
-		return nil, fmt.Errorf("%s is larger than %d MiB; cite a source file", file, maxCiteFile>>20)
+		return nil, fmt.Errorf("%s is larger than %d MiB; cite a source file: %w", file, maxCiteFile>>20, errTooLarge)
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -59,6 +59,9 @@ func (g *gitCode) Read(ctx context.Context, file string) ([]byte, error) {
 	g.order = append(g.order, file)
 	return b, nil
 }
+
+// errTooLarge is a file of the commit too large to cite: it exists, and an edge to it still joins two sides.
+var errTooLarge = errors.New("too large to cite")
 
 // Quote bounds.
 const (
