@@ -14,6 +14,7 @@ import (
 
 	"github.com/anemos-labs/sleipnir/internal/config"
 	"github.com/anemos-labs/sleipnir/internal/gitx"
+	"github.com/anemos-labs/sleipnir/internal/plugin"
 	"github.com/anemos-labs/sleipnir/internal/scan"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
@@ -178,6 +179,7 @@ func scanStartCLI(ctx context.Context, out io.Writer, root, depth, focus, base s
 	if err != nil {
 		return fmt.Errorf("scan: %w", err)
 	}
+	warnScanPluginOff(root)
 	_, err = fmt.Fprintln(out, scan.Objective(r, filepath.Join(root, filepath.FromSlash(scan.BriefPath(r.Slug)))))
 	return err
 }
@@ -198,6 +200,7 @@ func scanRerunCLI(ctx context.Context, out io.Writer, root string, prev *scan.Ru
 	if err != nil {
 		return fmt.Errorf("scan: %w", err)
 	}
+	warnScanPluginOff(root)
 	_, err = fmt.Fprintln(out, scan.Objective(r, filepath.Join(root, filepath.FromSlash(scan.BriefPath(r.Slug)))))
 	return err
 }
@@ -256,4 +259,24 @@ func scanRoot(project string) string {
 		}
 	}
 	return project
+}
+
+// warnScanPluginOff says on stderr when a session started in root would have no scan tool: the goal a scan prints is then
+// a team reading a brief whose every step is a call it cannot make. It is said only when the plugin is off whether or not the
+// project's own configuration is trusted.
+func warnScanPluginOff(root string) {
+	if msg := scanPluginOff(root); msg != "" {
+		fmt.Fprintln(os.Stderr, msg)
+	}
+}
+
+func scanPluginOff(root string) string {
+	home, _ := os.UserHomeDir()
+	for _, trust := range []bool{false, true} {
+		set, _, _, err := plugin.LoadSet(root, root, home, trust)
+		if err != nil || set.On(plugin.Scan) {
+			return ""
+		}
+	}
+	return "warning: the scan plugin is off here, so a session started with this goal has no scan tool and cannot work the scan. Turn it on first: sleipnir plugins enable scan"
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -342,6 +343,17 @@ func mustOK(t *testing.T, tl *Tool, agent string, in map[string]any) string {
 	return out
 }
 
+// codeHook runs a hook before each read: a call made while another is checking its quotes.
+type codeHook struct {
+	Code
+	hook func()
+}
+
+func (c codeHook) Read(ctx context.Context, file string) ([]byte, error) {
+	c.hook()
+	return c.Code.Read(ctx, file)
+}
+
 func mustFail(t *testing.T, tl *Tool, agent string, in map[string]any, want string) {
 	t.Helper()
 	out, bad := call(t, tl, agent, in)
@@ -422,6 +434,37 @@ func TestAScanFromMapToReport(t *testing.T) {
 	for _, s := range r.Shards {
 		mustOK(t, tl, "hunter", map[string]any{"action": "hunt", "shard": s.ID, "note": "followed /ping and /health to their handlers; filed L1 for the shell command"})
 	}
+	// the routing edge joins two shards: the hunt is open until its seam is checked, from both sides
+	out = mustOK(t, tl, "hunter", map[string]any{"action": "seams"})
+	if !strings.Contains(out, "X1") {
+		t.Fatalf("seams: %s", out)
+	}
+	mustOK(t, tl, "seamer", map[string]any{"action": "seams", "claim": "X1"})
+	contract := "routes.go hands every /ping request to Ping with no middleware; Ping assumes nothing about the caller and checks only that host is not empty"
+	mustFail(t, tl, "seamer", map[string]any{"action": "seam", "id": "X1", "note": contract,
+		"cites": []map[string]any{{"file": "server/routes.go", "line": 6, "quote": `mux.HandleFunc("/ping", Ping)`}}}, "no cite is from")
+	mustFail(t, tl, "other", map[string]any{"action": "seam", "id": "X1", "note": contract,
+		"cites": []map[string]any{{"file": "server/routes.go", "line": 6, "quote": `mux.HandleFunc("/ping", Ping)`}, {"file": "server/handler.go", "line": 11, "quote": `if host == "" {`}}}, "claimed by seamer")
+	both := []map[string]any{{"file": "server/routes.go", "line": 6, "quote": `mux.HandleFunc("/ping", Ping)`}, {"file": "server/handler.go", "line": 11, "quote": `if host == "" {`}}
+	mustFail(t, tl, "other", map[string]any{"action": "seam", "id": "X2", "note": contract, "cites": both}, "no seam")
+	// an edge recorded after the claim is one the checker has not read: the close waits for a new claim
+	mustOK(t, tl, "mapper", map[string]any{"action": "edge", "from": "server/routes.go:Routes", "to": "server/handler.go:Ping", "relation": "calls"})
+	mustFail(t, tl, "seamer", map[string]any{"action": "seam", "id": "X1", "note": contract, "cites": both}, "gained 1 edge since you claimed it")
+	mustOK(t, tl, "seamer", map[string]any{"action": "seams", "claim": "X1"})
+	// an edge recorded and a claim made again while the close checks its quotes: the close still vouches only for what it saw
+	codeFor, once := tl.CodeFor, false
+	tl.CodeFor = func(c string) Code {
+		return codeHook{codeFor(c), func() {
+			if !once {
+				once = true
+				mustOK(t, tl, "mapper", map[string]any{"action": "edge", "from": "server/routes.go:Routes", "to": "server/handler.go:Health", "relation": "calls"})
+				mustOK(t, tl, "seamer", map[string]any{"action": "seams", "claim": "X1"})
+			}
+		}}
+	}
+	mustFail(t, tl, "seamer", map[string]any{"action": "seam", "id": "X1", "note": contract, "cites": both}, "since you claimed it")
+	tl.CodeFor = codeFor
+	mustOK(t, tl, "seamer", map[string]any{"action": "seam", "id": "X1", "note": contract, "cites": both})
 	// the reproduction, recorded as a sandbox run would record it
 	if _, err := st.Update("", func(r *Run) error {
 		r.Lead("L1").Proofs = append(r.Lead("L1").Proofs, Proof{By: "prover", Outcome: ProofReproduced, Exercised: true, Ready: true})
@@ -440,7 +483,7 @@ func TestAScanFromMapToReport(t *testing.T) {
 	r, _ = st.Snapshot("")
 	dir := RunDir(st.Root(), r.Slug)
 	md, _ := os.ReadFile(filepath.Join(dir, ReportFile))
-	for _, want := range []string{"## Findings", "### L1 · Command injection in /ping", "| **Critical 9.8** | Confirmed, reproduced |", "`server/handler.go:15`", "| Entry points | 1 |"} {
+	for _, want := range []string{"## Findings", "### L1 · Command injection in /ping", "| **Critical 9.8** | Confirmed, reproduced |", "`server/handler.go:15`", "| Entry points | 1 |", "| Seams checked | 1 of 1 due (1 of 1 found) |", "Seams, where two shards meet"} {
 		if !strings.Contains(string(md), want) {
 			t.Errorf("REPORT.md lacks %q:\n%s", want, md)
 		}
@@ -474,7 +517,7 @@ func TestAScanFromMapToReport(t *testing.T) {
 	}
 	mb, _ := os.ReadFile(filepath.Join(dir, MapFile))
 	_ = json.Unmarshal(mb, &m)
-	if len(m.Edges) != 2 || m.Edges[0].Confidence != "EXTRACTED" || m.Edges[1].Confidence != "INFERRED" {
+	if len(m.Edges) != 4 || m.Edges[0].Confidence != "EXTRACTED" || m.Edges[1].Confidence != "INFERRED" { // the last two were recorded while X1 was claimed
 		t.Errorf("map edges: %s", mb)
 	} // a confirmed finding is written up for the tracker and handed to a fix goal, both with its trace
 	title, body, err := Issue(r, r.Lead("L1"))
@@ -773,6 +816,7 @@ func TestAReviewCoversWhatTheChangeWrote(t *testing.T) {
 	root, base := gitRepo(t, map[string]string{
 		"server/handler.go": "package server\n\nimport \"net/http\"\n\nfunc Ping(w http.ResponseWriter, r *http.Request) {\n\tw.Write([]byte(\"pong\"))\n}\n",
 		"server/other.go":   "package server\n\nfunc Other() int { return 1 }\n",
+		"gen/blob.go":       "package gen\n\n// " + strings.Repeat("x", maxCiteFile) + "\nfunc Huge() {}\n",
 	})
 	changed := "package server\n\nimport (\n\t\"net/http\"\n\t\"os/exec\"\n)\n\nfunc Ping(w http.ResponseWriter, r *http.Request) {\n\thost := r.URL.Query().Get(\"host\")\n\tout, _ := exec.Command(\"sh\", \"-c\", \"ping -c1 \"+host).Output()\n\tw.Write(out)\n}\n"
 	if err := os.WriteFile(filepath.Join(root, "server", "handler.go"), []byte(changed), 0o644); err != nil {
@@ -830,6 +874,72 @@ func TestAReviewCoversWhatTheChangeWrote(t *testing.T) {
 	}
 	if !strings.Contains(StatusText(r), "Lines the change wrote") {
 		t.Errorf("status: %s", StatusText(r))
+	}
+	// the code the change talks to is outside every shard: an edge to it makes a seam, an edge to nothing real does not
+	mustOK(t, tl, "mapper", map[string]any{"action": "edge", "from": "server/handler.go:Ping", "to": "server/other.go:Other", "relation": "calls"})
+	mustOK(t, tl, "mapper", map[string]any{"action": "edge", "from": "server/handler.go:Ping", "to": "lib/nowhere.go:X", "relation": "calls"})
+	// a file too large to quote could never close a seam, so it makes none and the hunt can still end
+	if out := mustOK(t, tl, "mapper", map[string]any{"action": "edge", "from": "server/handler.go:Ping", "to": "gen/blob.go:Huge", "relation": "calls"}); !strings.Contains(out, "too large to cite, so this edge makes no seam") {
+		t.Errorf("edge to an oversized file: %s", out)
+	}
+	r, _ = st.Snapshot("")
+	if len(r.Seams) != 1 || r.Seams[0].A != "S1" || r.Seams[0].B != "server/" {
+		t.Fatalf("seams of a review: %+v", r.Seams)
+	}
+	mustFail(t, tl, "seamer", map[string]any{"action": "seams", "claim": "X1"}, "not mapped")
+}
+
+func TestSeamsAreBoundedAndEndWithTheHunt(t *testing.T) {
+	r := &Run{Depth: "standard"}
+	for i := 1; i <= 2; i++ {
+		r.Shards = append(r.Shards, Shard{ID: fmt.Sprintf("S%d", i), Files: []string{fmt.Sprintf("d%d/a.go", i)}, Mapped: "m"})
+	}
+	for i := 1; i <= 5; i++ { // five pairs of sides would be five seams; edges between the same two shards share one
+		e := Edge{ID: fmt.Sprintf("E%d", i), From: "d1/a.go:F", To: "d2/a.go:G", Relation: "calls"}
+		if i == 5 {
+			e.Relation = "imports"
+		}
+		r.Edges = append(r.Edges, e)
+		r.addEdgeToSeams(e, nil)
+	}
+	if len(r.Seams) != 1 || len(r.Seams[0].Edges) != 4 || r.Seams[0].A != "S1" || r.Seams[0].B != "S2" {
+		t.Fatalf("seams: %+v", r.Seams)
+	}
+	if s := r.addEdgeToSeams(Edge{ID: "E8", From: "d1/a.go:F", To: "d2/a.go:G2", Relation: "reads"}, nil); s == nil || s.ID != "X1" {
+		t.Fatalf("an edge between the same shards: %+v", s)
+	}
+	r.Inventory.Files = []File{{Path: "d1/a.go"}, {Path: "d2/a.go"}, {Path: "d2/b.go"}}
+	if f := r.endFile("b.go:G"); f != "d2/b.go" {
+		t.Fatalf("a short path names the one file it ends: %q", f)
+	}
+	if f := r.endFile("a.go:G"); f != "a.go" {
+		t.Fatalf("a short path that ends two files was resolved: %q", f)
+	}
+	if r.addEdgeToSeams(Edge{ID: "E9", From: "d1/a.go:F", To: "d1/a.go:H", Relation: "calls"}, nil) != nil {
+		t.Fatal("an edge inside one shard made a seam")
+	}
+	for i := range r.Shards {
+		r.Shards[i].Hunted = "hunted"
+	}
+	if r.HuntClosed() {
+		t.Fatal("the hunt closed with a seam due unchecked")
+	}
+	r.Seams[0].Checked = "checked"
+	if !r.HuntClosed() {
+		t.Fatal("the hunt stayed open with every seam checked")
+	}
+	r.Seams[0].Checked = ""
+	r.Shards[0].Hunted = "" // an edge to a checked seam while the hunt is open: its contract did not cover it
+	r.Seams[0].Checked, r.Seams[0].CheckedBy = "checked", "be-1"
+	r.Edges = append(r.Edges, Edge{ID: "E11", From: "d1/a.go:F", To: "d2/a.go:K", Relation: "sends"})
+	if s := r.addEdgeToSeams(r.Edges[len(r.Edges)-1], nil); s.Checked != "" || s.CheckedBy != "" {
+		t.Fatalf("a seam that gained an edge stayed checked: %+v", s)
+	}
+	r.Shards[0].Hunted = "hunted"
+	r.Seams[0].Checked = "checked"
+	r.Shards = append(r.Shards, Shard{ID: "S3", Files: []string{"d3/a.go"}, Mapped: "m", Hunted: "h"})
+	if s := r.addEdgeToSeams(Edge{ID: "E10", From: "d3/a.go:F", To: "d2/a.go:G", Relation: "calls"}, nil); s == nil || !s.Late || r.SeamsDue()[s.ID] || !r.HuntClosed() {
+		t.Fatalf("a seam made after the hunt reopened it: %+v", s)
 	}
 }
 
@@ -905,5 +1015,90 @@ func TestABinaryIsQuotedByAStringItHolds(t *testing.T) {
 	if _, _, err := CheckCite(context.Background(), code, Cite{File: "bin/agent", Line: 1, Quote: "not in the binary at all"}); err == nil ||
 		!strings.Contains(err.Error(), "as strings prints it") {
 		t.Fatalf("a quote that is not there: %v", err)
+	}
+}
+
+// The seams due are ranked by their edges: a checked seam of few edges does not take the place of one with more, and the report
+// says how many were due and checked, naming no agent.
+func TestSeamsDueAreTheBusiestAndTheReportSaysSo(t *testing.T) {
+	r := &Run{Slug: "s", Depth: "standard"}
+	for i := 1; i <= 3; i++ {
+		r.Shards = append(r.Shards, Shard{ID: fmt.Sprintf("S%d", i), Files: []string{fmt.Sprintf("d%d/a.go", i)}, Mapped: "m"})
+	}
+	n := 0
+	pairs := [][2]int{{1, 2}, {1, 3}, {2, 3}}
+	for k, p := range pairs { // seam k+1 gets 4-k edges
+		for j := 0; j < 4-k; j++ {
+			n++
+			e := Edge{ID: fmt.Sprintf("E%d", n), From: fmt.Sprintf("d%d/a.go:F%d", p[0], j), To: fmt.Sprintf("d%d/a.go:G", p[1]), Relation: "calls"}
+			r.Edges = append(r.Edges, e)
+			r.addEdgeToSeams(e, nil)
+		}
+	}
+	r.Seams = append(r.Seams, Seam{ID: "X4", A: "S1", B: "lib/", Edges: []string{"E99"}, Checked: "checked first, by be-2 and hunter-7: lib trusts its caller", CheckedBy: "hunter-7", Claimed: "hunter-7"})
+	for i := range r.Shards {
+		r.Shards[i].Hunted = "h"
+	}
+	due := r.SeamsDue()
+	if len(due) != 3 || !due["X1"] || !due["X2"] || !due["X3"] || due["X4"] {
+		t.Fatalf("due: %v", due)
+	}
+	if r.HuntClosed() {
+		t.Fatal("checking the one optional seam closed the hunt")
+	}
+	r.Seams[0].Checked, r.Seams[0].CheckedBy = "the contract, checked by rv-1", "rv-1"
+	md := Markdown(r)
+	if !strings.Contains(md, "(3 of the 4 found) were due") || !strings.Contains(md, "1 of those was checked, and 1 more seam was") {
+		t.Errorf("the method overstates the seams checked:\n%s", md)
+	}
+	if !strings.Contains(md, "| Seams checked | 1 of 3 due (2 of 4 found) |") {
+		t.Errorf("the scope table overstates the due seams checked:\n%s", md)
+	}
+	fj, _ := json.Marshal(FindingsDoc(r))
+	for name, text := range map[string]string{ReportFile: md, FindingsFile: string(fj)} {
+		if strings.Contains(text, "rv-1") || strings.Contains(text, "be-2") || strings.Contains(text, "hunter-7") {
+			t.Errorf("%s names an agent", name)
+		}
+	}
+}
+
+// An optional seam that outgrows the due ones once the hunt is complete stays optional: the scan that ended stays ended.
+func TestASeamThatGrowsAfterTheHuntStaysOptional(t *testing.T) {
+	r := &Run{Depth: "standard"}
+	for i := 1; i <= 4; i++ {
+		r.Shards = append(r.Shards, Shard{ID: fmt.Sprintf("S%d", i), Files: []string{fmt.Sprintf("d%d/a.go", i)}, Mapped: "m"})
+	}
+	add := func(id string, from, to int) {
+		e := Edge{ID: id, From: fmt.Sprintf("d%d/a.go:F%s", from, id), To: fmt.Sprintf("d%d/a.go:G", to), Relation: "calls"}
+		r.Edges = append(r.Edges, e)
+		r.addEdgeToSeams(e, nil)
+	}
+	n := 0
+	for k, p := range [][2]int{{1, 2}, {1, 3}, {2, 3}, {3, 4}} { // four seams of 5, 4, 3 and 2 edges: the cap of 4 holds them all
+		for j := 0; j < 5-k; j++ {
+			n++
+			add(fmt.Sprintf("E%d", n), p[0], p[1])
+		}
+	}
+	n++
+	add(fmt.Sprintf("E%d", n), 1, 4) // a fifth seam of one edge: optional
+	for i := range r.Shards {
+		r.Shards[i].Hunted = "h"
+	}
+	for i := 0; i < 4; i++ {
+		r.Seams[i].Checked = "checked"
+	}
+	if !r.HuntClosed() || r.SeamsDue()["X5"] {
+		t.Fatalf("the hunt is not closed with the four due seams checked: %v", r.SeamsDue())
+	}
+	for j := 0; j < 6; j++ {
+		n++
+		add(fmt.Sprintf("E%d", n), 1, 4)
+	}
+	if !r.Seams[4].Late || !r.HuntClosed() {
+		t.Fatalf("a seam that grew after the hunt reopened it: %+v", r.Seams[4])
+	}
+	if md := Markdown(r); !strings.Contains(md, "the seams with the most relations before the hunt ended (4 of the 5 found) were due") {
+		t.Errorf("the method does not say the ranking left out a seam that grew after the hunt:\n%s", md)
 	}
 }

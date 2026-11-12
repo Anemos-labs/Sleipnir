@@ -71,7 +71,7 @@
   function phaseProgress(r) {
     const at = phaseAt(r.phase), done = r.phase === 'done', sh = r.shards | 0, leads = r.leads | 0, ruled = Math.max(0, leads - (r.open | 0));
     const frac = (n, of) => (of > 0 ? Math.min(1, n / of) : 0);
-    const own = { map: [frac(r.mapped, sh), r.mapped + '/' + sh + ' shards mapped'], hunt: [frac(r.hunted, sh), r.hunted + '/' + sh + ' shards hunted'],
+    const own = { map: [frac(r.mapped, sh), r.mapped + '/' + sh + ' shards mapped'], hunt: [frac((r.hunted | 0) + (r.seamsChecked | 0), sh + (r.seamsDue | 0)), r.hunted + '/' + sh + ' shards hunted' + (r.seamsDue ? ', ' + (r.seamsChecked | 0) + '/' + r.seamsDue + ' seams checked' : '')],
       verify: [leads ? frac(ruled, leads) : 0, leads ? ruled + '/' + leads + ' leads ruled on' + (r.unproven ? ', ' + r.unproven + ' unproven' : '') : 'no lead filed yet'],
       report: [0, ''], done: [0, ''] };
     return PHASES.map(([id], i) => {
@@ -103,7 +103,7 @@
       '<span class="sc-rtop"><b class="mono">' + esc(r.slug) + '</b><span class="chip">' + esc(r.depth) + '</span>' + (r.active ? '<span class="chip rs-live">this session</span>' : '') + (r.previous ? '<span class="chip" title="a rerun of ' + esc(r.previous) + '">rerun</span>' : '') + (done ? '<span class="chip rs-ok">done</span>' : '') + '</span>' +
       '<span class="sc-rmeta mono dim">' + esc(short(r.commit)) + (r.focus ? ' · ' + esc(r.focus) : '') + ' · ' + plural(r.files, 'file') + ' · ' + plural(r.funcs, 'function') + ' · ' + plural(r.shards, 'shard') + ' · ' + esc(teamText(r)) + '</span>' +
       '<ol class="rs-steps sc-steps">' + steps + '</ol>' +
-      '<span class="sc-rnums">' + r.mapped + '/' + r.shards + ' mapped · ' + r.hunted + '/' + r.shards + ' hunted · ' + plural(r.leads, 'lead') + (r.leads ? ' (' + Math.max(0, r.leads - (r.open | 0)) + ' ruled on)' : '') + ' · ' + r.confirmed + ' confirmed' + (r.unproven ? ' · ' + r.unproven + ' unproven' : '') + (r.rejected ? ' · ' + r.rejected + ' rejected' : '') + '</span>' +
+      '<span class="sc-rnums">' + r.mapped + '/' + r.shards + ' mapped · ' + r.hunted + '/' + r.shards + ' hunted · ' + (r.seamsDue ? (r.seamsChecked | 0) + '/' + r.seamsDue + ' seams · ' : '') + plural(r.leads, 'lead') + (r.leads ? ' (' + Math.max(0, r.leads - (r.open | 0)) + ' ruled on)' : '') + ' · ' + r.confirmed + ' confirmed' + (r.unproven ? ' · ' + r.unproven + ' unproven' : '') + (r.rejected ? ' · ' + r.rejected + ' rejected' : '') + '</span>' +
       (sev ? '<span class="sc-rsev">' + sev + '</span>' : '') + '</button>';
   }
 

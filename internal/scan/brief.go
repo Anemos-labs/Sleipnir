@@ -58,7 +58,7 @@ func brief(r *Run, prev *Run) string {
 	w("## Team\n\n")
 	w("- **Manager**: runs the protocol and does not scan alone. Hands out shards as tasks, all at once, while there are more shards than agents; once fewer are left, only those: an agent with no shard, lead or verdict to take stays idle rather than re-check settled work. Reads `scan status` between rounds and reassigns what stalls.\n")
 	w("- **Mappers** (scouts, the architect, then anyone free): one shard each, `scan shards claim` first. Read every file of the shard (`scan functions` lists its functions, most complex first), then record its attack surface with `scan point`, how its parts connect with `scan edge`, and what it does with `scan map`.\n")
-	w("- **Hunters** (backend, frontend, devops, any worker): a mapped shard each, read with its map and the points and edges around it. Follow each entry point to the sinks it reaches and each sink back to its sources; look for the missing or wrong check on the way. File what holds with `scan lead`, then close the shard with `scan hunt`.\n")
+	w("- **Hunters** (backend, frontend, devops, any worker): a mapped shard each, read with its map and the points and edges around it. Follow each entry point to the sinks it reaches and each sink back to its sources; look for the missing or wrong check on the way. File what holds with `scan lead`, then close the shard with `scan hunt`. Then a **seam** (`scan seams`): where two shards meet, read both sides.\n")
 	w("- **Verifiers** (reviewers, testers, any agent that did not file the lead): rule on leads with `scan verdict`, reading every step of the trace in the code, not in the lead.")
 	if d.Defender {
 		w(" One verifier per lead is the **defender**: it argues the lead is false (the guard the filer missed, the caller that cannot pass the input, the framework that escapes it, the config that is never deployed) and confirms only when it cannot find one.")
@@ -72,10 +72,16 @@ func brief(r *Run, prev *Run) string {
 	w("## Protocol\n\n")
 	w("### 1. Map\n\nFor each shard: claim it, read all of it, and record:\n\n")
 	w("- points of the attack surface, one `scan point` each, in five lanes: **entry** (routes, handlers, RPC methods, CLI arguments, queue consumers, file and upload readers, webhooks), **boundary** (parsing, deserialization, validation, sanitizing, the edge of a sandbox or a tenant), **access** (authentication, authorization, ownership and tenancy checks, rate limits), **sink** (SQL and NoSQL queries, shell commands, file paths, templates and HTML, redirects, outbound requests, eval, crypto, logs of secrets), **config** (CORS, cookies, TLS, CSP, secrets and keys, debug switches, permissive defaults);\n")
-	w("- edges, one `scan edge` each: what calls, routes to, guards, validates, reads or writes what, between functions (`file.go:Name`) or points (P#). Quote the line that makes the edge whenever you can; an edge without a quote is shown as inferred;\n")
+	w("- edges, one `scan edge` each: what calls, routes to, guards, validates, reads or writes what, between functions (`file.go:Name`) or points (P#). Quote the line that makes the edge whenever you can; an edge without a quote is shown as inferred. ")
+	w("Record above all the edges that leave the shard: a call into code of another shard, a value this shard writes (a file, a row, a message, a header, a cache entry) that another reads, a check this shard leaves to its caller. ")
+	if r.partial() {
+		w("Code outside the shards counts too: name it by its file (`path/file.go:Name`). ")
+	}
+	w("The harness turns the edges that join two shards into **seams**, which the hunt checks from both sides;\n")
 	w("- the shard's map with `scan map`: what the code does, its main types and flows, what it trusts and why, in a paragraph a hunter can start from.\n\n")
 	w("### 2. Hunt\n\nFor each mapped shard: claim it for the hunt, and from every entry point it has (and those of other shards that reach it), follow the input. ")
 	w("Look for injection of any kind, path traversal, SSRF, broken or missing authorization (IDOR, tenancy), authentication flaws, unsafe deserialization, secrets in code, weak crypto, races on shared state, unbounded resource use, and logic errors that break an invariant the code relies on. ")
+	w("For unbounded resource use, look at every size, count, length, depth and dimension that comes from input (a body, a header, a file, a terminal or image size, a page size, a nesting depth): does anything bound it before it sizes an allocation, a buffer, a loop, a recursion, a retry or a product that can overflow? ")
 	w("Check whether the framework, a middleware or a caller already handles it before filing. File each lead with `scan lead`: the title, the category, the claim (what an attacker does and gets), the trace, the CVSS vector, reachability and exploitability, the points it goes through, and a fix. ")
 	w("Every file tracked at the commit is in a shard, including what no person wrote; a shard lists each such file with its kind. Read each for what it can hide: ")
 	w("a **binary** (executables, archives, images, compiled objects) with the reverse-engineering tools the sandbox has (file, strings, objdump, readelf, unzip, a disassembler or decompiler) for embedded secrets and keys, a build that does not match its source, a backdoor or a known-vulnerable component; ")
@@ -83,6 +89,14 @@ func brief(r *Run, prev *Run) string {
 	w("**data** and **other** files (docs, templates, scripts) for secrets, unsafe defaults, templates that reach a sink and scripts that run; a **large** file in parts; a **symlink** for where it points; a **submodule** for the repository and commit it pins (in .gitmodules). ")
 	w("Quote a binary by a string it holds, as strings prints it, or cite the file that builds or loads it.\n\n")
 	w("Close the shard with `scan hunt` and a note of what you checked, leads or not. Every sink of the shard is either in a lead's points or named in that note (P#) with the guard that makes it safe: the harness refuses a note that skips one.\n\n")
+	w("### Seams\n\nA hunter reads one shard, and a hole can live between two: one side assumes what the other does not give. `scan seams` lists where the recorded edges join two shards")
+	if r.partial() {
+		w(" (or a shard and the code outside the shards it talks to)")
+	}
+	w(". Once both sides are mapped, claim one (`scan seams claim=X#`, which gives both maps and the edges), read both sides of every edge, and for each value that crosses write down what the sender gives and what the receiver assumes: ")
+	w("size and count bounds, empty, null, zero and sentinel values (an empty string or `*` that means \"any\" on one side and \"none\" on the other), units, encodings and escaping, ordering and uniqueness, error and partial results, and which side checks authorization or validates. ")
+	w("A mismatch that input can reach is a lead, with a trace through both sides. Close the seam with `scan seam` (id, a note of the contract and what you found, and cites quoting each side): the harness refuses a close that does not quote both sides, and one made after a new edge joined the seam since your claim (claim it again to see it). ")
+	w("The hunt is complete when every shard is hunted and every seam due is checked (at most one per shard, those with the most edges first; the rest are optional).\n\n")
 	w("### 3. Verify\n\n%d %s that did not file a lead rule on it", d.Verifiers, plural(d.Verifiers, "agent", "agents"))
 	if d.Defender {
 		w(", one of them as the defender")
@@ -105,7 +119,7 @@ func brief(r *Run, prev *Run) string {
 	w("- **The ledger decides.** The goal is met when `scan status` says done; the harness checks the ledger itself after each turn. When it says done, stop: there is nothing left to re-check.\n\n")
 	w("## Milestones\n\n")
 	w("- Map: `scan status` reports all %d shards mapped.\n", c.Shards)
-	w("- Hunt: `scan status` reports all %d shards hunted.\n", c.Shards)
+	w("- Hunt: `scan status` reports all %d shards hunted and every seam due checked.\n", c.Shards)
 	w("- Verify: `scan status` reports no lead open")
 	if d.ProveFrom != "" {
 		w(", and every lead confirmed from %s up reproduced or tried", d.ProveFrom)

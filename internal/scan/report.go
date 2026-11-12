@@ -157,6 +157,9 @@ func FindingsDoc(r *Run) map[string]any {
 	if r.IsReview() {
 		doc["base"], doc["changes"] = r.Base, r.Changes
 	}
+	if len(r.Seams) > 0 {
+		doc["seams"] = seamDocs(r)
+	}
 	return doc
 }
 
@@ -376,7 +379,21 @@ func Markdown(r *Run) string {
 	for _, lane := range Lanes {
 		w("| %s | %s |\n", laneTitle[lane], thousands(c.Lanes[lane]))
 	}
-	w("| Relations between places | %s (%s inferred) |\n| Leads filed | %s |\n\n", thousands(c.Edges), thousands(c.Inferred), thousands(c.Leads))
+	w("| Relations between places | %s (%s inferred) |\n", thousands(c.Edges), thousands(c.Inferred))
+	if c.Seams > 0 {
+		w("| Seams checked | %d of %d due (%d of %d found) |\n", c.SeamsDueChecked, c.SeamsDue, c.SeamsChecked, c.Seams)
+	}
+	w("| Leads filed | %s |\n\n", thousands(c.Leads))
+	if c.SeamsChecked > 0 {
+		red := r.redactor()
+		w("Seams, where two shards meet, checked from both sides:\n\n| Seam | Sides | Edges | Contract |\n|---|---|--:|---|\n")
+		for _, sm := range r.Seams {
+			if sm.Checked != "" {
+				w("| %s | %s ↔ %s | %d | %s |\n", sm.ID, cell(r.sideName(sm.A)), cell(r.sideName(sm.B)), len(sm.Edges), cell(clip(oneLine(red(sm.Checked)), 300)))
+			}
+		}
+		w("\n")
+	}
 	if hot := hotFiles(r, 10); len(hot) > 0 {
 		w("Files with the largest attack surface:\n\n| File | Points | Entry | Sinks |\n|---|--:|--:|--:|\n")
 		for _, h := range hot {
@@ -411,6 +428,15 @@ func methodText(r *Run) string {
 		fmt.Fprintf(&b, "Every file tracked at the commit was listed and scanned, vendored, generated, data and binary files included (a binary read with reverse-engineering tools), and split into %d shards of at most %d functions or %d lines. ", len(r.Shards), d.ShardFuncs, d.ShardLines)
 	}
 	b.WriteString("Each shard was read in full and mapped: its entry points, trust boundaries, access checks, sinks and security configuration, and how its parts connect. Each was then hunted by following input from where it enters to where it can do harm. ")
+	if len(r.Seams) > 0 {
+		c := Check(r).Counts
+		fmt.Fprintf(&b, "Where the recorded relations joined two shards, the seams with the most relations before the hunt ended (%d of the %d found) were due to be checked from both sides for a contract one side assumes and the other does not keep; %d of those %s checked",
+			c.SeamsDue, c.Seams, c.SeamsDueChecked, plural(c.SeamsDueChecked, "was", "were"))
+		if extra := c.SeamsChecked - c.SeamsDueChecked; extra > 0 {
+			fmt.Fprintf(&b, ", and %d more %s", extra, plural(extra, "seam was", "seams were"))
+		}
+		b.WriteString(". ")
+	}
 	b.WriteString("Every quote in this report was checked against the file at the commit. ")
 	fmt.Fprintf(&b, "A lead becomes a finding when %d %s that did not file it confirm it", d.Verifiers, plural(d.Verifiers, "reviewer", "reviewers"))
 	if d.Defender {

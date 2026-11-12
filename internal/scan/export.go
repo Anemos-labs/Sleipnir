@@ -235,7 +235,8 @@ func HTML(r *Run) string {
 	w("<h3>%c. Scope and coverage</h3><div class=\"cols\"><div class=\"card\"><table class=\"kv\">", letter)
 	for _, kv := range [][2]string{{"Files", thousands(c.Files)}, {"Functions", thousands(c.Funcs)}, {"Lines", thousands(c.Lines)},
 		{"Shards mapped", fmt.Sprintf("%d of %d", c.Mapped, c.Shards)}, {"Shards hunted", fmt.Sprintf("%d of %d", c.Hunted, c.Shards)},
-		{"Relations between places", fmt.Sprintf("%s (%s inferred)", thousands(c.Edges), thousands(c.Inferred))}, {"Leads filed", thousands(c.Leads)}} {
+		{"Relations between places", fmt.Sprintf("%s (%s inferred)", thousands(c.Edges), thousands(c.Inferred))},
+		{"Seams checked", fmt.Sprintf("%d of %d due (%d of %d found)", c.SeamsDueChecked, c.SeamsDue, c.SeamsChecked, c.Seams)}, {"Leads filed", thousands(c.Leads)}} {
 		w("<tr><th>%s</th><td>%s</td></tr>", e(kv[0]), e(kv[1]))
 	}
 	w("</table></div><div class=\"card\"><h4>Attack surface</h4><table class=\"bars\">")

@@ -29,13 +29,19 @@ func (r *Run) LeadBudget() int {
 	return max(minLeadBudget, per*len(r.Shards))
 }
 
-// HuntClosed reports whether every shard has been hunted: a lead filed from then on is late.
+// HuntClosed reports whether every shard has been hunted and every seam due checked: a lead filed from then on is late.
 func (r *Run) HuntClosed() bool {
 	if len(r.Shards) == 0 {
 		return false
 	}
 	for _, s := range r.Shards {
 		if s.Hunted == "" {
+			return false
+		}
+	}
+	due := r.SeamsDue()
+	for _, s := range r.Seams {
+		if due[s.ID] && s.Checked == "" {
 			return false
 		}
 	}

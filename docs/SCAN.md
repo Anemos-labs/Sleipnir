@@ -76,12 +76,33 @@ The agents read the code and record what they find:
 | Phase | Who | Through |
 |---|---|---|
 | Map | scouts, the architect, anyone free | `shards claim`, `functions`, `point` (entry, boundary, access, sink, config), `edge`, `map` |
-| Hunt | backend, frontend, devops, any worker | `shards claim for=hunt`, `lead` (title, category, claim, trace from entry to sink, CVSS vector, reach, exploit, fix), `hunt` |
+| Hunt | backend, frontend, devops, any worker | `shards claim for=hunt`, `lead` (title, category, claim, trace from entry to sink, CVSS vector, reach, exploit, fix), `hunt`; then `seams claim`, `seam` (see [Seams](#seams)) |
 | Verify | reviewers, testers, anyone but the filer | `show`, `verdict` on an open lead (confirm, or reject as duplicate, mitigated, speculative, test-only, dead-code, unreachable, wrong) |
 | Prove | testers, anyone but the filer | `prove` (a bash reproducer) |
 | Report | the manager | `report`, then `status` says done |
 
 Phases overlap: a shard is hunted as soon as it is mapped, a lead verified as soon as it is filed. A shard is closed with `hunt` only once each of its sinks is in a lead or named in the hunt note with the reason it is safe.
+
+## Seams
+
+A hunter reads one shard, and the holes a reader of one part of the code misses most often are between two: one side assumes
+what the other does not give (a size it takes to be bounded, an empty string or `*` that means "any" to one side and "none"
+to the other, a unit, an encoding, an authorization check each side leaves to the other). So the harness makes the places where
+two shards meet audit targets of their own. Every edge a mapper records between code of two different shards (an `imports` edge
+aside) goes into the **seam** of those two shards, `X1`, `X2`...; in a review, or a scan below a folder, an edge from a shard to
+a file of the commit outside every shard makes a seam too, with that file's directory as its other side: the code the change
+talks to. A file too large to cite (over 4 MiB) makes no seam, since no quote of it could close one.
+
+`scan seams` lists them; `scan seams claim=X#` takes one once both its shards are mapped, and gives both maps and the edges.
+The checker reads both sides of every edge, writes down what the sender gives and what the receiver assumes, files a lead for a
+mismatch that input can reach, and closes the seam with `scan seam`: a note of the contract and what was found, and `cites`
+that quote each side (the harness refuses a close that quotes only one, or comes from an agent that did not claim the seam, or
+follows an edge recorded since the claim: claiming again shows it). The hunt is complete when every shard is hunted and
+every seam due is checked. The seams due are at most one per shard (at least 3), those with the most edges first; the rest are
+listed as optional, and checking one takes no place from them. A checked seam that gains an edge while the hunt is open is
+checked again, since its contract did not cover that edge. A seam made once the hunt is complete is never due, so a scan that
+ended stays ended. The report lists the
+seams that were checked, with the contract each note gives.
 
 A session whose goal is a scan (from `/scan`, the web page or `sleipnir scan`) works on that scan: an agent's call naming another
 scan of the project, such as an older unfinished one, goes to the session's scan with a note.
@@ -105,7 +126,7 @@ A team can always find one more thing to check. The harness ends a scan by rules
 
 - **A budget.** The scan verifies at most a set number of leads: 4 per shard at survey depth, 6 at standard, 8 at deep, and at
   least 24. Past it, a lead below critical is recorded as **deferred**.
-- **Diminishing returns.** Once every shard is hunted, a lead is *late*. Only a few late leads are verified (a tenth of those
+- **Diminishing returns.** Once every shard is hunted and every seam due checked, a lead is *late*. Only a few late leads are verified (a tenth of those
   the hunt filed, at least 3), and none once the last 3 late leads ruled on were all rejected. A later lead below critical is
   deferred.
 - **A settled lead is final.** A confirmed, unproven, rejected or deferred lead takes no more verdicts. A lead that two more
