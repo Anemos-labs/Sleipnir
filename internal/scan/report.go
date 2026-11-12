@@ -430,7 +430,7 @@ func methodText(r *Run) string {
 	b.WriteString("Each shard was read in full and mapped: its entry points, trust boundaries, access checks, sinks and security configuration, and how its parts connect. Each was then hunted by following input from where it enters to where it can do harm. ")
 	if len(r.Seams) > 0 {
 		c := Check(r).Counts
-		fmt.Fprintf(&b, "Where the recorded relations joined two shards, the seams with the most relations (%d of the %d found) were due to be checked from both sides for a contract one side assumes and the other does not keep; %d of those %s checked",
+		fmt.Fprintf(&b, "Where the recorded relations joined two shards, the seams with the most relations before the hunt ended (%d of the %d found) were due to be checked from both sides for a contract one side assumes and the other does not keep; %d of those %s checked",
 			c.SeamsDue, c.Seams, c.SeamsDueChecked, plural(c.SeamsDueChecked, "was", "were"))
 		if extra := c.SeamsChecked - c.SeamsDueChecked; extra > 0 {
 			fmt.Fprintf(&b, ", and %d more %s", extra, plural(extra, "seam was", "seams were"))

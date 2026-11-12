@@ -1069,4 +1069,7 @@ func TestASeamThatGrowsAfterTheHuntStaysOptional(t *testing.T) {
 	if !r.Seams[4].Late || !r.HuntClosed() {
 		t.Fatalf("a seam that grew after the hunt reopened it: %+v", r.Seams[4])
 	}
+	if md := Markdown(r); !strings.Contains(md, "the seams with the most relations before the hunt ended (4 of the 5 found) were due") {
+		t.Errorf("the method does not say the ranking left out a seam that grew after the hunt:\n%s", md)
+	}
 }
