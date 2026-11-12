@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anemos-labs/sleipnir/internal/catalog"
 	"github.com/anemos-labs/sleipnir/internal/config"
-	"github.com/anemos-labs/sleipnir/internal/core"
 	"github.com/anemos-labs/sleipnir/internal/harden"
 	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/session"
@@ -250,8 +250,7 @@ func checkKey(ctx context.Context, cfg *config.Config, ref string, out io.Writer
 	fmt.Fprint(out, "Checking the key... ")
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	prompt := &core.Prompt{Model: mr.Model, Params: core.Params{MaxTokens: 8}, Messages: []core.Message{{Role: core.RoleUser, Blocks: []core.Block{core.Text("ping")}}}}
-	_, err = p.Do(ctx, &provider.Request{Prompt: prompt, Label: "login:check", NoStream: true}, nil)
+	_, err = p.Do(ctx, &provider.Request{Prompt: catalog.CheckPrompt(mr.Model), Label: "login:check", NoStream: true}, nil)
 	var pe *provider.Error
 	if errors.As(err, &pe) && pe.Kind == provider.ErrAuth {
 		if _, env, ok := session.ProviderInfo(cfg, mr.Provider); ok && env != "" {

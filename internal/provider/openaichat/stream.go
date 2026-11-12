@@ -284,11 +284,11 @@ type accumulator struct {
 	lim        provider.StreamLimits
 	thinkBytes int // reasoning text plus reasoning_details payloads
 
-	// The tool call that deltas without an index add to, and the id it was opened with: a delta without an
-	// index that names another id opens a new call (see callKey).
-	looseKey int
-	looseID  string
-	loose    bool
+	// callIDs maps each tool-call id seen to its call; active is the call of the latest tool-call delta, which a
+	// delta with neither an index nor an id continues (see callKey).
+	callIDs   map[string]int
+	active    int
+	hasActive bool
 }
 
 type callAcc struct {
@@ -302,7 +302,7 @@ func newAccumulator() *accumulator { return newAccumulatorLimits(provider.Stream
 // newAccumulatorLimits allocates independent reasoning and tool-call maps and normalizes stream
 // limits.
 func newAccumulatorLimits(lim provider.StreamLimits) *accumulator {
-	return &accumulator{details: map[int]*detailAcc{}, calls: map[int]*callAcc{}, lim: lim.Normalized()}
+	return &accumulator{details: map[int]*detailAcc{}, calls: map[int]*callAcc{}, callIDs: map[string]int{}, lim: lim.Normalized()}
 }
 
 // idText bounds and cleans an identifier the server chose (response id, model,
@@ -479,24 +479,34 @@ func (a *accumulator) applyDelta(d *delta, on func(provider.Event)) error {
 }
 
 // callKey is the call a tool-call delta belongs to. A delta with an index belongs to that index, as the wire
-// format specifies. A delta without one continues the call that the last such delta opened, unless it names a
-// different id: then it opens a call after every call seen so far. Endpoints that leave the index out send each
-// call whole under its own id (several in one response), and a plain message lists its calls without indexes;
-// keyed by a missing index, read as 0, all of them were appended into one call whose arguments were not JSON.
+// format specifies. A delta without one belongs to the call its id names, whichever delta opened that call, or
+// opens a call after every call seen so far when the id is new. A delta with neither continues the call of the
+// latest tool-call delta. Endpoints that leave the index out send each call whole under its own id (several in
+// one response), and a plain message lists its calls without indexes; keyed by a missing index, read as 0, all
+// of them were appended into one call whose arguments were not JSON.
 func (a *accumulator) callKey(tc toolDelta) int {
-	if tc.Index != nil {
-		return *tc.Index
+	k, known := 0, false
+	switch {
+	case tc.Index != nil:
+		k, known = *tc.Index, true
+	case tc.ID != "":
+		k, known = a.callIDs[tc.ID]
+	case a.hasActive:
+		k, known = a.active, true
 	}
-	if a.loose && (tc.ID == "" || tc.ID == a.looseID) {
-		return a.looseKey
-	}
-	k := 0
-	for i := range a.calls {
-		if i >= k {
-			k = i + 1
+	if !known {
+		for i := range a.calls {
+			if i >= k {
+				k = i + 1
+			}
 		}
 	}
-	a.looseKey, a.looseID, a.loose = k, tc.ID, true
+	if tc.ID != "" {
+		if _, seen := a.callIDs[tc.ID]; !seen && len(a.callIDs) < a.lim.MaxToolCalls {
+			a.callIDs[tc.ID] = k
+		}
+	}
+	a.active, a.hasActive = k, true
 	return k
 }
 

@@ -164,3 +164,32 @@ func TestUserAgent(t *testing.T) {
 		t.Fatalf("User-Agent = %q, want the configured one", got)
 	}
 }
+
+// Index-less pieces of two calls interleaved by id (A, B, A, B) each continue the call their id opened.
+func TestStreamedToolCallsWithoutIndexInterleaveByID(t *testing.T) {
+	c, _ := serveFrames(t, []string{
+		`{"id":"r","choices":[{"index":0,"delta":{"tool_calls":[{"id":"A","type":"function","function":{"name":"read","arguments":"{\"path\""}}]}}]}`,
+		`{"id":"r","choices":[{"index":0,"delta":{"tool_calls":[{"id":"B","type":"function","function":{"name":"bash","arguments":"{\"command\""}}]}}]}`,
+		`{"id":"r","choices":[{"index":0,"delta":{"tool_calls":[{"id":"A","function":{"arguments":": \"a\"}"}}]}}]}`,
+		`{"id":"r","choices":[{"index":0,"delta":{"tool_calls":[{"id":"B","function":{"arguments":": \"ls\"}"}}]}}]}`,
+		`{"id":"r","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+	}, "", openaichat.Options{}, nil)
+	wantCalls(t, toolCalls(t, c, false), [3]string{"A", "read", `{"path": "a"}`}, [3]string{"B", "bash", `{"command": "ls"}`})
+}
+
+// A call opened with an index and continued by pieces without one (no id, or its id) stays one call.
+func TestStreamedToolCallOpenedWithIndexContinuesWithout(t *testing.T) {
+	for name, second := range map[string]string{
+		"no id":   `{"id":"r","choices":[{"index":0,"delta":{"tool_calls":[{"function":{"arguments":"\"a\"}"}}]}}]}`,
+		"same id": `{"id":"r","choices":[{"index":0,"delta":{"tool_calls":[{"id":"c1","function":{"arguments":"\"a\"}"}}]}}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			c, _ := serveFrames(t, []string{
+				`{"id":"r","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"c1","type":"function","function":{"name":"read","arguments":"{\"path\": "}}]}}]}`,
+				second,
+				`{"id":"r","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+			}, "", openaichat.Options{}, nil)
+			wantCalls(t, toolCalls(t, c, false), [3]string{"c1", "read", `{"path": "a"}`})
+		})
+	}
+}

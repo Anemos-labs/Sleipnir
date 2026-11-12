@@ -21,7 +21,8 @@ they do not indicate whether a change has been released.
 - The built-in provider `opencode-go` is the OpenCode Go plan
   (`https://opencode.ai/zen/go/v1`, `OPENCODE_API_KEY`); it sends each
   conversation's routing key as `x-opencode-session`, without which the
-  endpoint answers 400.
+  endpoint answers 400. Key checks (`sleipnir login`, the model picker) send
+  a routing key of their own, so such an endpoint can confirm a key.
 
 - A response cut off at the output limit raises the limit of that agent's
   later requests to its model's reported maximum, up to 64000 tokens and a
