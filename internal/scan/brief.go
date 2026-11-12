@@ -95,7 +95,7 @@ func brief(r *Run, prev *Run) string {
 	}
 	w(". Once both sides are mapped, claim one (`scan seams claim=X#`, which gives both maps and the edges), read both sides of every edge, and for each value that crosses write down what the sender gives and what the receiver assumes: ")
 	w("size and count bounds, empty, null, zero and sentinel values (an empty string or `*` that means \"any\" on one side and \"none\" on the other), units, encodings and escaping, ordering and uniqueness, error and partial results, and which side checks authorization or validates. ")
-	w("A mismatch that input can reach is a lead, with a trace through both sides. Close the seam with `scan seam` (id, a note of the contract and what you found, and cites quoting each side): the harness refuses a close that does not quote both sides. ")
+	w("A mismatch that input can reach is a lead, with a trace through both sides. Close the seam with `scan seam` (id, a note of the contract and what you found, and cites quoting each side): the harness refuses a close that does not quote both sides, and one made after a new edge joined the seam since your claim (claim it again to see it). ")
 	w("The hunt is complete when every shard is hunted and every seam due is checked (at most one per shard, those with the most edges first; the rest are optional).\n\n")
 	w("### 3. Verify\n\n%d %s that did not file a lead rule on it", d.Verifiers, plural(d.Verifiers, "agent", "agents"))
 	if d.Defender {

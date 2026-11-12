@@ -434,8 +434,13 @@ func TestAScanFromMapToReport(t *testing.T) {
 		"cites": []map[string]any{{"file": "server/routes.go", "line": 6, "quote": `mux.HandleFunc("/ping", Ping)`}}}, "no cite is from")
 	mustFail(t, tl, "other", map[string]any{"action": "seam", "id": "X1", "note": contract,
 		"cites": []map[string]any{{"file": "server/routes.go", "line": 6, "quote": `mux.HandleFunc("/ping", Ping)`}, {"file": "server/handler.go", "line": 11, "quote": `if host == "" {`}}}, "claimed by seamer")
-	mustOK(t, tl, "seamer", map[string]any{"action": "seam", "id": "X1", "note": contract,
-		"cites": []map[string]any{{"file": "server/routes.go", "line": 6, "quote": `mux.HandleFunc("/ping", Ping)`}, {"file": "server/handler.go", "line": 11, "quote": `if host == "" {`}}})
+	both := []map[string]any{{"file": "server/routes.go", "line": 6, "quote": `mux.HandleFunc("/ping", Ping)`}, {"file": "server/handler.go", "line": 11, "quote": `if host == "" {`}}
+	mustFail(t, tl, "other", map[string]any{"action": "seam", "id": "X2", "note": contract, "cites": both}, "no seam")
+	// an edge recorded after the claim is one the checker has not read: the close waits for a new claim
+	mustOK(t, tl, "mapper", map[string]any{"action": "edge", "from": "server/routes.go:Routes", "to": "server/handler.go:Ping", "relation": "calls"})
+	mustFail(t, tl, "seamer", map[string]any{"action": "seam", "id": "X1", "note": contract, "cites": both}, "gained 1 edge since you claimed it")
+	mustOK(t, tl, "seamer", map[string]any{"action": "seams", "claim": "X1"})
+	mustOK(t, tl, "seamer", map[string]any{"action": "seam", "id": "X1", "note": contract, "cites": both})
 	// the reproduction, recorded as a sandbox run would record it
 	if _, err := st.Update("", func(r *Run) error {
 		r.Lead("L1").Proofs = append(r.Lead("L1").Proofs, Proof{By: "prover", Outcome: ProofReproduced, Exercised: true, Ready: true})
@@ -488,7 +493,7 @@ func TestAScanFromMapToReport(t *testing.T) {
 	}
 	mb, _ := os.ReadFile(filepath.Join(dir, MapFile))
 	_ = json.Unmarshal(mb, &m)
-	if len(m.Edges) != 2 || m.Edges[0].Confidence != "EXTRACTED" || m.Edges[1].Confidence != "INFERRED" {
+	if len(m.Edges) != 3 || m.Edges[0].Confidence != "EXTRACTED" || m.Edges[1].Confidence != "INFERRED" { // the third is the edge recorded while X1 was claimed
 		t.Errorf("map edges: %s", mb)
 	} // a confirmed finding is written up for the tracker and handed to a fix goal, both with its trace
 	title, body, err := Issue(r, r.Lead("L1"))

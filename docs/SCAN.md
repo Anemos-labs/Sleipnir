@@ -96,7 +96,8 @@ talks to. A file too large to cite (over 4 MiB) makes no seam, since no quote of
 `scan seams` lists them; `scan seams claim=X#` takes one once both its shards are mapped, and gives both maps and the edges.
 The checker reads both sides of every edge, writes down what the sender gives and what the receiver assumes, files a lead for a
 mismatch that input can reach, and closes the seam with `scan seam`: a note of the contract and what was found, and `cites`
-that quote each side (the harness refuses a close that quotes only one). The hunt is complete when every shard is hunted and
+that quote each side (the harness refuses a close that quotes only one, or comes from an agent that did not claim the seam, or
+follows an edge recorded since the claim: claiming again shows it). The hunt is complete when every shard is hunted and
 every seam due is checked. The seams due are at most one per shard (at least 3), those with the most edges first; the rest are
 listed as optional, and checking one takes no place from them. A checked seam that gains an edge while the hunt is open is
 checked again, since its contract did not cover that edge. A seam made once the hunt is complete is never due, so a scan that

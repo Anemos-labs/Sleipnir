@@ -27,6 +27,8 @@ type Seam struct {
 	// Edges are the recorded edges between the two sides, in the order they were recorded.
 	Edges   []string `json:"edges"`
 	Claimed string   `json:"claimed,omitempty"`
+	// Seen is how many edges the seam had when it was last claimed: a close is refused once it has more, until claimed again.
+	Seen int `json:"seen,omitempty"`
 	// Checked is the note of the agent who checked the contract, with CheckedBy, and Contract the code it quoted from each side.
 	// Late says the seam was made after the hunt was complete: listed, never due, so that a scan that ended stays ended.
 	Late      bool   `json:"late,omitempty"`
@@ -219,7 +221,7 @@ func (t *Tool) seams(in input, agent string) (string, error) {
 			if s.Claimed != "" && s.Claimed != agent {
 				return fmt.Errorf("%s is claimed by %s; take another", s.ID, s.Claimed)
 			}
-			s.Claimed = agent
+			s.Claimed, s.Seen = agent, len(s.Edges)
 			out = seamText(r, s)
 			return nil
 		})
@@ -320,7 +322,12 @@ func (t *Tool) seam(ctx context.Context, in input, agent string) (string, error)
 	if !snap.seamReady(s) {
 		return "", fmt.Errorf("%s joins a shard that is not mapped yet: map %s and %s first", s.ID, s.A, s.B)
 	}
-	edges := len(s.Edges)
+	if s.Claimed != "" && s.Claimed != agent {
+		return "", fmt.Errorf("%s is claimed by %s; take another", s.ID, s.Claimed)
+	}
+	if s.Claimed != agent {
+		return "", fmt.Errorf("claim %s first (scan seams claim=%s): the claim gives both maps and every edge the close vouches for", s.ID, s.ID)
+	}
 	if len(in.Cites) == 0 {
 		return "", errors.New("cite the contract: at least one quote from each side (cites)")
 	}
@@ -349,11 +356,11 @@ func (t *Tool) seam(ctx context.Context, in input, agent string) (string, error)
 		if cur.Checked != "" {
 			return fmt.Errorf("%s is already checked by %s", cur.ID, cur.CheckedBy)
 		}
-		if cur.Claimed != "" && cur.Claimed != agent {
+		if cur.Claimed != agent {
 			return fmt.Errorf("%s is claimed by %s", cur.ID, cur.Claimed)
 		}
-		if len(cur.Edges) != edges {
-			return fmt.Errorf("%s gained an edge while you checked it: scan show %s, read the new edge, and close it again", cur.ID, cur.ID)
+		if n := len(cur.Edges) - cur.Seen; n > 0 {
+			return fmt.Errorf("%s gained %d %s since you claimed it: claim it again (scan seams claim=%s), read the new %s, and close it again", cur.ID, n, plural(n, "edge", "edges"), cur.ID, plural(n, "edge", "edges"))
 		}
 		cur.Checked, cur.CheckedBy, cur.Contract, cur.Claimed = note, agent, contract, ""
 		out = fmt.Sprintf("%s checked (%d %s, %d %s quoted).", cur.ID, len(cur.Edges), plural(len(cur.Edges), "edge", "edges"), len(contract), plural(len(contract), "line", "lines"))
