@@ -2,6 +2,8 @@ package catalog
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"sort"
 	"strings"
@@ -162,6 +164,16 @@ type KeyCheck struct {
 	Reason string
 }
 
+// CheckPrompt is the request of a key check: eight tokens answering "ping", under a routing key of its own. An
+// endpoint that routes by session (OpenCode Go's x-opencode-session) answers a request without one with 400, so
+// the check could never accept a good key.
+func CheckPrompt(model string) *core.Prompt {
+	b := make([]byte, 6)
+	_, _ = rand.Read(b)
+	return &core.Prompt{Model: model, Params: core.Params{MaxTokens: 8}, CacheKey: "key-check-" + hex.EncodeToString(b),
+		Messages: []core.Message{{Role: core.RoleUser, Blocks: []core.Block{core.Text("ping")}}}}
+}
+
 // CheckKey sends one request of eight tokens to the model ref with the key this process holds for its provider, because a catalogue
 // is often public and answers whatever the key is. Only a refusal of the key itself counts; any other failure (a slow network, a busy
 // model) leaves Checked false. It changes nothing: forgetting a refused key is the caller's decision.
@@ -180,8 +192,7 @@ func CheckKey(ctx context.Context, cfg *config.Config, ref string) KeyCheck {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	prompt := &core.Prompt{Model: mr.Model, Params: core.Params{MaxTokens: 8}, Messages: []core.Message{{Role: core.RoleUser, Blocks: []core.Block{core.Text("ping")}}}}
-	_, err = p.Do(ctx, &provider.Request{Prompt: prompt, Label: "login:check", NoStream: true}, nil)
+	_, err = p.Do(ctx, &provider.Request{Prompt: CheckPrompt(mr.Model), Label: "login:check", NoStream: true}, nil)
 	var pe *provider.Error
 	switch {
 	case errors.As(err, &pe) && pe.Kind == provider.ErrAuth:

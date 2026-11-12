@@ -72,6 +72,7 @@ var commonOptions = map[string]optionSpec{
 // chatOptions are the extras of the chat-completions dialect.
 var chatOptions = map[string]optionSpec{
 	"session_header":         {kind: optBool},
+	"session_header_name":    {kind: optString},
 	"cache_key_body":         {kind: optBool},
 	"cache_control_parts":    {kind: optBool},
 	"system_role":            {kind: optString, values: []string{"system", "developer"}},

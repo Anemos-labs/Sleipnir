@@ -211,11 +211,14 @@ func (c *Client) Do(ctx context.Context, req *provider.Request, on func(provider
 	if stream {
 		hr.Header.Set("Accept", "text/event-stream")
 	}
+	// the client names itself: some endpoints treat a generic HTTP-library agent as unidentified traffic.
+	// A configured User-Agent header still wins (headers are set below).
+	hr.Header.Set("User-Agent", "sleipnir")
 	if c.cfg.APIKey != "" {
 		hr.Header.Set("Authorization", "Bearer "+c.cfg.APIKey)
 	}
-	if c.cfg.Options.SessionHeader && p.CacheKey != "" {
-		hr.Header.Set("X-Session-Id", p.CacheKey)
+	if name := c.cfg.Options.sessionHeader(); name != "" && p.CacheKey != "" {
+		hr.Header.Set(name, p.CacheKey)
 	}
 	for k, v := range c.cfg.Headers {
 		hr.Header.Set(k, v)

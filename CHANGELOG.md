@@ -7,6 +7,23 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- Tool-call deltas of the chat-completions dialect that carry no `index` are
+  told apart by their `id`: a new id opens a new call, a delta without an id or
+  with the current one continues it. Deltas with an index are keyed by it as
+  before. An endpoint that sends each call whole in a delta of its own without
+  an index (OpenCode's stealth models), and any plain non-streamed response
+  with several calls, had all of a turn's calls appended into one call whose
+  arguments were not JSON, so every call failed.
+- Chat-completions providers take `session_header_name`, the header that
+  carries the routing key in place of `X-Session-Id`, and requests send
+  `User-Agent: sleipnir` (a configured header still wins) instead of Go's
+  HTTP-library default.
+- The built-in provider `opencode-go` is the OpenCode Go plan
+  (`https://opencode.ai/zen/go/v1`, `OPENCODE_API_KEY`); it sends each
+  conversation's routing key as `x-opencode-session`, without which the
+  endpoint answers 400. Key checks (`sleipnir login`, the model picker) send
+  a routing key of their own, so such an endpoint can confirm a key.
+
 - A response cut off at the output limit raises the limit of that agent's
   later requests to its model's reported maximum, up to 64000 tokens and a
   quarter of a known window (a model whose maximum or window nothing reports

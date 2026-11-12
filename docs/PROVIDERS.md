@@ -64,6 +64,7 @@ to check the selected route. See [cache design](CACHE-DESIGN.md) and
 | `sambanova`, `hyperbolic`, `nebius`, `novita`, `nvidia`, `parasail`, `baseten`, `chutes`, `siliconflow` | `SAMBANOVA_API_KEY`, `HYPERBOLIC_API_KEY`, `NEBIUS_API_KEY`, `NOVITA_API_KEY`, `NVIDIA_API_KEY`, `PARASAIL_API_KEY`, `BASETEN_API_KEY`, `CHUTES_API_KEY`, `SILICONFLOW_API_KEY` |
 | `moonshot`, `zai`, `minimax`, `dashscope`, `cohere` | `MOONSHOT_API_KEY`, `ZAI_API_KEY`, `MINIMAX_API_KEY`, `DASHSCOPE_API_KEY`, `COHERE_API_KEY` |
 | `ollama-cloud`, `opencode` | `OLLAMA_API_KEY`, `OPENCODE_API_KEY` |
+| `opencode-go` (the OpenCode Go plan; sends `x-opencode-session`) | `OPENCODE_API_KEY` |
 | `ollama`, `lmstudio`, `llamacpp`, `vllm`, `sglang`, `jan` | No key by default; local server must be running |
 
 Each model's context window is the one its provider reports: a catalogue's
