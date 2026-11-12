@@ -359,7 +359,9 @@ func (t *Tool) seam(ctx context.Context, in input, agent string) (string, error)
 		if cur.Claimed != agent {
 			return fmt.Errorf("%s is claimed by %s", cur.ID, cur.Claimed)
 		}
-		if n := len(cur.Edges) - cur.Seen; n > 0 {
+		// s.Seen is the claim as this close found it: a claim made again while its quotes were checked does not cover them
+		if n := len(cur.Edges) - s.Seen; n > 0 || cur.Seen != s.Seen {
+			n = max(n, len(cur.Edges)-cur.Seen, 1)
 			return fmt.Errorf("%s gained %d %s since you claimed it: claim it again (scan seams claim=%s), read the new %s, and close it again", cur.ID, n, plural(n, "edge", "edges"), cur.ID, plural(n, "edge", "edges"))
 		}
 		cur.Checked, cur.CheckedBy, cur.Contract, cur.Claimed = note, agent, contract, ""
