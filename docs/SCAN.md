@@ -91,7 +91,7 @@ to the other, a unit, an encoding, an authorization check each side leaves to th
 two shards meet audit targets of their own. Every edge a mapper records between code of two different shards (an `imports` edge
 aside) goes into the **seam** of those two shards, `X1`, `X2`...; in a review, or a scan below a folder, an edge from a shard to
 a file of the commit outside every shard makes a seam too, with that file's directory as its other side: the code the change
-talks to.
+talks to. A file too large to cite (over 4 MiB) makes no seam, since no quote of it could close one.
 
 `scan seams` lists them; `scan seams claim=X#` takes one once both its shards are mapped, and gives both maps and the edges.
 The checker reads both sides of every edge, writes down what the sender gives and what the receiver assumes, files a lead for a

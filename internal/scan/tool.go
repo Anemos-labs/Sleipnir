@@ -527,19 +527,26 @@ func (t *Tool) edge(ctx context.Context, in input, agent string) (string, error)
 		cite, note = &c, n
 	}
 	// in a review or a scan of a folder, an end outside every shard is a side of a seam when it is a file of the commit
+	// a file too large to cite makes no seam: a seam is closed by quoting both sides, and that side could not be quoted
 	exists := map[string]bool{}
+	var uncitable []string
 	if snap.partial() {
 		if code, err := t.code(snap); err == nil {
 			for _, end := range []string{from, to} {
 				if f := snap.endFile(end); f != "" && snap.ShardOf(f) == "" {
-					if _, err := code.Read(ctx, f); err == nil || errors.Is(err, errTooLarge) {
+					if _, err := code.Read(ctx, f); err == nil {
 						exists[f] = true
+					} else if errors.Is(err, errTooLarge) {
+						uncitable = append(uncitable, f)
 					}
 				}
 			}
 		}
 	}
 	var id, seamNote string
+	if len(uncitable) > 0 {
+		seamNote = fmt.Sprintf("%s is too large to cite, so this edge makes no seam; check it in the hunt of its shard.", strings.Join(uncitable, " and "))
+	}
 	_, err = t.store.Update(in.Scan, func(r *Run) error {
 		for _, e := range r.Edges {
 			if strings.EqualFold(e.From, from) && strings.EqualFold(e.To, to) && e.Relation == in.Relation {

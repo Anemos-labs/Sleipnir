@@ -60,7 +60,7 @@ func (g *gitCode) Read(ctx context.Context, file string) ([]byte, error) {
 	return b, nil
 }
 
-// errTooLarge is a file of the commit too large to cite: it exists, and an edge to it still joins two sides.
+// errTooLarge is a file of the commit too large to cite. An edge to it is kept, but it makes no seam, since no quote could close one.
 var errTooLarge = errors.New("too large to cite")
 
 // Quote bounds.

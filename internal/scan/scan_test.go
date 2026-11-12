@@ -787,6 +787,7 @@ func TestAReviewCoversWhatTheChangeWrote(t *testing.T) {
 	root, base := gitRepo(t, map[string]string{
 		"server/handler.go": "package server\n\nimport \"net/http\"\n\nfunc Ping(w http.ResponseWriter, r *http.Request) {\n\tw.Write([]byte(\"pong\"))\n}\n",
 		"server/other.go":   "package server\n\nfunc Other() int { return 1 }\n",
+		"gen/blob.go":       "package gen\n\n// " + strings.Repeat("x", maxCiteFile) + "\nfunc Huge() {}\n",
 	})
 	changed := "package server\n\nimport (\n\t\"net/http\"\n\t\"os/exec\"\n)\n\nfunc Ping(w http.ResponseWriter, r *http.Request) {\n\thost := r.URL.Query().Get(\"host\")\n\tout, _ := exec.Command(\"sh\", \"-c\", \"ping -c1 \"+host).Output()\n\tw.Write(out)\n}\n"
 	if err := os.WriteFile(filepath.Join(root, "server", "handler.go"), []byte(changed), 0o644); err != nil {
@@ -848,6 +849,10 @@ func TestAReviewCoversWhatTheChangeWrote(t *testing.T) {
 	// the code the change talks to is outside every shard: an edge to it makes a seam, an edge to nothing real does not
 	mustOK(t, tl, "mapper", map[string]any{"action": "edge", "from": "server/handler.go:Ping", "to": "server/other.go:Other", "relation": "calls"})
 	mustOK(t, tl, "mapper", map[string]any{"action": "edge", "from": "server/handler.go:Ping", "to": "lib/nowhere.go:X", "relation": "calls"})
+	// a file too large to quote could never close a seam, so it makes none and the hunt can still end
+	if out := mustOK(t, tl, "mapper", map[string]any{"action": "edge", "from": "server/handler.go:Ping", "to": "gen/blob.go:Huge", "relation": "calls"}); !strings.Contains(out, "too large to cite, so this edge makes no seam") {
+		t.Errorf("edge to an oversized file: %s", out)
+	}
 	r, _ = st.Snapshot("")
 	if len(r.Seams) != 1 || r.Seams[0].A != "S1" || r.Seams[0].B != "server/" {
 		t.Fatalf("seams of a review: %+v", r.Seams)
