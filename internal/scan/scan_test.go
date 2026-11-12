@@ -454,7 +454,7 @@ func TestAScanFromMapToReport(t *testing.T) {
 	r, _ = st.Snapshot("")
 	dir := RunDir(st.Root(), r.Slug)
 	md, _ := os.ReadFile(filepath.Join(dir, ReportFile))
-	for _, want := range []string{"## Findings", "### L1 · Command injection in /ping", "| **Critical 9.8** | Confirmed, reproduced |", "`server/handler.go:15`", "| Entry points | 1 |", "| Seams checked | 1 of 1 due (1 found) |", "Seams, where two shards meet"} {
+	for _, want := range []string{"## Findings", "### L1 · Command injection in /ping", "| **Critical 9.8** | Confirmed, reproduced |", "`server/handler.go:15`", "| Entry points | 1 |", "| Seams checked | 1 of 1 due (1 of 1 found) |", "Seams, where two shards meet"} {
 		if !strings.Contains(string(md), want) {
 			t.Errorf("REPORT.md lacks %q:\n%s", want, md)
 		}
@@ -1001,7 +1001,7 @@ func TestSeamsDueAreTheBusiestAndTheReportSaysSo(t *testing.T) {
 			r.addEdgeToSeams(e, nil)
 		}
 	}
-	r.Seams = append(r.Seams, Seam{ID: "X4", A: "S1", B: "lib/", Edges: []string{"E99"}, Checked: "checked first, by be-2: lib trusts its caller"})
+	r.Seams = append(r.Seams, Seam{ID: "X4", A: "S1", B: "lib/", Edges: []string{"E99"}, Checked: "checked first, by be-2 and hunter-7: lib trusts its caller", CheckedBy: "hunter-7", Claimed: "hunter-7"})
 	for i := range r.Shards {
 		r.Shards[i].Hunted = "h"
 	}
@@ -1014,12 +1014,15 @@ func TestSeamsDueAreTheBusiestAndTheReportSaysSo(t *testing.T) {
 	}
 	r.Seams[0].Checked, r.Seams[0].CheckedBy = "the contract, checked by rv-1", "rv-1"
 	md := Markdown(r)
-	if !strings.Contains(md, "(3 of the 4 found) were due") || !strings.Contains(md, "2 were checked") {
+	if !strings.Contains(md, "(3 of the 4 found) were due") || !strings.Contains(md, "1 of those was checked, and 1 more seam was") {
 		t.Errorf("the method overstates the seams checked:\n%s", md)
+	}
+	if !strings.Contains(md, "| Seams checked | 1 of 3 due (2 of 4 found) |") {
+		t.Errorf("the scope table overstates the due seams checked:\n%s", md)
 	}
 	fj, _ := json.Marshal(FindingsDoc(r))
 	for name, text := range map[string]string{ReportFile: md, FindingsFile: string(fj)} {
-		if strings.Contains(text, "rv-1") || strings.Contains(text, "be-2") {
+		if strings.Contains(text, "rv-1") || strings.Contains(text, "be-2") || strings.Contains(text, "hunter-7") {
 			t.Errorf("%s names an agent", name)
 		}
 	}

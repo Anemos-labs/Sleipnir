@@ -381,7 +381,7 @@ func Markdown(r *Run) string {
 	}
 	w("| Relations between places | %s (%s inferred) |\n", thousands(c.Edges), thousands(c.Inferred))
 	if c.Seams > 0 {
-		w("| Seams checked | %d of %d due (%d found) |\n", c.SeamsChecked, c.SeamsDue, c.Seams)
+		w("| Seams checked | %d of %d due (%d of %d found) |\n", c.SeamsDueChecked, c.SeamsDue, c.SeamsChecked, c.Seams)
 	}
 	w("| Leads filed | %s |\n\n", thousands(c.Leads))
 	if c.SeamsChecked > 0 {
@@ -430,8 +430,12 @@ func methodText(r *Run) string {
 	b.WriteString("Each shard was read in full and mapped: its entry points, trust boundaries, access checks, sinks and security configuration, and how its parts connect. Each was then hunted by following input from where it enters to where it can do harm. ")
 	if len(r.Seams) > 0 {
 		c := Check(r).Counts
-		fmt.Fprintf(&b, "Where the recorded relations joined two shards, the seams with the most relations (%d of the %d found) were due to be checked from both sides for a contract one side assumes and the other does not keep; %d %s checked. ",
-			c.SeamsDue, c.Seams, c.SeamsChecked, plural(c.SeamsChecked, "was", "were"))
+		fmt.Fprintf(&b, "Where the recorded relations joined two shards, the seams with the most relations (%d of the %d found) were due to be checked from both sides for a contract one side assumes and the other does not keep; %d of those %s checked",
+			c.SeamsDue, c.Seams, c.SeamsDueChecked, plural(c.SeamsDueChecked, "was", "were"))
+		if extra := c.SeamsChecked - c.SeamsDueChecked; extra > 0 {
+			fmt.Fprintf(&b, ", and %d more %s", extra, plural(extra, "seam was", "seams were"))
+		}
+		b.WriteString(". ")
 	}
 	b.WriteString("Every quote in this report was checked against the file at the commit. ")
 	fmt.Fprintf(&b, "A lead becomes a finding when %d %s that did not file it confirm it", d.Verifiers, plural(d.Verifiers, "reviewer", "reviewers"))

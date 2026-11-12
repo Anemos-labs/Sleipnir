@@ -339,6 +339,10 @@ func (r *Run) redactor() func(string) string {
 	for _, e := range r.Edges {
 		add(e.By)
 	}
+	for _, sm := range r.Seams {
+		add(sm.Claimed)
+		add(sm.CheckedBy)
+	}
 	for _, l := range r.Leads {
 		add(l.By)
 		for _, v := range l.Verdicts {
