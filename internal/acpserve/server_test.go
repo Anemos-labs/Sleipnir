@@ -748,3 +748,41 @@ func TestMakeRoomReservesASlotForANewSession(t *testing.T) {
 		})
 	}
 }
+
+func TestLaunchFailureSettlesTheTurn(t *testing.T) {
+	s, dir := testServer(t, "ok", func(c *Config) {
+		c.Exe = "/definitely/not/here/sleipnir"
+	})
+	sess := newSession(s, dir, dir, "", "")
+	j := &Job{
+		sess: sess, srv: s, goal: "x", dir: s.mcpCfg.Dir, done: make(chan struct{}), state: turnRunning,
+		gen: map[string]int{}, tools: map[string]string{}, streamed: map[string]bool{},
+	}
+	if err := j.start(); err == nil {
+		t.Fatal("a missing executable started")
+	}
+	select {
+	case <-j.done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a launch failure left done open")
+	}
+	if got := j.stopReasonValue(); got != "end_turn" {
+		t.Fatalf("stopReason = %q, want end_turn", got)
+	}
+	if j.state != turnFailed {
+		t.Fatalf("state = %q, want failed", j.state)
+	}
+}
+
+func TestRetiredSessionRefusesANewTurn(t *testing.T) {
+	s, dir := testServer(t, "ok", nil)
+	sess := newSession(s, dir, dir, "", "")
+	sess.retire()
+	j := &Job{sess: sess, srv: s, done: make(chan struct{}), state: turnRunning}
+	if sess.setActive(j) {
+		t.Fatal("a retired session admitted a turn")
+	}
+	if sess.isActive() {
+		t.Fatal("a retired session reports an active turn")
+	}
+}

@@ -61,13 +61,14 @@ type runEvent struct {
 // Job is one ACP prompt turn: a child `sleipnir run --json` and the ACP
 // notifications translated from its event stream.
 type Job struct {
-	sess *Session
-	srv  *Server
-	goal string
-	args []string
-	dir  string
-	cmd  *exec.Cmd
-	done chan struct{}
+	sess     *Session
+	srv      *Server
+	goal     string
+	args     []string
+	dir      string
+	cmd      *exec.Cmd
+	done     chan struct{}
+	doneOnce sync.Once
 
 	mu         sync.Mutex
 	cancelled  bool
@@ -90,7 +91,7 @@ func (j *Job) start() error {
 	j.mu.Unlock()
 	if cancelled {
 		j.finish(nil)
-		close(j.done)
+		j.closeDone()
 		return nil
 	}
 	cmd := exec.Command(j.srv.cfg.Exe, j.args...)
@@ -103,6 +104,8 @@ func (j *Job) start() error {
 	cmd.Stderr = &j.stderr
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		j.finish(err)
+		j.closeDone()
 		return err
 	}
 	var started func(error)
@@ -113,6 +116,8 @@ func (j *Job) start() error {
 		if started != nil {
 			started(err)
 		}
+		j.finish(err)
+		j.closeDone()
 		return err
 	}
 	if started != nil {
@@ -130,10 +135,13 @@ func (j *Job) start() error {
 		j.read(stdout)
 		werr := cmd.Wait()
 		j.finish(werr)
-		close(j.done)
+		j.closeDone()
 	}()
 	return nil
 }
+
+// closeDone publishes completion exactly once, including for launch failures.
+func (j *Job) closeDone() { j.doneOnce.Do(func() { close(j.done) }) }
 
 // cancel asks the run to end as Ctrl-C ends `sleipnir run`: SIGTERM first, on
 // systems without signals a kill, and a kill after the grace period. It is
