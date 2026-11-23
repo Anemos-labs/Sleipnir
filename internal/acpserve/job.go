@@ -514,8 +514,8 @@ func (j *Job) runArgs(sess *Session, goal string, resume string) ([]string, stri
 	if effort := sess.value("effort"); effort != "" && effort != "medium" {
 		extra = append(extra, "--effort", effort)
 	}
-	if sess.MCPFile != "" {
-		extra = append(extra, "--mcp-config", sess.MCPFile)
+	if file := sess.mcpFile(); file != "" {
+		extra = append(extra, "--mcp-config", file)
 	}
 	return insertBeforeDash(args, extra), dir, nil
 }

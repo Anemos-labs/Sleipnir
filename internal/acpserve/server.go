@@ -574,6 +574,15 @@ func (s *Server) openSession(m *message, replay bool) {
 	}
 	sess := sessionFromRecord(s, rec, dir, mcpFile)
 	s.mu.Lock()
+	if s.closing {
+		s.mu.Unlock()
+		removeMCPFile(mcpFile)
+		if attached != nil {
+			attached.unretire()
+		}
+		s.reply(m.ID, nil, fail(codeInvalidRequest, "the connection is closing"))
+		return
+	}
 	old := s.sessions[sess.ID]
 	s.sessions[sess.ID] = sess
 	s.mu.Unlock()
@@ -613,12 +622,12 @@ func (s *Server) closeSession(m *message) {
 		if j := sess.cancelJob(); j != nil {
 			<-j.done
 		}
-		s.discardMCP(sess)
 		sess.save() // while still attached, so the final state is committed
 		s.mu.Lock()
 		if s.sessions[p.SessionID] == sess {
 			delete(s.sessions, p.SessionID)
 		}
+		s.discardMCP(sess)
 		s.mu.Unlock()
 	}
 	// Closing an unknown session succeeds, as ACP requires.

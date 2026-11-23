@@ -157,7 +157,9 @@ func (s *Session) resumeID() string {
 
 // closeSession and shutdown also remove the temporary MCP config.
 func (s *Server) discardMCP(sess *Session) {
+	sess.mu.Lock()
 	path := sess.MCPFile
 	sess.MCPFile = ""
+	sess.mu.Unlock()
 	removeMCPFile(path)
 }

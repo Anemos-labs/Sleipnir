@@ -194,6 +194,13 @@ func (s *Session) modes() map[string]any {
 	return map[string]any{"currentModeId": s.value("mode"), "availableModes": available}
 }
 
+// mcpFile returns the session's private MCP config path under the lock.
+func (s *Session) mcpFile() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.MCPFile
+}
+
 // cancelJob signals the session's active turn, if any. The turn stays active
 // until its own completion path settles it, so another prompt cannot start
 // while its child is still emitting updates or saving its result.

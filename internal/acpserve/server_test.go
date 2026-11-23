@@ -970,6 +970,12 @@ func TestLoadReadsTheFinalStateOfACancelledTurn(t *testing.T) {
 	if rec.ResumeID != "sess-graceful" {
 		t.Fatalf("resume id = %q, want sess-graceful: the load read before the turn's final save", rec.ResumeID)
 	}
+	s.mu.Lock()
+	replacement := s.sessions[id]
+	s.mu.Unlock()
+	if replacement == nil || replacement.resumeID() != "sess-graceful" {
+		t.Fatalf("the attached replacement did not carry the final resume id: %v", replacement)
+	}
 }
 
 func TestLoadIsSerializedWithCapacityReservation(t *testing.T) {
@@ -1328,4 +1334,36 @@ func TestInvalidLoadSetupDoesNotCancelTheActiveTurn(t *testing.T) {
 		<-j.done
 	}
 	waitSignal(t, promptDone, "prompt completion")
+}
+
+func TestCloseRemovesTheMCPConfigAfterDetaching(t *testing.T) {
+	s, dir := testServer(t, "ok", nil)
+	out := &lockedBuffer{}
+	s.outMu.Lock()
+	s.out = json.NewEncoder(out)
+	s.outMu.Unlock()
+	params, _ := json.Marshal(map[string]any{
+		"cwd": dir,
+		"mcpServers": []any{
+			map[string]any{"name": "tools", "command": "/bin/echo", "args": []any{"stdio"}},
+		},
+	})
+	s.newSession(&message{ID: json.RawMessage(`1`), Method: "session/new", Params: params})
+	var created map[string]any
+	if err := json.Unmarshal([]byte(out.lines()[0]), &created); err != nil {
+		t.Fatal(err)
+	}
+	id := created["result"].(map[string]any)["sessionId"].(string)
+	s.mu.Lock()
+	sess := s.sessions[id]
+	s.mu.Unlock()
+	path := sess.mcpFile()
+	if path == "" {
+		t.Fatal("no MCP config was written")
+	}
+	closeParams, _ := json.Marshal(map[string]any{"sessionId": id})
+	s.closeSession(&message{ID: json.RawMessage(`2`), Method: "session/close", Params: closeParams})
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("the MCP config survived close: %v", err)
+	}
 }
