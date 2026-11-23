@@ -11,6 +11,10 @@
     {
       "item": "web",
       "reason": "sleipnir web serves the page itself: the runner refuses it with a 403 tty_only (a nested server) and the page is its output"
+    },
+    {
+      "item": "acp serve",
+      "reason": "the runner refuses it with a 403 tty_only: an ACP agent needs the stdio of the client that launches it, not the runner's closed stdin"
     }
   ]
 }

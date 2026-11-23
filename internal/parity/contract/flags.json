@@ -11,6 +11,38 @@
     {
       "item": "chat --training-logs",
       "reason": "a recording setting for training data, not a choice made per session: the page's sessions take it from the server, `sleipnir web --training-logs`"
+    },
+    {
+      "item": "acp serve --allow",
+      "reason": "the page refuses to launch an ACP agent, which needs its client's stdio; the limits belong in the client's launch command"
+    },
+    {
+      "item": "acp serve --cwd",
+      "reason": "the page refuses to launch an ACP agent, which needs its client's stdio; the limits belong in the client's launch command"
+    },
+    {
+      "item": "acp serve --max-jobs",
+      "reason": "the page refuses to launch an ACP agent, which needs its client's stdio; the limits belong in the client's launch command"
+    },
+    {
+      "item": "acp serve --mode",
+      "reason": "the page refuses to launch an ACP agent, which needs its client's stdio; the limits belong in the client's launch command"
+    },
+    {
+      "item": "acp serve --model",
+      "reason": "the page refuses to launch an ACP agent, which needs its client's stdio; the limits belong in the client's launch command"
+    },
+    {
+      "item": "acp serve --no-mcp",
+      "reason": "the page refuses to launch an ACP agent, which needs its client's stdio; the limits belong in the client's launch command"
+    },
+    {
+      "item": "acp serve --root",
+      "reason": "the page refuses to launch an ACP agent, which needs its client's stdio; the limits belong in the client's launch command"
+    },
+    {
+      "item": "acp serve --trust-project",
+      "reason": "the page refuses to launch an ACP agent, which needs its client's stdio; the limits belong in the client's launch command"
     }
   ],
   "gaps": []

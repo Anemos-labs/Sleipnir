@@ -485,6 +485,18 @@ func realDir(dir string) (string, error) {
 	return real, nil
 }
 
+// Config returns the validated configuration with absolute, symlink-resolved
+// roots and directory. A caller that reuses this boundary for its own checks
+// uses this copy instead of the raw configuration it passed to New.
+func (s *Server) Config() Config { return s.cfg }
+
+// ResolveDir turns a caller's cwd into a directory inside the configured
+// roots. It is the exported form of resolveDir, for other servers that apply
+// the same boundary to a run (see ACP).
+func (c Config) ResolveDir(cwd string, create bool) (string, error) {
+	return resolveDir(c, cwd, create)
+}
+
 // Inside reports whether dir (absolute, symlinks resolved) is one of roots or below one.
 func Inside(roots []string, dir string) bool {
 	for _, root := range roots {

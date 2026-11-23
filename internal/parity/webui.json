@@ -941,6 +941,24 @@
   },
   {
    "group": "the program (sleipnir ...)",
+   "name": "sleipnir acp",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:acp"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir acp serve",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:acp serve"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
    "name": "sleipnir chat",
    "kind": "program",
    "live": true,
@@ -2680,6 +2698,8 @@
    "mcp list",
    "mcp revoke",
    "mcp test",
+   "acp",
+   "acp serve",
    "trust",
    "trust add",
    "trust forget",
@@ -3460,6 +3480,27 @@
     "modeWith": {
      "trust-project": "priv"
     }
+   },
+   "acp": {
+    "mode": "run",
+    "positionals": [],
+    "flags": [],
+    "modeWith": {}
+   },
+   "acp serve": {
+    "mode": "tty_only",
+    "positionals": [],
+    "flags": [
+     "allow",
+     "cwd",
+     "max-jobs",
+     "mode",
+     "model",
+     "no-mcp",
+     "root",
+     "trust-project"
+    ],
+    "modeWith": {}
    },
    "trust": {
     "mode": "run",

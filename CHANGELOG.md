@@ -7,6 +7,7 @@ they do not indicate whether a change has been released.
 
 ## Compatibility changes
 
+- `sleipnir acp serve` exposes Sleipnir as an Agent Client Protocol v1 agent. A client can create sessions, choose the model, permission mode, team size and effort, stream messages and tool calls as `session/update` notifications, cancel a turn, and list, load or resume persisted sessions. A turn is a child `sleipnir run --json --delegated` under the server's own roots, mode ceiling, allow rules and job limit; client MCP servers are passed through a private `--mcp-config` file. Provider prompt bytes do not change.
 - A deep scan or review checks **seams**: the edges mappers record between
   code of two shards are grouped by the pair of shards into audit targets
   (`scan seams`, `scan seam`), and the hunt is not complete until each seam

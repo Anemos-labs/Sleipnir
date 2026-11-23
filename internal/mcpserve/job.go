@@ -140,6 +140,14 @@ func readLine(br *bufio.Reader, max int) ([]byte, error) {
 	}
 }
 
+// ReadLine returns the next line without its newline from br, consuming and
+// dropping a line longer than max. It is the exported form of readLine so
+// other stdio servers can apply the same bound to their input.
+func ReadLine(br *bufio.Reader, max int) ([]byte, error) { return readLine(br, max) }
+
+// Environ returns the environment a child run inherits.
+func Environ() []string { return environ() }
+
 // streamEvent is the part of a `sleipnir run --json` event the digest reads.
 type streamEvent struct {
 	Type     string          `json:"type"`
