@@ -710,7 +710,9 @@ func TestMakeRoomReservesASlotForANewSession(t *testing.T) {
 				sess := newSession(s, dir, dir, "", "")
 				sess.ID = fmt.Sprintf("acp_old_%03d", i)
 				sess.Title = fmt.Sprintf("old %d", i)
+				s.sessions[sess.ID] = sess
 				sess.save()
+				delete(s.sessions, sess.ID)
 				if i == 0 {
 					keepID, keepSess = sess.ID, sess
 				}
@@ -718,6 +720,7 @@ func TestMakeRoomReservesASlotForANewSession(t *testing.T) {
 			if attached == 1 {
 				s.sessions[keepID] = keepSess
 			}
+			_ = keepSess
 			if err := s.makeRoom(); err != nil {
 				t.Fatalf("makeRoom: %v", err)
 			}
@@ -784,5 +787,61 @@ func TestRetiredSessionRefusesANewTurn(t *testing.T) {
 	}
 	if sess.isActive() {
 		t.Fatal("a retired session reports an active turn")
+	}
+}
+
+func TestConcurrentSessionCreationReservesOneSlot(t *testing.T) {
+	s, dir := testServer(t, "ok", nil)
+	// 255 attached sessions; one slot is free.
+	for i := 0; i < maxSessions-1; i++ {
+		sess := newSession(s, dir, dir, "", "")
+		sess.ID = fmt.Sprintf("acp_seed_%03d", i)
+		s.sessions[sess.ID] = sess
+		sess.save()
+	}
+	s.outMu.Lock()
+	s.out = json.NewEncoder(io.Discard)
+	s.outMu.Unlock()
+	params, _ := json.Marshal(map[string]any{"cwd": dir})
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.newSession(&message{ID: json.RawMessage(`1`), Method: "session/new", Params: params})
+		}()
+	}
+	wg.Wait()
+	s.mu.Lock()
+	count := len(s.sessions)
+	s.mu.Unlock()
+	if count != maxSessions {
+		t.Fatalf("%d sessions attached, want %d (one creation must be refused)", count, maxSessions)
+	}
+	recs, err := s.records()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recs) > maxSessions {
+		t.Fatalf("%d persisted records, want at most %d", len(recs), maxSessions)
+	}
+}
+
+func TestStaleSaveCannotOverwriteReplacement(t *testing.T) {
+	s, dir := testServer(t, "ok", nil)
+	old := newSession(s, dir, dir, "", "")
+	old.Title = "stale"
+	replacement := newSession(s, dir, dir, "", "")
+	replacement.ID = old.ID
+	replacement.Title = "current"
+	s.sessions[replacement.ID] = replacement
+	replacement.save()
+	old.save() // a retired object must not commit its older snapshot
+	rec, err := s.readRecord(old.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Title != "current" {
+		t.Fatalf("record title = %q, want current", rec.Title)
 	}
 }

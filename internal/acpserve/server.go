@@ -132,6 +132,7 @@ type Server struct {
 	out   *json.Encoder
 
 	mu          sync.Mutex
+	createMu    sync.Mutex // serializes capacity check through session installation
 	initialized bool
 	closing     bool
 	caps        capabilities
@@ -457,6 +458,11 @@ func parseSetup(m *message) (setupParams, error) {
 
 // newSession creates a session, stores it and returns its setup state.
 func (s *Server) newSession(m *message) {
+	// Capacity is decided against the attached set and the record count; keep
+	// that decision, the installation and the first save in one critical
+	// section so two concurrent creators cannot both take the last slot.
+	s.createMu.Lock()
+	defer s.createMu.Unlock()
 	p, err := parseSetup(m)
 	if err != nil {
 		s.reply(m.ID, nil, fail(codeInvalidParams, "invalid session/new params: %v", err))
@@ -550,14 +556,18 @@ func (s *Server) closeSession(m *message) {
 	}
 	s.mu.Lock()
 	sess := s.sessions[p.SessionID]
-	delete(s.sessions, p.SessionID)
 	s.mu.Unlock()
 	if sess != nil {
 		if j := sess.cancelJob(); j != nil {
 			<-j.done
 		}
 		s.discardMCP(sess)
-		sess.save()
+		sess.save() // while still attached, so the final state is committed
+		s.mu.Lock()
+		if s.sessions[p.SessionID] == sess {
+			delete(s.sessions, p.SessionID)
+		}
+		s.mu.Unlock()
 	}
 	// Closing an unknown session succeeds, as ACP requires.
 	s.reply(m.ID, map[string]any{}, nil)

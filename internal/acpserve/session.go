@@ -248,6 +248,14 @@ func (s *Server) recordPath(id string) string {
 
 // save writes a session's record atomically.
 func (s *Server) save(sess *Session) {
+	// Hold the server lock through the commit so a load/resume cannot swap in
+	// a replacement between the attachment check and the rename. A retired
+	// session's snapshot must never overwrite its replacement's record.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.sessions[sess.ID] != sess {
+		return
+	}
 	rec := sess.record()
 	b, err := json.MarshalIndent(rec, "", "  ")
 	if err != nil {
