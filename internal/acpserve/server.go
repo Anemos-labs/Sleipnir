@@ -131,16 +131,17 @@ type Server struct {
 	outMu sync.Mutex
 	out   *json.Encoder
 
-	mu          sync.Mutex
-	createMu    sync.Mutex // serializes capacity check through session installation
-	afterRead   func()     // test hook: pauses a load after reading its record
-	afterLookup func()     // test hook: pauses a prompt between lookup and admission
-	stateMu     sync.Mutex // serializes per-id state changes with load/resume swaps
-	initialized bool
-	closing     bool
-	caps        capabilities
-	sessions    map[string]*Session
-	order       []string
+	mu               sync.Mutex
+	createMu         sync.Mutex // serializes capacity check through session installation
+	afterRead        func()     // test hook: pauses a load after reading its record
+	afterLookup      func()     // test hook: pauses a prompt between lookup and admission
+	afterCloseRetire func()     // test hook: pauses close after retirement, before cancel
+	stateMu          sync.Mutex // serializes per-id state changes with load/resume swaps
+	initialized      bool
+	closing          bool
+	caps             capabilities
+	sessions         map[string]*Session
+	order            []string
 }
 
 // ModeOptions returns the permission modes this server may use, from strictest
@@ -598,6 +599,9 @@ func (s *Server) closeSession(m *message) {
 		// Refuse new turns before cancelling the old one: without this,
 		// a prompt arriving during cleanup could attach an unowned child.
 		sess.retire()
+		if s.afterCloseRetire != nil {
+			s.afterCloseRetire()
+		}
 		if j := sess.cancelJob(); j != nil {
 			<-j.done
 		}

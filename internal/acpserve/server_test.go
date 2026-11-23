@@ -1144,3 +1144,41 @@ func TestLoadBlocksAdmissionWhileReplacingASession(t *testing.T) {
 		t.Fatalf("the prompt launched a child during replacement: %v", err)
 	}
 }
+
+func TestCloseBlocksAdmissionBeforeCancelling(t *testing.T) {
+	s, dir := testServer(t, "ok", nil)
+	out := &lockedBuffer{}
+	s.outMu.Lock()
+	s.out = json.NewEncoder(out)
+	s.outMu.Unlock()
+	newParams, _ := json.Marshal(map[string]any{"cwd": dir})
+	s.newSession(&message{ID: json.RawMessage(`1`), Method: "session/new", Params: newParams})
+	var created map[string]any
+	if err := json.Unmarshal([]byte(out.lines()[0]), &created); err != nil {
+		t.Fatal(err)
+	}
+	id := created["result"].(map[string]any)["sessionId"].(string)
+	argv := filepath.Join(dir, "argv-during-close.txt")
+	setFakeEnv(s, "ACPSERVE_FAKE_ARGV", argv)
+	var refused map[string]any
+	s.afterCloseRetire = func() {
+		promptParams, _ := json.Marshal(map[string]any{
+			"sessionId": id, "prompt": []any{map[string]any{"type": "text", "text": "work"}},
+		})
+		s.prompt(context.Background(), &message{ID: json.RawMessage(`3`), Method: "session/prompt", Params: promptParams})
+		for _, line := range out.lines() {
+			var m map[string]any
+			if json.Unmarshal([]byte(line), &m) == nil && m["id"] == float64(3) {
+				refused = m
+			}
+		}
+	}
+	params, _ := json.Marshal(map[string]any{"sessionId": id})
+	s.closeSession(&message{ID: json.RawMessage(`2`), Method: "session/close", Params: params})
+	if refused == nil || refused["error"] == nil {
+		t.Fatalf("a prompt was admitted after close retired the session: %v", refused)
+	}
+	if _, err := os.Stat(argv); !os.IsNotExist(err) {
+		t.Fatalf("the prompt launched a child during close: %v", err)
+	}
+}
