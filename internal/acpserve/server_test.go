@@ -1162,7 +1162,7 @@ func TestLoadBlocksAdmissionWhileReplacingASession(t *testing.T) {
 }
 
 func TestCloseBlocksAdmissionBeforeCancelling(t *testing.T) {
-	s, dir := testServer(t, "ok", nil)
+	s, dir := testServer(t, "slow", nil)
 	out := &lockedBuffer{}
 	s.outMu.Lock()
 	s.out = json.NewEncoder(out)
@@ -1176,21 +1176,54 @@ func TestCloseBlocksAdmissionBeforeCancelling(t *testing.T) {
 	id := created["result"].(map[string]any)["sessionId"].(string)
 	argv := filepath.Join(dir, "argv-during-close.txt")
 	setFakeEnv(s, "ACPSERVE_FAKE_ARGV", argv)
+	firstPrompt, _ := json.Marshal(map[string]any{
+		"sessionId": id, "prompt": []any{map[string]any{"type": "text", "text": "work"}},
+	})
+	promptDone := make(chan struct{})
+	go func() {
+		defer close(promptDone)
+		s.prompt(context.Background(), &message{ID: json.RawMessage(`3`), Method: "session/prompt", Params: firstPrompt})
+	}()
+	limit := time.After(10 * time.Second)
+	var activeJob *Job
+	for {
+		s.mu.Lock()
+		sess := s.sessions[id]
+		s.mu.Unlock()
+		if sess != nil {
+			sess.mu.Lock()
+			activeJob = sess.active
+			sess.mu.Unlock()
+			if activeJob != nil {
+				break
+			}
+		}
+		select {
+		case <-limit:
+			t.Fatal("the first prompt never became active")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
 	var refused map[string]any
 	s.afterCloseRetire = func() {
+		if activeJob.isCancelled() {
+			t.Error("cancellation happened before the admission check")
+		}
 		promptParams, _ := json.Marshal(map[string]any{
-			"sessionId": id, "prompt": []any{map[string]any{"type": "text", "text": "work"}},
+			"sessionId": id, "prompt": []any{map[string]any{"type": "text", "text": "second"}},
 		})
-		s.prompt(context.Background(), &message{ID: json.RawMessage(`3`), Method: "session/prompt", Params: promptParams})
+		s.prompt(context.Background(), &message{ID: json.RawMessage(`4`), Method: "session/prompt", Params: promptParams})
 		for _, line := range out.lines() {
 			var m map[string]any
-			if json.Unmarshal([]byte(line), &m) == nil && m["id"] == float64(3) {
+			if json.Unmarshal([]byte(line), &m) == nil && m["id"] == float64(4) {
 				refused = m
 			}
 		}
 	}
+	_ = os.Remove(argv) // the first run wrote it; only a new child should recreate it
 	params, _ := json.Marshal(map[string]any{"sessionId": id})
 	s.closeSession(&message{ID: json.RawMessage(`2`), Method: "session/close", Params: params})
+	waitSignal(t, promptDone, "first prompt completion")
 	if refused == nil || refused["error"] == nil {
 		t.Fatalf("a prompt was admitted after close retired the session: %v", refused)
 	}

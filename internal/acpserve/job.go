@@ -427,6 +427,13 @@ func (j *Job) stopReasonFor(stop string) string {
 	}
 }
 
+// isCancelled reports whether cancellation has already been signalled.
+func (j *Job) isCancelled() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.cancelled
+}
+
 // stopReasonValue returns the ACP stop reason settled by finish.
 func (j *Job) stopReasonValue() string {
 	j.mu.Lock()
