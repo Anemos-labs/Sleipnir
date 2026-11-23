@@ -229,7 +229,12 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 		for {
 			line, err := mcpserve.ReadLine(br, maxRequestBytes)
 			if len(line) > 0 {
-				lines <- line
+				select {
+				case lines <- line:
+				case <-ctx.Done():
+					readErr <- ctx.Err()
+					return
+				}
 			}
 			if err != nil {
 				if errors.Is(err, io.EOF) {
@@ -494,13 +499,15 @@ func (s *Server) openSession(m *message, replay bool) {
 	}
 	sess := sessionFromRecord(s, rec, dir, mcpFile)
 	s.mu.Lock()
-	if old := s.sessions[sess.ID]; old != nil {
+	old := s.sessions[sess.ID]
+	s.sessions[sess.ID] = sess
+	s.mu.Unlock()
+	if old != nil {
 		if j := old.cancelJob(); j != nil {
 			<-j.done
 		}
+		s.discardMCP(old)
 	}
-	s.sessions[sess.ID] = sess
-	s.mu.Unlock()
 	if replay {
 		for _, update := range rec.Replay {
 			s.notify(sess.ID, update)
