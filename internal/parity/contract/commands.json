@@ -11,14 +11,6 @@
     {
       "item": "web",
       "reason": "sleipnir web serves the page itself: the runner refuses it with a 403 tty_only (a nested server) and the page is its output"
-    },
-    {
-      "item": "acp",
-      "reason": "an ACP agent is a stdio server launched by an external client, not a command the page can start; it is configured where the client launches it"
-    },
-    {
-      "item": "acp serve",
-      "reason": "an ACP agent is a stdio server launched by an external client, not a command the page can start; it is configured where the client launches it"
     }
   ]
 }

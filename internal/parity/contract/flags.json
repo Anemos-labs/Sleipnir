@@ -11,38 +11,6 @@
     {
       "item": "chat --training-logs",
       "reason": "a recording setting for training data, not a choice made per session: the page's sessions take it from the server, `sleipnir web --training-logs`"
-    },
-    {
-      "item": "acp serve --allow",
-      "reason": "an ACP agent is a stdio server launched by an external client; the page cannot host its connection, so its limits are set in the client's launch command"
-    },
-    {
-      "item": "acp serve --cwd",
-      "reason": "an ACP agent is a stdio server launched by an external client; the page cannot host its connection, so its limits are set in the client's launch command"
-    },
-    {
-      "item": "acp serve --max-jobs",
-      "reason": "an ACP agent is a stdio server launched by an external client; the page cannot host its connection, so its limits are set in the client's launch command"
-    },
-    {
-      "item": "acp serve --mode",
-      "reason": "an ACP agent is a stdio server launched by an external client; the page cannot host its connection, so its limits are set in the client's launch command"
-    },
-    {
-      "item": "acp serve --model",
-      "reason": "an ACP agent is a stdio server launched by an external client; the page cannot host its connection, so its limits are set in the client's launch command"
-    },
-    {
-      "item": "acp serve --no-mcp",
-      "reason": "an ACP agent is a stdio server launched by an external client; the page cannot host its connection, so its limits are set in the client's launch command"
-    },
-    {
-      "item": "acp serve --root",
-      "reason": "an ACP agent is a stdio server launched by an external client; the page cannot host its connection, so its limits are set in the client's launch command"
-    },
-    {
-      "item": "acp serve --trust-project",
-      "reason": "an ACP agent is a stdio server launched by an external client; the page cannot host its connection, so its limits are set in the client's launch command"
     }
   ],
   "gaps": []
