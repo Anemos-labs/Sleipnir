@@ -2,14 +2,17 @@ package acpserve
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -61,6 +64,17 @@ func fakeRun(kind string) {
 		emit(map[string]any{"type": "tool_end", "agent": "main", "id": "t9", "name": "bash", "output": "hi"})
 		emit(map[string]any{"type": "response", "agent": "main", "usage": map[string]any{"input_tokens": 10}, "stop": "end_turn"})
 		emit(map[string]any{"type": "result", "text": "done", "session": "sess-tool", "stop": "end_turn"})
+	case "graceful":
+		// A cancelled child that still writes its final result: a load must
+		// read the record only after that result has been saved.
+		if path := os.Getenv("ACPSERVE_FAKE_READY"); path != "" {
+			_ = os.WriteFile(path, []byte("ready"), 0o600)
+		}
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGTERM)
+		<-sig
+		emit(map[string]any{"type": "text", "agent": "main", "text": "finishing"})
+		emit(map[string]any{"type": "result", "text": "done", "session": "sess-graceful", "stop": "end_turn"})
 	case "slow":
 		emit(map[string]any{"type": "text", "agent": "main", "text": "working"})
 		time.Sleep(time.Minute)
@@ -790,6 +804,25 @@ func TestRetiredSessionRefusesANewTurn(t *testing.T) {
 	}
 }
 
+// lockedBuffer collects replies written concurrently by request handlers.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (w *lockedBuffer) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.b.Write(p)
+}
+
+// lines returns a snapshot of the JSON-RPC replies written so far.
+func (w *lockedBuffer) lines() []string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return strings.Split(strings.TrimSpace(w.b.String()), "\n")
+}
+
 func TestConcurrentSessionCreationReservesOneSlot(t *testing.T) {
 	s, dir := testServer(t, "ok", nil)
 	// 255 attached sessions; one slot is free.
@@ -799,24 +832,46 @@ func TestConcurrentSessionCreationReservesOneSlot(t *testing.T) {
 		s.sessions[sess.ID] = sess
 		sess.save()
 	}
+	out := &lockedBuffer{}
 	s.outMu.Lock()
-	s.out = json.NewEncoder(io.Discard)
+	s.out = json.NewEncoder(out)
 	s.outMu.Unlock()
 	params, _ := json.Marshal(map[string]any{"cwd": dir})
+	start := make(chan struct{})
 	var wg sync.WaitGroup
-	for i := 0; i < 2; i++ {
+	for i := 1; i <= 2; i++ {
 		wg.Add(1)
-		go func() {
+		go func(id int) {
 			defer wg.Done()
-			s.newSession(&message{ID: json.RawMessage(`1`), Method: "session/new", Params: params})
-		}()
+			<-start // both creators cross the capacity check together
+			s.newSession(&message{
+				ID:     json.RawMessage(fmt.Sprintf(`%d`, id)),
+				Method: "session/new", Params: params,
+			})
+		}(i)
 	}
+	close(start)
 	wg.Wait()
+	ok, refused := 0, 0
+	for _, line := range out.lines() {
+		var reply map[string]any
+		if err := json.Unmarshal([]byte(line), &reply); err != nil {
+			t.Fatalf("not a reply: %q", line)
+		}
+		if reply["error"] != nil {
+			refused++
+		} else if reply["result"] != nil {
+			ok++
+		}
+	}
+	if ok != 1 || refused != 1 {
+		t.Fatalf("replies: %d success, %d refused; want one of each: %v", ok, refused, out.lines())
+	}
 	s.mu.Lock()
 	count := len(s.sessions)
 	s.mu.Unlock()
 	if count != maxSessions {
-		t.Fatalf("%d sessions attached, want %d (one creation must be refused)", count, maxSessions)
+		t.Fatalf("%d sessions attached, want %d", count, maxSessions)
 	}
 	recs, err := s.records()
 	if err != nil {
@@ -843,5 +898,60 @@ func TestStaleSaveCannotOverwriteReplacement(t *testing.T) {
 	}
 	if rec.Title != "current" {
 		t.Fatalf("record title = %q, want current", rec.Title)
+	}
+}
+
+func TestLoadReadsTheFinalStateOfACancelledTurn(t *testing.T) {
+	s, dir := testServer(t, "graceful", nil)
+	ready := filepath.Join(dir, "ready.txt")
+	setFakeEnv(s, "ACPSERVE_FAKE_READY", ready)
+	out := &lockedBuffer{}
+	s.outMu.Lock()
+	s.out = json.NewEncoder(out)
+	s.outMu.Unlock()
+	newParams, _ := json.Marshal(map[string]any{"cwd": dir, "mcpServers": []any{}})
+	s.newSession(&message{ID: json.RawMessage(`1`), Method: "session/new", Params: newParams})
+	var created map[string]any
+	if err := json.Unmarshal([]byte(out.lines()[0]), &created); err != nil {
+		t.Fatal(err)
+	}
+	result, _ := created["result"].(map[string]any)
+	id, _ := result["sessionId"].(string)
+	if id == "" {
+		t.Fatalf("no session id: %v", created)
+	}
+	promptParams, _ := json.Marshal(map[string]any{
+		"sessionId": id,
+		"prompt":    []any{map[string]any{"type": "text", "text": "work"}},
+	})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.prompt(context.Background(), &message{ID: json.RawMessage(`2`), Method: "session/prompt", Params: promptParams})
+	}()
+	limit := time.After(10 * time.Second)
+	for {
+		if _, err := os.Stat(ready); err == nil {
+			break
+		}
+		select {
+		case <-limit:
+			t.Fatal("the run never became ready")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	params, _ := json.Marshal(map[string]any{"sessionId": id, "cwd": dir, "mcpServers": []any{}})
+	s.openSession(&message{ID: json.RawMessage(`99`), Method: "session/resume", Params: params}, false)
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the cancelled prompt did not end")
+	}
+	rec, err := s.readRecord(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.ResumeID != "sess-graceful" {
+		t.Fatalf("resume id = %q, want sess-graceful: the load read before the turn's final save", rec.ResumeID)
 	}
 }

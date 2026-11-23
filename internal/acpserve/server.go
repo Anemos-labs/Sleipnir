@@ -133,6 +133,7 @@ type Server struct {
 
 	mu          sync.Mutex
 	createMu    sync.Mutex // serializes capacity check through session installation
+	stateMu     sync.Mutex // serializes per-id state changes with load/resume swaps
 	initialized bool
 	closing     bool
 	caps        capabilities
@@ -503,6 +504,20 @@ func (s *Server) openSession(m *message, replay bool) {
 		s.reply(m.ID, nil, fail(codeInvalidParams, "sessionId is required"))
 		return
 	}
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	// Settle the attached turn before reading the record: its final save holds
+	// the resume id and replay the replacement must start from. Option changes
+	// take the same lock, so none can land between the read and the swap.
+	s.mu.Lock()
+	attached := s.sessions[p.SessionID]
+	s.mu.Unlock()
+	if attached != nil {
+		if j := attached.cancelJob(); j != nil {
+			<-j.done
+		}
+		attached.save()
+	}
 	rec, err := s.readRecord(p.SessionID)
 	if err != nil {
 		s.reply(m.ID, nil, fail(codeNotFound, "unknown session %s", p.SessionID))
@@ -532,9 +547,6 @@ func (s *Server) openSession(m *message, replay bool) {
 	s.mu.Unlock()
 	if old != nil {
 		old.retire()
-		if j := old.cancelJob(); j != nil {
-			<-j.done
-		}
 		s.discardMCP(old)
 	}
 	if replay {
@@ -554,6 +566,8 @@ func (s *Server) closeSession(m *message) {
 		s.reply(m.ID, nil, fail(codeInvalidParams, "%v", err))
 		return
 	}
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
 	s.mu.Lock()
 	sess := s.sessions[p.SessionID]
 	s.mu.Unlock()
@@ -631,6 +645,8 @@ func (s *Server) setConfigOption(m *message) {
 		s.reply(m.ID, nil, fail(codeInvalidParams, "%v", err))
 		return
 	}
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
 	s.mu.Lock()
 	sess := s.sessions[p.SessionID]
 	s.mu.Unlock()
@@ -656,6 +672,8 @@ func (s *Server) setMode(m *message) {
 		s.reply(m.ID, nil, fail(codeInvalidParams, "%v", err))
 		return
 	}
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
 	s.mu.Lock()
 	sess := s.sessions[p.SessionID]
 	s.mu.Unlock()
