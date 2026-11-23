@@ -27,6 +27,9 @@ func (s *Server) prompt(ctx context.Context, m *message) {
 		s.reply(m.ID, nil, fail(codeNotFound, "unknown session %s", p.SessionID))
 		return
 	}
+	if s.afterLookup != nil {
+		s.afterLookup()
+	}
 	goal, err := promptText(p.Prompt)
 	if err != nil {
 		s.reply(m.ID, nil, fail(codeInvalidParams, "%v", err))

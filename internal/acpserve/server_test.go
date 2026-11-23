@@ -1033,3 +1033,55 @@ func TestCloseRefusesTurnsDuringCleanup(t *testing.T) {
 		t.Fatal("a closed session admitted a turn")
 	}
 }
+
+func TestPromptRejectsASessionReplacedDuringAdmission(t *testing.T) {
+	s, dir := testServer(t, "ok", nil)
+	out := &lockedBuffer{}
+	s.outMu.Lock()
+	s.out = json.NewEncoder(out)
+	s.outMu.Unlock()
+	newParams, _ := json.Marshal(map[string]any{"cwd": dir})
+	s.newSession(&message{ID: json.RawMessage(`1`), Method: "session/new", Params: newParams})
+	var created map[string]any
+	if err := json.Unmarshal([]byte(out.lines()[0]), &created); err != nil {
+		t.Fatal(err)
+	}
+	id := created["result"].(map[string]any)["sessionId"].(string)
+	argv := filepath.Join(dir, "argv.txt")
+	setFakeEnv(s, "ACPSERVE_FAKE_ARGV", argv)
+	entered, release := make(chan struct{}), make(chan struct{})
+	s.afterLookup = func() {
+		close(entered)
+		<-release
+	}
+	promptParams, _ := json.Marshal(map[string]any{
+		"sessionId": id, "prompt": []any{map[string]any{"type": "text", "text": "work"}},
+	})
+	promptDone := make(chan struct{})
+	go func() {
+		defer close(promptDone)
+		s.prompt(context.Background(), &message{ID: json.RawMessage(`3`), Method: "session/prompt", Params: promptParams})
+	}()
+	<-entered
+	loadParams, _ := json.Marshal(map[string]any{"sessionId": id, "cwd": dir, "mcpServers": []any{}})
+	s.openSession(&message{ID: json.RawMessage(`2`), Method: "session/resume", Params: loadParams}, false)
+	close(release)
+	select {
+	case <-promptDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the rejected prompt did not return")
+	}
+	var reply map[string]any
+	for _, line := range out.lines() {
+		var m map[string]any
+		if json.Unmarshal([]byte(line), &m) == nil && m["id"] == float64(3) {
+			reply = m
+		}
+	}
+	if reply == nil || reply["error"] == nil {
+		t.Fatalf("the stale prompt was not refused: %v", out.lines())
+	}
+	if _, err := os.Stat(argv); !os.IsNotExist(err) {
+		t.Fatalf("the stale prompt launched a child (argv file %v): %v", argv, err)
+	}
+}

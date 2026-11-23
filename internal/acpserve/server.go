@@ -134,6 +134,7 @@ type Server struct {
 	mu          sync.Mutex
 	createMu    sync.Mutex // serializes capacity check through session installation
 	afterRead   func()     // test hook: pauses a load after reading its record
+	afterLookup func()     // test hook: pauses a prompt between lookup and admission
 	stateMu     sync.Mutex // serializes per-id state changes with load/resume swaps
 	initialized bool
 	closing     bool
