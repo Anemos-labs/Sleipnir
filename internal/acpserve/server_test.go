@@ -1203,6 +1203,8 @@ func TestLoadKeepsDetachedRecordAtCapacityBoundary(t *testing.T) {
 	delete(s.sessions, detached.ID)
 
 	entered, release := make(chan struct{}), make(chan struct{})
+	creatorEntered := make(chan struct{})
+	s.beforeCreate = func() { close(creatorEntered) }
 	s.afterRead = func() {
 		close(entered)
 		<-release
@@ -1220,6 +1222,11 @@ func TestLoadKeepsDetachedRecordAtCapacityBoundary(t *testing.T) {
 		params, _ := json.Marshal(map[string]any{"cwd": dir})
 		s.newSession(&message{ID: json.RawMessage(`2`), Method: "session/new", Params: params})
 	}()
+	<-creatorEntered // the creator has reached newSession while the load is paused
+	if s.createMu.TryLock() {
+		s.createMu.Unlock()
+		t.Fatal("the load did not hold createMu across its record read")
+	}
 	close(release)
 	select {
 	case <-loadDone:

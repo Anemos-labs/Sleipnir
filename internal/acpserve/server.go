@@ -136,6 +136,7 @@ type Server struct {
 	afterRead        func()     // test hook: pauses a load after reading its record
 	afterLookup      func()     // test hook: pauses a prompt between lookup and admission
 	afterCloseRetire func()     // test hook: pauses close after retirement, before cancel
+	beforeCreate     func()     // test hook: signals a creator has entered newSession
 	stateMu          sync.Mutex // serializes per-id state changes with load/resume swaps
 	initialized      bool
 	closing          bool
@@ -462,6 +463,9 @@ func parseSetup(m *message) (setupParams, error) {
 
 // newSession creates a session, stores it and returns its setup state.
 func (s *Server) newSession(m *message) {
+	if s.beforeCreate != nil {
+		s.beforeCreate()
+	}
 	// Capacity is decided against the attached set and the record count; keep
 	// that decision, the installation and the first save in one critical
 	// section so two concurrent creators cannot both take the last slot.
