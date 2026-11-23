@@ -616,12 +616,16 @@ func TestLoadUsesTheRequestedDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, _ := filepath.EvalSymlinks(other)
-	if real, err := filepath.EvalSymlinks(strings.TrimSpace(string(got))); err == nil {
-		want = real
+	want, err := filepath.EvalSymlinks(other)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.EqualFold(strings.TrimSpace(string(got)), want) {
-		t.Fatalf("turn ran in %q, want %q", got, want)
+	observed, err := filepath.EvalSymlinks(strings.TrimSpace(string(got)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.EqualFold(observed, want) {
+		t.Fatalf("turn ran in %q, want %q", observed, want)
 	}
 }
 
@@ -687,6 +691,59 @@ func TestRootsAreNormalizedBeforeChecks(t *testing.T) {
 			res := resultOf(t, c.call("session/new", map[string]any{"cwd": tc.cwd}))
 			if res["sessionId"] == "" {
 				t.Fatal(res)
+			}
+		})
+	}
+}
+
+func TestMakeRoomReservesASlotForANewSession(t *testing.T) {
+	for _, attached := range []int{0, 1} {
+		name := "all_closed"
+		if attached == 1 {
+			name = "one_attached"
+		}
+		t.Run(name, func(t *testing.T) {
+			s, dir := testServer(t, "ok", nil)
+			keepID := ""
+			var keepSess *Session
+			for i := 0; i < maxSessions; i++ {
+				sess := newSession(s, dir, dir, "", "")
+				sess.ID = fmt.Sprintf("acp_old_%03d", i)
+				sess.Title = fmt.Sprintf("old %d", i)
+				sess.save()
+				if i == 0 {
+					keepID, keepSess = sess.ID, sess
+				}
+			}
+			if attached == 1 {
+				s.sessions[keepID] = keepSess
+			}
+			if err := s.makeRoom(); err != nil {
+				t.Fatalf("makeRoom: %v", err)
+			}
+			recs, err := s.records()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := len(recs); got > maxSessions-1 {
+				t.Fatalf("%d records kept, want at most %d", got, maxSessions-1)
+			}
+			found := false
+			for _, rec := range recs {
+				if rec.ID == keepID {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("the retained session %s was removed", keepID)
+			}
+			// A new session can now be created on the same connection.
+			c, closeFn := connect(t, s)
+			defer closeFn()
+			c.call("initialize", map[string]any{"protocolVersion": 1})
+			res := resultOf(t, c.call("session/new", map[string]any{"cwd": dir}))
+			if res["sessionId"] == "" {
+				t.Fatalf("session/new refused after %d records: %v", maxSessions, res)
 			}
 		})
 	}

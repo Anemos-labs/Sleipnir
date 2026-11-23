@@ -296,7 +296,7 @@ func (s *Server) shutdown() {
 			<-j.done
 		}
 		s.discardMCP(sess)
-		s.save(sess)
+		sess.save()
 	}
 }
 
@@ -481,7 +481,7 @@ func (s *Server) newSession(m *message) {
 	s.sessions[sess.ID] = sess
 	s.order = append(s.order, sess.ID)
 	s.mu.Unlock()
-	s.save(sess)
+	sess.save()
 	s.reply(m.ID, sess.setupResult(), nil)
 }
 
@@ -557,7 +557,7 @@ func (s *Server) closeSession(m *message) {
 			<-j.done
 		}
 		s.discardMCP(sess)
-		s.save(sess)
+		sess.save()
 	}
 	// Closing an unknown session succeeds, as ACP requires.
 	s.reply(m.ID, map[string]any{}, nil)
@@ -632,7 +632,7 @@ func (s *Server) setConfigOption(m *message) {
 		s.reply(m.ID, nil, fail(codeInvalidParams, "unknown option or value %s=%q", p.ConfigID, p.Value))
 		return
 	}
-	s.save(sess)
+	sess.save()
 	s.reply(m.ID, map[string]any{"configOptions": sess.configOptions()}, nil)
 }
 
@@ -657,7 +657,7 @@ func (s *Server) setMode(m *message) {
 		s.reply(m.ID, nil, fail(codeInvalidParams, "unknown mode %q", p.ModeID))
 		return
 	}
-	s.save(sess)
+	sess.save()
 	s.notify(p.SessionID, map[string]any{"sessionUpdate": "current_mode_update", "currentModeId": p.ModeID})
 	s.reply(m.ID, map[string]any{}, nil)
 }
@@ -677,7 +677,7 @@ func decodeParams(m *message, v any) error {
 // them; their records are not deleted from under them.
 func (s *Server) makeRoom() error {
 	recs, err := s.records()
-	if err != nil || len(recs) < maxSessions {
+	if err != nil {
 		return nil
 	}
 	s.mu.Lock()
@@ -686,16 +686,33 @@ func (s *Server) makeRoom() error {
 		attached[id] = true
 	}
 	s.mu.Unlock()
-	kept := make([]*sessionRecord, 0, maxSessions)
+	// Attached sessions come first: they stay live until their client closes
+	// them. Then keep the newest unattached records, leaving one slot for the
+	// session this call is about to create.
+	keep := map[string]bool{}
+	used := 0
 	for _, rec := range recs {
-		if len(kept) < maxSessions || attached[rec.ID] {
-			kept = append(kept, rec)
-			continue
+		if attached[rec.ID] {
+			keep[rec.ID] = true
+			used++
 		}
-		_ = os.Remove(s.recordPath(rec.ID))
 	}
-	if len(kept) >= maxSessions {
-		return fmt.Errorf("%d sessions are kept; close one before starting another", maxSessions)
+	if used >= maxSessions {
+		return fmt.Errorf("%d sessions are attached; close one before starting another", maxSessions)
+	}
+	for _, rec := range recs {
+		if used >= maxSessions-1 {
+			break
+		}
+		if !attached[rec.ID] {
+			keep[rec.ID] = true
+			used++
+		}
+	}
+	for _, rec := range recs {
+		if !keep[rec.ID] {
+			_ = os.Remove(s.recordPath(rec.ID))
+		}
 	}
 	return nil
 }
