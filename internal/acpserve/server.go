@@ -492,6 +492,12 @@ func (s *Server) newSession(m *message) {
 	}
 	sess := newSession(s, dir, p.Cwd, mcpFile, systemText(p.SystemPrompt))
 	s.mu.Lock()
+	if s.closing {
+		s.mu.Unlock()
+		removeMCPFile(mcpFile)
+		s.reply(m.ID, nil, fail(codeInvalidRequest, "the connection is closing"))
+		return
+	}
 	s.sessions[sess.ID] = sess
 	s.order = append(s.order, sess.ID)
 	s.mu.Unlock()

@@ -1417,3 +1417,47 @@ func TestCloseRemovesTheMCPConfigAfterDetaching(t *testing.T) {
 		t.Fatalf("the MCP config survived close: %v", err)
 	}
 }
+
+func TestNewSessionDuringShutdownIsRefused(t *testing.T) {
+	s, dir := testServer(t, "ok", nil)
+	out := &lockedBuffer{}
+	s.outMu.Lock()
+	s.out = json.NewEncoder(out)
+	s.outMu.Unlock()
+	s.mu.Lock()
+	s.closing = true
+	s.mu.Unlock()
+	before, err := os.ReadDir(s.stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	params, _ := json.Marshal(map[string]any{
+		"cwd": dir,
+		"mcpServers": []any{
+			map[string]any{"name": "tools", "command": "/bin/echo", "args": []any{"stdio"}},
+		},
+	})
+	s.newSession(&message{ID: json.RawMessage(`1`), Method: "session/new", Params: params})
+	var reply map[string]any
+	for _, line := range out.lines() {
+		if json.Unmarshal([]byte(line), &reply) == nil && reply["id"] == float64(1) {
+			break
+		}
+	}
+	if reply == nil || reply["error"] == nil {
+		t.Fatalf("a session was created while shutting down: %v", out.lines())
+	}
+	after, err := os.ReadDir(s.stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != len(before) {
+		t.Fatalf("shutdown refusal left %d files, want %d", len(after), len(before))
+	}
+	s.mu.Lock()
+	count := len(s.sessions)
+	s.mu.Unlock()
+	if count != 0 {
+		t.Fatalf("%d sessions attached after a refused creation", count)
+	}
+}
