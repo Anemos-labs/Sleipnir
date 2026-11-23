@@ -123,11 +123,19 @@ func (s *Session) setActive(j *Job) bool {
 	return true
 }
 
-// retire marks a replaced session so an in-flight prompt cannot attach a new
-// turn after its MCP config and map entry have been removed.
+// retire marks a replaced or closing session so an in-flight prompt cannot
+// attach a new turn after its MCP config and map entry have been removed.
 func (s *Session) retire() {
 	s.mu.Lock()
 	s.retired = true
+	s.mu.Unlock()
+}
+
+// unretire restores admission when a load fails before it installs a
+// replacement. A prompt refused during the failed load can be retried.
+func (s *Session) unretire() {
+	s.mu.Lock()
+	s.retired = false
 	s.mu.Unlock()
 }
 

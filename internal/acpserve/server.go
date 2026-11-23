@@ -520,6 +520,10 @@ func (s *Server) openSession(m *message, replay bool) {
 	attached := s.sessions[p.SessionID]
 	s.mu.Unlock()
 	if attached != nil {
+		// Refuse new turns before cancelling, and keep them refused until the
+		// replacement is installed. A prompt admitted in that window would be
+		// unowned after the swap.
+		attached.retire()
 		if j := attached.cancelJob(); j != nil {
 			<-j.done
 		}
@@ -527,6 +531,9 @@ func (s *Server) openSession(m *message, replay bool) {
 	}
 	rec, err := s.readRecord(p.SessionID)
 	if err != nil {
+		if attached != nil {
+			attached.unretire()
+		}
 		s.reply(m.ID, nil, fail(codeNotFound, "unknown session %s", p.SessionID))
 		return
 	}
@@ -537,6 +544,9 @@ func (s *Server) openSession(m *message, replay bool) {
 	if p.Cwd != "" {
 		dir, err = s.mcpCfg.ResolveDir(p.Cwd, false)
 		if err != nil {
+			if attached != nil {
+				attached.unretire()
+			}
 			s.reply(m.ID, nil, fail(codeInvalidParams, "%v", err))
 			return
 		}
@@ -547,6 +557,9 @@ func (s *Server) openSession(m *message, replay bool) {
 	}
 	mcpFile, err := writeMCPConfig(s, p.MCPServers)
 	if err != nil {
+		if attached != nil {
+			attached.unretire()
+		}
 		s.reply(m.ID, nil, fail(codeInvalidParams, "mcpServers: %v", err))
 		return
 	}

@@ -67,12 +67,14 @@ func fakeRun(kind string) {
 		emit(map[string]any{"type": "result", "text": "done", "session": "sess-tool", "stop": "end_turn"})
 	case "graceful":
 		// A cancelled child that still writes its final result: a load must
-		// read the record only after that result has been saved.
+		// read the record only after that result has been saved. Register the
+		// handler before announcing readiness so a fast cancel cannot kill us
+		// while the default SIGTERM behaviour is still in force.
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGTERM)
 		if path := os.Getenv("ACPSERVE_FAKE_READY"); path != "" {
 			_ = os.WriteFile(path, []byte("ready"), 0o600)
 		}
-		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, syscall.SIGTERM)
 		<-sig
 		emit(map[string]any{"type": "text", "agent": "main", "text": "finishing"})
 		emit(map[string]any{"type": "result", "text": "done", "session": "sess-graceful", "stop": "end_turn"})
@@ -1087,5 +1089,58 @@ func TestPromptRejectsASessionReplacedDuringAdmission(t *testing.T) {
 	}
 	if _, err := os.Stat(argv); !os.IsNotExist(err) {
 		t.Fatalf("the stale prompt launched a child (argv file %v): %v", argv, err)
+	}
+}
+
+func TestLoadBlocksAdmissionWhileReplacingASession(t *testing.T) {
+	s, dir := testServer(t, "ok", nil)
+	out := &lockedBuffer{}
+	s.outMu.Lock()
+	s.out = json.NewEncoder(out)
+	s.outMu.Unlock()
+	newParams, _ := json.Marshal(map[string]any{"cwd": dir})
+	s.newSession(&message{ID: json.RawMessage(`1`), Method: "session/new", Params: newParams})
+	var created map[string]any
+	if err := json.Unmarshal([]byte(out.lines()[0]), &created); err != nil {
+		t.Fatal(err)
+	}
+	id := created["result"].(map[string]any)["sessionId"].(string)
+	argv := filepath.Join(dir, "argv-during-load.txt")
+	setFakeEnv(s, "ACPSERVE_FAKE_ARGV", argv)
+	var refused map[string]any
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	s.afterRead = func() {
+		close(entered)
+		<-release
+		promptParams, _ := json.Marshal(map[string]any{
+			"sessionId": id, "prompt": []any{map[string]any{"type": "text", "text": "work"}},
+		})
+		s.prompt(context.Background(), &message{ID: json.RawMessage(`3`), Method: "session/prompt", Params: promptParams})
+		for _, line := range out.lines() {
+			var m map[string]any
+			if json.Unmarshal([]byte(line), &m) == nil && m["id"] == float64(3) {
+				refused = m
+			}
+		}
+	}
+	loadParams, _ := json.Marshal(map[string]any{"sessionId": id, "cwd": dir, "mcpServers": []any{}})
+	loadDone := make(chan struct{})
+	go func() {
+		defer close(loadDone)
+		s.openSession(&message{ID: json.RawMessage(`2`), Method: "session/resume", Params: loadParams}, false)
+	}()
+	<-entered
+	close(release)
+	select {
+	case <-loadDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("load did not finish")
+	}
+	if refused == nil || refused["error"] == nil {
+		t.Fatalf("a prompt was admitted while the session was being replaced: %v", refused)
+	}
+	if _, err := os.Stat(argv); !os.IsNotExist(err) {
+		t.Fatalf("the prompt launched a child during replacement: %v", err)
 	}
 }
