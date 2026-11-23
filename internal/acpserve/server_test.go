@@ -1182,3 +1182,73 @@ func TestCloseBlocksAdmissionBeforeCancelling(t *testing.T) {
 		t.Fatalf("the prompt launched a child during close: %v", err)
 	}
 }
+
+func TestLoadKeepsDetachedRecordAtCapacityBoundary(t *testing.T) {
+	s, dir := testServer(t, "ok", nil)
+	out := &lockedBuffer{}
+	s.outMu.Lock()
+	s.out = json.NewEncoder(out)
+	s.outMu.Unlock()
+	// 255 attached sessions plus one detached record fill the directory.
+	for i := 0; i < maxSessions-1; i++ {
+		sess := newSession(s, dir, dir, "", "")
+		sess.ID = fmt.Sprintf("acp_seed_%03d", i)
+		s.sessions[sess.ID] = sess
+		sess.save()
+	}
+	detached := newSession(s, dir, dir, "", "")
+	detached.ID = "acp_detached_boundary"
+	s.sessions[detached.ID] = detached
+	detached.save()
+	delete(s.sessions, detached.ID)
+
+	entered, release := make(chan struct{}), make(chan struct{})
+	s.afterRead = func() {
+		close(entered)
+		<-release
+	}
+	loadParams, _ := json.Marshal(map[string]any{"sessionId": detached.ID, "cwd": dir, "mcpServers": []any{}})
+	loadDone := make(chan struct{})
+	go func() {
+		defer close(loadDone)
+		s.openSession(&message{ID: json.RawMessage(`1`), Method: "session/load", Params: loadParams}, false)
+	}()
+	<-entered
+	newDone := make(chan struct{})
+	go func() {
+		defer close(newDone)
+		params, _ := json.Marshal(map[string]any{"cwd": dir})
+		s.newSession(&message{ID: json.RawMessage(`2`), Method: "session/new", Params: params})
+	}()
+	close(release)
+	select {
+	case <-loadDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("load did not finish")
+	}
+	select {
+	case <-newDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("session/new did not finish")
+	}
+	refused := false
+	for _, line := range out.lines() {
+		var reply map[string]any
+		if json.Unmarshal([]byte(line), &reply) == nil && reply["id"] == float64(2) {
+			refused = reply["error"] != nil
+		}
+	}
+	if !refused {
+		t.Fatal("session/new was admitted at the capacity boundary")
+	}
+	s.mu.Lock()
+	count := len(s.sessions)
+	_, attachedB := s.sessions[detached.ID]
+	s.mu.Unlock()
+	if count != maxSessions || !attachedB {
+		t.Fatalf("attached %d sessions, loaded record attached = %v; want %d and true", count, attachedB, maxSessions)
+	}
+	if _, err := s.readRecord(detached.ID); err != nil {
+		t.Fatalf("the loaded record was evicted at the boundary: %v", err)
+	}
+}
