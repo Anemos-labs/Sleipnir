@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -902,6 +903,9 @@ func TestStaleSaveCannotOverwriteReplacement(t *testing.T) {
 }
 
 func TestLoadReadsTheFinalStateOfACancelledTurn(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows cannot deliver SIGTERM to the child; the harness falls back to a kill, so there is no final result to observe")
+	}
 	s, dir := testServer(t, "graceful", nil)
 	ready := filepath.Join(dir, "ready.txt")
 	setFakeEnv(s, "ACPSERVE_FAKE_READY", ready)

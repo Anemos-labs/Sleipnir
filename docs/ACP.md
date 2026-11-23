@@ -29,7 +29,7 @@ methods it can support:
 | `session/resume` | Restores a session without replaying its history. |
 | `session/close` | Cancels the session's turn and frees its resources. Closing an unknown session succeeds. |
 | `session/prompt` | Starts a turn, streams updates, and answers with a `stopReason`. One session runs one turn at a time. |
-| `session/cancel` | Sends SIGTERM to the run, as Ctrl-C ends `sleipnir run`, and kills it if it is still there after a grace period. An isolated team's verified work is applied before the child exits. |
+| `session/cancel` | Sends SIGTERM to the run, as Ctrl-C ends `sleipnir run`, and kills it if it is still there after a grace period. On systems without POSIX signals the child is killed; an isolated team's verified work is applied before the child exits. |
 | `session/set_config_option` | Changes the model, permission mode, team size or reasoning level for later turns. Returns the full option list. |
 | `session/set_mode` | Changes the legacy mode selector and sends `current_mode_update`. |
 
