@@ -1018,3 +1018,18 @@ func TestLoadIsSerializedWithCapacityReservation(t *testing.T) {
 		t.Fatalf("the loaded record was evicted: %v", err)
 	}
 }
+
+func TestCloseRefusesTurnsDuringCleanup(t *testing.T) {
+	s, dir := testServer(t, "ok", nil)
+	out := &lockedBuffer{}
+	s.outMu.Lock()
+	s.out = json.NewEncoder(out)
+	s.outMu.Unlock()
+	sess := newSession(s, dir, dir, "", "")
+	s.sessions[sess.ID] = sess
+	params, _ := json.Marshal(map[string]any{"sessionId": sess.ID})
+	s.closeSession(&message{ID: json.RawMessage(`1`), Method: "session/close", Params: params})
+	if sess.setActive(&Job{sess: sess, srv: s, done: make(chan struct{})}) {
+		t.Fatal("a closed session admitted a turn")
+	}
+}

@@ -581,6 +581,9 @@ func (s *Server) closeSession(m *message) {
 	sess := s.sessions[p.SessionID]
 	s.mu.Unlock()
 	if sess != nil {
+		// Refuse new turns before cancelling the old one: without this,
+		// a prompt arriving during cleanup could attach an unowned child.
+		sess.retire()
 		if j := sess.cancelJob(); j != nil {
 			<-j.done
 		}
