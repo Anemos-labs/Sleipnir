@@ -186,6 +186,22 @@ func waitSignal(t *testing.T, ch <-chan struct{}, what string) {
 	}
 }
 
+// waitFile waits for a file a child is expected to write, with a hang guard.
+func waitFile(t *testing.T, path, what string) {
+	t.Helper()
+	limit := time.After(10 * time.Second)
+	for {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		select {
+		case <-limit:
+			t.Fatalf("timed out waiting for %s", what)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
 // resultOf returns a response's result or fails.
 func resultOf(t *testing.T, m map[string]any) map[string]any {
 	t.Helper()
@@ -1220,7 +1236,8 @@ func TestCloseBlocksAdmissionBeforeCancelling(t *testing.T) {
 			}
 		}
 	}
-	_ = os.Remove(argv) // the first run wrote it; only a new child should recreate it
+	waitFile(t, argv, "the first child's argv file")
+	_ = os.Remove(argv) // only a new child should recreate it
 	params, _ := json.Marshal(map[string]any{"sessionId": id})
 	s.closeSession(&message{ID: json.RawMessage(`2`), Method: "session/close", Params: params})
 	waitSignal(t, promptDone, "first prompt completion")
