@@ -36,6 +36,11 @@ func (s *Server) prompt(ctx context.Context, m *message) {
 		goal = "System instructions from the client:\n" + text + "\n\nGoal:\n" + goal
 	}
 	s.mu.Lock()
+	if s.closing || s.sessions[p.SessionID] != sess {
+		s.mu.Unlock()
+		s.reply(m.ID, nil, fail(codeInvalidParams, "session %s is no longer available", p.SessionID))
+		return
+	}
 	running := 0
 	for _, other := range s.sessions {
 		if other.isActive() {
@@ -47,7 +52,10 @@ func (s *Server) prompt(ctx context.Context, m *message) {
 		s.reply(m.ID, nil, fail(codeInvalidParams, "%d turns are running, the most this server runs at once", running))
 		return
 	}
-	j := &Job{sess: sess, srv: s, goal: goal, done: make(chan struct{}), state: turnRunning}
+	j := &Job{
+		sess: sess, srv: s, goal: goal, done: make(chan struct{}), state: turnRunning,
+		gen: map[string]int{}, tools: map[string]string{}, streamed: map[string]bool{},
+	}
 	args, dir, err := j.runArgs(sess, goal, sess.resumeID())
 	if err != nil {
 		s.mu.Unlock()
@@ -100,15 +108,24 @@ func (s *Session) isActive() bool {
 	return s.active != nil
 }
 
-// setActive installs j as the session's turn unless one is already running.
+// setActive installs j as the session's turn unless one is already running
+// or the session was retired by a load/resume.
 func (s *Session) setActive(j *Job) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.active != nil {
+	if s.active != nil || s.retired {
 		return false
 	}
 	s.active = j
 	return true
+}
+
+// retire marks a replaced session so an in-flight prompt cannot attach a new
+// turn after its MCP config and map entry have been removed.
+func (s *Session) retire() {
+	s.mu.Lock()
+	s.retired = true
+	s.mu.Unlock()
 }
 
 // clearActive removes j if it is still the session's turn.

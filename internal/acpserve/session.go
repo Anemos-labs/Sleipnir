@@ -49,10 +49,13 @@ type Session struct {
 	ResumeID     string
 	UpdatedAt    time.Time
 
-	mu     sync.Mutex
-	values map[string]string
-	replay []map[string]any
-	active *Job
+	mu      sync.Mutex
+	values  map[string]string
+	replay  []map[string]any
+	active  *Job
+	retired bool // replaced by a load/resume; no new turn may be admitted
+
+	saveMu sync.Mutex // serializes snapshot and file commit for this session
 }
 
 // sessionRecord is the on-disk form of a Session.
@@ -62,6 +65,7 @@ type sessionRecord struct {
 	Dir       string            `json:"dir"`
 	Title     string            `json:"title"`
 	ResumeID  string            `json:"resume_id,omitempty"`
+	System    string            `json:"system_prompt,omitempty"`
 	Values    map[string]string `json:"values"`
 	UpdatedAt time.Time         `json:"updated_at"`
 	Replay    []map[string]any  `json:"replay,omitempty"`
@@ -93,7 +97,8 @@ func sessionFromRecord(s *Server, rec *sessionRecord, dir, mcpFile string) *Sess
 	return &Session{
 		srv: s, ID: rec.ID, Cwd: rec.Cwd, Dir: dir, MCPFile: mcpFile,
 		Title: rec.Title, ResumeID: rec.ResumeID, UpdatedAt: rec.UpdatedAt,
-		values: values, replay: rec.Replay,
+		SystemPrompt: rec.System,
+		values:       values, replay: rec.Replay,
 	}
 }
 
@@ -189,11 +194,12 @@ func (s *Session) modes() map[string]any {
 	return map[string]any{"currentModeId": s.value("mode"), "availableModes": available}
 }
 
-// cancelJob cancels the session's active turn, if any.
+// cancelJob signals the session's active turn, if any. The turn stays active
+// until its own completion path settles it, so another prompt cannot start
+// while its child is still emitting updates or saving its result.
 func (s *Session) cancelJob() *Job {
 	s.mu.Lock()
 	j := s.active
-	s.active = nil
 	s.mu.Unlock()
 	if j != nil {
 		j.cancel()
@@ -223,12 +229,17 @@ func (s *Session) record() sessionRecord {
 	replay := append([]map[string]any(nil), s.replay...)
 	return sessionRecord{
 		ID: s.ID, Cwd: s.Cwd, Dir: s.Dir, Title: s.Title, ResumeID: s.ResumeID,
-		Values: values, UpdatedAt: s.UpdatedAt, Replay: replay,
+		System: s.SystemPrompt, Values: values, UpdatedAt: s.UpdatedAt, Replay: replay,
 	}
 }
 
-// save persists this session's metadata and replay.
-func (s *Session) save() { s.srv.save(s) }
+// save persists this session's metadata and replay. The per-session lock keeps
+// an older snapshot from being committed after a newer one.
+func (s *Session) save() {
+	s.saveMu.Lock()
+	defer s.saveMu.Unlock()
+	s.srv.save(s)
+}
 
 // recordPath is the file of a session's persisted state.
 func (s *Server) recordPath(id string) string {

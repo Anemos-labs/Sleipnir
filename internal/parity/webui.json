@@ -3488,7 +3488,7 @@
     "modeWith": {}
    },
    "acp serve": {
-    "mode": "server",
+    "mode": "tty_only",
     "positionals": [],
     "flags": [
      "allow",
@@ -3500,11 +3500,7 @@
      "root",
      "trust-project"
     ],
-    "modeWith": {
-     "allow": "priv",
-     "trust-project": "priv",
-     "mode": "priv"
-    }
+    "modeWith": {}
    },
    "trust": {
     "mode": "run",

@@ -422,7 +422,7 @@ var modes = map[string]modeOf{
 	"trust forget":    {mode: ModePriv, why: "it forgets a trust decision: it asks for a confirmation first"},
 	"mcp":             {mode: ModeRun}, "mcp list": {mode: ModeRun},
 	"acp":         {mode: ModeRun},
-	"acp serve":   {mode: ModeServer, why: "a stdio server: it runs until its client disconnects"},
+	"acp serve":   {mode: ModeTTYOnly, why: "an ACP agent needs its client's stdio: configure it in the client that launches it"},
 	"mcp approve": {mode: ModePriv, why: "it lets a project's tool server start: it asks for a confirmation first (--yes is implied)"},
 	"mcp revoke":  {mode: ModePriv, why: "it forgets an approval: it asks for a confirmation first"},
 	"mcp test":    {mode: ModeNet},

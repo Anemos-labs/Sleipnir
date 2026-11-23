@@ -57,6 +57,11 @@ func (r *Runs) Plan(_ context.Context, path []string, pos map[string]string, fla
 		// web is in the spec as a refusal; it is checked by name too so that no spec can make the page start another server
 		return nil, &wire.Error{Status: http.StatusForbidden, Code: "tty_only", Msg: "you are in it: sleipnir web serves this page"}
 	}
+	if strings.Join(path, " ") == "acp serve" {
+		// The runner gives a child no stdin, and an ACP agent reads its client's
+		// requests from stdin; a launched process would exit at once.
+		return nil, &wire.Error{Status: http.StatusForbidden, Code: "tty_only", Msg: "an ACP agent needs its client's stdio: configure `sleipnir acp serve` in the client that launches it"}
+	}
 	c, ok := clispec.Lookup(path)
 	if !ok {
 		return nil, &wire.Error{Status: http.StatusNotFound, Code: "unknown_command", Msg: "sleipnir has no command " + quoteShort(strings.Join(path, " "))}

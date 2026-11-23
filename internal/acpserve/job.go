@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -81,8 +82,17 @@ type Job struct {
 	stderr     tailBuffer
 }
 
-// start launches the run and its reader goroutine.
+// start launches the run and its reader goroutine. A cancellation that
+// arrives before the launch settles the turn without starting a child.
 func (j *Job) start() error {
+	j.mu.Lock()
+	cancelled := j.cancelled
+	j.mu.Unlock()
+	if cancelled {
+		j.finish(nil)
+		close(j.done)
+		return nil
+	}
 	cmd := exec.Command(j.srv.cfg.Exe, j.args...)
 	cmd.Dir = j.dir
 	cmd.Env = j.srv.cfg.Env
@@ -108,8 +118,14 @@ func (j *Job) start() error {
 	if started != nil {
 		started(nil)
 	}
+	j.mu.Lock()
 	j.cmd = cmd
 	j.state = turnRunning
+	cancelled = j.cancelled
+	j.mu.Unlock()
+	if cancelled {
+		j.terminate(cmd)
+	}
 	go func() {
 		j.read(stdout)
 		werr := cmd.Wait()
@@ -119,7 +135,9 @@ func (j *Job) start() error {
 	return nil
 }
 
-// cancel asks the run to end, as Ctrl-C ends `sleipnir run`. It is idempotent.
+// cancel asks the run to end as Ctrl-C ends `sleipnir run`: SIGTERM first, on
+// systems without signals a kill, and a kill after the grace period. It is
+// idempotent and is safe before the child has started.
 func (j *Job) cancel() {
 	j.mu.Lock()
 	if j.cancelled || j.state != turnRunning {
@@ -127,18 +145,27 @@ func (j *Job) cancel() {
 		return
 	}
 	j.cancelled = true
+	cmd := j.cmd
 	j.mu.Unlock()
-	if j.cmd == nil || j.cmd.Process == nil {
-		return
+	if cmd != nil && cmd.Process != nil {
+		j.terminate(cmd)
 	}
-	_ = j.cmd.Process.Kill()
+}
+
+// terminate signals a started child and kills it if it is still there after
+// killAfter, leaving an isolated team's verified work time to land.
+func (j *Job) terminate(cmd *exec.Cmd) {
+	p := cmd.Process
+	if err := p.Signal(syscall.SIGTERM); err != nil {
+		_ = p.Kill()
+	}
 	go func() {
 		t := time.NewTimer(killAfter)
 		defer t.Stop()
 		select {
 		case <-j.done:
 		case <-t.C:
-			_ = j.cmd.Process.Kill()
+			_ = p.Kill()
 		}
 	}()
 }
@@ -343,19 +370,23 @@ func (j *Job) finish(err error) {
 	default:
 		j.state, j.stopReason = turnDone, j.stopReasonFor(j.stopOf(j.result))
 	}
-	stop := j.stopReason
+	stop, failed := j.stopReason, j.state == turnFailed
 	j.mu.Unlock()
-	if err != nil && j.exitErr == "" {
+	if err != nil && j.exitError() == "" {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
+			j.mu.Lock()
 			j.exitErr = fmt.Sprintf("exit status %d", ee.ExitCode())
+			j.mu.Unlock()
 		}
 	}
-	if stop != "cancelled" && (j.state == turnFailed || j.exitErr != "") {
+	if stop != "cancelled" && (failed || j.exitError() != "") {
 		var detail string
 		if resErr := j.resultError(); resErr != "" {
 			detail = resErr
-		} else if j.exitError() != "" {
+		} else if stderr := strings.TrimSpace(j.stderr.String()); stderr != "" {
+			detail = stderr
+		} else {
 			detail = j.exitError()
 		}
 		if detail != "" {
@@ -367,6 +398,7 @@ func (j *Job) finish(err error) {
 		}
 	}
 	j.sess.save()
+	j.sess.clearActive(j)
 }
 
 // stopOf returns the run's own stop reason.

@@ -35,6 +35,11 @@ func fakeRun(kind string) {
 	if path := os.Getenv("ACPSERVE_FAKE_GOAL"); path != "" {
 		_ = os.WriteFile(path, goal, 0o600)
 	}
+	if path := os.Getenv("ACPSERVE_FAKE_CWD"); path != "" {
+		if here, err := os.Getwd(); err == nil {
+			_ = os.WriteFile(path, []byte(here), 0o600)
+		}
+	}
 	enc := json.NewEncoder(os.Stdout)
 	emit := func(m map[string]any) { _ = enc.Encode(m) }
 	switch kind {
@@ -49,6 +54,13 @@ func fakeRun(kind string) {
 	case "fail":
 		fmt.Fprintln(os.Stderr, "sleipnir: no model configured")
 		os.Exit(2)
+	case "toolonly":
+		// A response and a tool call before any text: message counters must
+		// still be initialized.
+		emit(map[string]any{"type": "tool_start", "agent": "main", "id": "t9", "name": "bash", "input": map[string]any{"command": "echo hi"}})
+		emit(map[string]any{"type": "tool_end", "agent": "main", "id": "t9", "name": "bash", "output": "hi"})
+		emit(map[string]any{"type": "response", "agent": "main", "usage": map[string]any{"input_tokens": 10}, "stop": "end_turn"})
+		emit(map[string]any{"type": "result", "text": "done", "session": "sess-tool", "stop": "end_turn"})
 	case "slow":
 		emit(map[string]any{"type": "text", "agent": "main", "text": "working"})
 		time.Sleep(time.Minute)
@@ -492,5 +504,190 @@ func TestFailedRunReportsRefusalAndStderr(t *testing.T) {
 	}
 	if !has(c.kinds(), "agent_message_chunk") {
 		t.Fatalf("failure not reported: %v", c.kinds())
+	}
+}
+
+func TestTwoPromptsOnOneSession(t *testing.T) {
+	s, dir := testServer(t, "ok", nil)
+	c, closeFn := connect(t, s)
+	defer closeFn()
+	id := setup(t, c, dir)
+	for i := 0; i < 2; i++ {
+		res := resultOf(t, c.call("session/prompt", map[string]any{
+			"sessionId": id, "prompt": []any{map[string]any{"type": "text", "text": "again"}},
+		}))
+		if res["stopReason"] != "end_turn" {
+			t.Fatalf("prompt %d: stopReason = %v", i+1, res["stopReason"])
+		}
+	}
+}
+
+func TestResponseOnlyAndResetFirstStreamsDoNotPanic(t *testing.T) {
+	s, dir := testServer(t, "toolonly", nil)
+	c, closeFn := connect(t, s)
+	defer closeFn()
+	id := setup(t, c, dir)
+	c.updates = nil
+	res := resultOf(t, c.call("session/prompt", map[string]any{
+		"sessionId": id, "prompt": []any{map[string]any{"type": "text", "text": "tools first"}},
+	}))
+	if res["stopReason"] != "end_turn" {
+		t.Fatalf("stopReason = %v", res["stopReason"])
+	}
+	if !has(c.kinds(), "tool_call") || !has(c.kinds(), "tool_call_update") {
+		t.Fatalf("tool updates missing: %v", c.kinds())
+	}
+}
+
+func TestCancelBeforeStartSettlesWithoutLaunching(t *testing.T) {
+	s, dir := testServer(t, "ok", nil)
+	sess := newSession(s, dir, dir, "", "")
+	j := &Job{
+		sess: sess, srv: s, goal: "never started", done: make(chan struct{}), state: turnRunning,
+		gen: map[string]int{}, tools: map[string]string{}, streamed: map[string]bool{},
+	}
+	j.cancel()
+	if err := j.start(); err != nil {
+		t.Fatal(err)
+	}
+	<-j.done
+	if j.cmd != nil {
+		t.Fatal("a cancelled turn launched a child")
+	}
+	if got := j.stopReasonValue(); got != "cancelled" {
+		t.Fatalf("stopReason = %q, want cancelled", got)
+	}
+}
+
+func TestFailureUpdateIncludesStderrDiagnostic(t *testing.T) {
+	s, dir := testServer(t, "fail", nil)
+	c, closeFn := connect(t, s)
+	defer closeFn()
+	id := setup(t, c, dir)
+	c.updates = nil
+	c.call("session/prompt", map[string]any{"sessionId": id, "prompt": []any{map[string]any{"type": "text", "text": "go"}}})
+	var text string
+	for _, u := range c.updates {
+		content, _ := u["content"].(map[string]any)
+		if v, ok := content["text"].(string); ok && strings.Contains(v, "no model configured") {
+			text = v
+		}
+	}
+	if text == "" {
+		t.Fatalf("stderr diagnostic not reported: %v", c.updates)
+	}
+}
+
+func TestSystemPromptSurvivesLoad(t *testing.T) {
+	s, dir := testServer(t, "ok", nil)
+	c, closeFn := connect(t, s)
+	defer closeFn()
+	c.call("initialize", map[string]any{"protocolVersion": 1})
+	goalPath := filepath.Join(dir, "goal-load.txt")
+	setFakeEnv(s, "ACPSERVE_FAKE_GOAL", goalPath)
+	res := resultOf(t, c.call("session/new", map[string]any{
+		"cwd":          dir,
+		"systemPrompt": map[string]any{"mode": "append", "content": []any{map[string]any{"type": "text", "text": "Keep the rules."}}},
+	}))
+	id := res["sessionId"].(string)
+	c.call("session/prompt", map[string]any{"sessionId": id, "prompt": []any{map[string]any{"type": "text", "text": "first"}}})
+	c.call("session/load", map[string]any{"sessionId": id, "cwd": dir, "mcpServers": []any{}})
+	c.call("session/prompt", map[string]any{"sessionId": id, "prompt": []any{map[string]any{"type": "text", "text": "second"}}})
+	goal, _ := os.ReadFile(goalPath)
+	if !strings.Contains(string(goal), "Keep the rules.") {
+		t.Fatalf("system prompt lost after load: %s", goal)
+	}
+}
+
+func TestLoadUsesTheRequestedDirectory(t *testing.T) {
+	s, dir := testServer(t, "ok", nil)
+	c, closeFn := connect(t, s)
+	defer closeFn()
+	id := setup(t, c, dir)
+	other := filepath.Join(dir, "other")
+	if err := os.MkdirAll(other, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cwdPath := filepath.Join(dir, "cwd.txt")
+	setFakeEnv(s, "ACPSERVE_FAKE_CWD", cwdPath)
+	c.call("session/load", map[string]any{"sessionId": id, "cwd": other, "mcpServers": []any{}})
+	c.call("session/prompt", map[string]any{"sessionId": id, "prompt": []any{map[string]any{"type": "text", "text": "go"}}})
+	got, err := os.ReadFile(cwdPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := filepath.EvalSymlinks(other)
+	if real, err := filepath.EvalSymlinks(strings.TrimSpace(string(got))); err == nil {
+		want = real
+	}
+	if !strings.EqualFold(strings.TrimSpace(string(got)), want) {
+		t.Fatalf("turn ran in %q, want %q", got, want)
+	}
+}
+
+func TestRootsAreNormalizedBeforeChecks(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real")
+	if err := os.MkdirAll(real, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name string
+		root string
+		cwd  string
+		skip bool
+	}{
+		{name: "absolute", root: real, cwd: real},
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel, err := filepath.Rel(wd, real); err == nil && !filepath.IsAbs(rel) && !strings.HasPrefix(rel, "..") {
+		cases = append(cases, struct {
+			name string
+			root string
+			cwd  string
+			skip bool
+		}{name: "relative", root: rel, cwd: real})
+	}
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(real, link); err == nil {
+		cases = append(cases, struct {
+			name string
+			root string
+			cwd  string
+			skip bool
+		}{name: "symlink", root: link, cwd: link})
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			exe, err := os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+			home := filepath.Join(dir, tc.name, "home")
+			if err := os.MkdirAll(home, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			srv, err := New(Config{
+				Exe: exe, Roots: []string{tc.root}, Dir: tc.cwd, Version: "test",
+				Home: home, StateDir: filepath.Join(dir, tc.name, "state"),
+				Env: os.Environ(),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			c, closeFn := connect(t, srv)
+			defer closeFn()
+			init := resultOf(t, c.call("initialize", map[string]any{"protocolVersion": 1}))
+			if init["protocolVersion"] != float64(ProtocolVersion) {
+				t.Fatal(init)
+			}
+			res := resultOf(t, c.call("session/new", map[string]any{"cwd": tc.cwd}))
+			if res["sessionId"] == "" {
+				t.Fatal(res)
+			}
+		})
 	}
 }

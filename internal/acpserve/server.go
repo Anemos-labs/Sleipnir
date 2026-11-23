@@ -133,6 +133,7 @@ type Server struct {
 
 	mu          sync.Mutex
 	initialized bool
+	closing     bool
 	caps        capabilities
 	sessions    map[string]*Session
 	order       []string
@@ -169,9 +170,14 @@ func New(cfg Config) (*Server, error) {
 		Allow: cfg.Allow, TrustProject: cfg.TrustProject, MaxJobs: cfg.MaxJobs,
 		Version: cfg.Version, Env: cfg.Env, Prepare: cfg.Prepare,
 	}
-	if _, err := mcpserve.New(mcCfg); err != nil {
+	mc, err := mcpserve.New(mcCfg)
+	if err != nil {
 		return nil, fmt.Errorf("acp serve: %w", err)
 	}
+	// Keep the normalized roots and directory: a symlinked or relative root
+	// must be compared in the same canonical form as a resolved session cwd.
+	mcCfg = mc.Config()
+	cfg.Roots, cfg.Dir = mcCfg.Roots, mcCfg.Dir
 	if cfg.Version == "" {
 		cfg.Version = "dev"
 	}
@@ -222,6 +228,8 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	s.outMu.Lock()
 	s.out = json.NewEncoder(out)
 	s.outMu.Unlock()
+	handlerCtx, cancelHandlers := context.WithCancel(ctx)
+	defer cancelHandlers()
 	lines := make(chan []byte, 64)
 	readErr := make(chan error, 1)
 	go func() {
@@ -258,10 +266,17 @@ loop:
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				s.handle(ctx, line)
+				s.handle(handlerCtx, line)
 			}()
 		}
 	}
+	// Stop new turns before looking at the ones that already run: a handler
+	// that is between its lookup and setActive must not install a child after
+	// shutdown has taken its snapshot.
+	s.mu.Lock()
+	s.closing = true
+	s.mu.Unlock()
+	cancelHandlers()
 	s.shutdown()
 	wg.Wait()
 	return err
@@ -452,6 +467,10 @@ func (s *Server) newSession(m *message) {
 		s.reply(m.ID, nil, fail(codeInvalidParams, "%v", err))
 		return
 	}
+	if err := s.makeRoom(); err != nil {
+		s.reply(m.ID, nil, fail(codeInvalidParams, "%v", err))
+		return
+	}
 	mcpFile, err := writeMCPConfig(s, p.MCPServers)
 	if err != nil {
 		s.reply(m.ID, nil, fail(codeInvalidParams, "mcpServers: %v", err))
@@ -462,7 +481,6 @@ func (s *Server) newSession(m *message) {
 	s.sessions[sess.ID] = sess
 	s.order = append(s.order, sess.ID)
 	s.mu.Unlock()
-	s.trimSessions()
 	s.save(sess)
 	s.reply(m.ID, sess.setupResult(), nil)
 }
@@ -491,6 +509,10 @@ func (s *Server) openSession(m *message, replay bool) {
 			s.reply(m.ID, nil, fail(codeInvalidParams, "%v", err))
 			return
 		}
+		rec.Cwd = dir // subsequent turns start in the directory the client named
+	}
+	if system := systemText(p.SystemPrompt); system != "" {
+		rec.System = system
 	}
 	mcpFile, err := writeMCPConfig(s, p.MCPServers)
 	if err != nil {
@@ -503,6 +525,7 @@ func (s *Server) openSession(m *message, replay bool) {
 	s.sessions[sess.ID] = sess
 	s.mu.Unlock()
 	if old != nil {
+		old.retire()
 		if j := old.cancelJob(); j != nil {
 			<-j.done
 		}
@@ -648,18 +671,33 @@ func decodeParams(m *message, v any) error {
 	return json.Unmarshal(m.Params, v)
 }
 
-// trimSessions drops the oldest persisted records beyond maxSessions.
-func (s *Server) trimSessions() {
+// makeRoom removes the oldest persisted sessions that are not attached to
+// this connection, and refuses a new session when every retained record is
+// attached. Sessions on a connection stay live until their client closes
+// them; their records are not deleted from under them.
+func (s *Server) makeRoom() error {
 	recs, err := s.records()
-	if err != nil || len(recs) <= maxSessions {
-		return
+	if err != nil || len(recs) < maxSessions {
+		return nil
 	}
-	for _, rec := range recs[maxSessions:] {
-		if s.sessions[rec.ID] != nil {
+	s.mu.Lock()
+	attached := make(map[string]bool, len(s.sessions))
+	for id := range s.sessions {
+		attached[id] = true
+	}
+	s.mu.Unlock()
+	kept := make([]*sessionRecord, 0, maxSessions)
+	for _, rec := range recs {
+		if len(kept) < maxSessions || attached[rec.ID] {
+			kept = append(kept, rec)
 			continue
 		}
 		_ = os.Remove(s.recordPath(rec.ID))
 	}
+	if len(kept) >= maxSessions {
+		return fmt.Errorf("%d sessions are kept; close one before starting another", maxSessions)
+	}
+	return nil
 }
 
 // modelChoice is one model of the ACP "model" selector.

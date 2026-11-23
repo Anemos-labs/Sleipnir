@@ -29,7 +29,7 @@ methods it can support:
 | `session/resume` | Restores a session without replaying its history. |
 | `session/close` | Cancels the session's turn and frees its resources. Closing an unknown session succeeds. |
 | `session/prompt` | Starts a turn, streams updates, and answers with a `stopReason`. One session runs one turn at a time. |
-| `session/cancel` | Ends the turn as Ctrl-C ends `sleipnir run`. Work an isolated team verified is applied first. |
+| `session/cancel` | Sends SIGTERM to the run, as Ctrl-C ends `sleipnir run`, and kills it if it is still there after a grace period. An isolated team's verified work is applied before the child exits. |
 | `session/set_config_option` | Changes the model, permission mode, team size or reasoning level for later turns. Returns the full option list. |
 | `session/set_mode` | Changes the legacy mode selector and sends `current_mode_update`. |
 
@@ -129,7 +129,9 @@ subcommand. For example, a local ACP registry entry is:
 
 The exact settings shape belongs to the client. Keep roots and the mode ceiling
 in the command's flags so that every project the client opens stays inside the
-boundary the person chose.
+boundary the person chose. Sleipnir's own browser page lists the command but
+refuses to launch it: the page gives a child no standard input, while an ACP
+agent needs the standard input of the client that drives it.
 
 ## Limitations
 

@@ -78,6 +78,7 @@ func TestRunnerModes(t *testing.T) {
 		{[]string{"run"}, map[string]any{"mode": "plan"}, "net", ""},
 		{[]string{"schedule", "add"}, map[string]any{"cron": "@daily", "mode": "bypass"}, "", "dangerous_mode"},
 		{[]string{"web"}, nil, "", "tty_only"},
+		{[]string{"acp", "serve"}, nil, "", "tty_only"},
 		{[]string{"nonsense"}, nil, "", "unknown_command"},
 	} {
 		pos := map[string]string{}
