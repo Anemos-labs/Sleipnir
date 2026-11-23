@@ -137,6 +137,7 @@ type Server struct {
 	afterLookup      func()     // test hook: pauses a prompt between lookup and admission
 	afterCloseRetire func()     // test hook: pauses close after retirement, before cancel
 	beforeCreate     func()     // test hook: signals a creator has entered newSession
+	afterMCPStaged   func()     // test hook: pauses a creation after staging its MCP file
 	stateMu          sync.Mutex // serializes per-id state changes with load/resume swaps
 	initialized      bool
 	closing          bool
@@ -489,6 +490,9 @@ func (s *Server) newSession(m *message) {
 	if err != nil {
 		s.reply(m.ID, nil, fail(codeInvalidParams, "mcpServers: %v", err))
 		return
+	}
+	if s.afterMCPStaged != nil {
+		s.afterMCPStaged()
 	}
 	sess := newSession(s, dir, p.Cwd, mcpFile, systemText(p.SystemPrompt))
 	s.mu.Lock()

@@ -35,6 +35,9 @@ func fakeRun(kind string) {
 	goal, _ := io.ReadAll(os.Stdin)
 	if path := os.Getenv("ACPSERVE_FAKE_ARGV"); path != "" {
 		_ = os.WriteFile(path, []byte(strings.Join(os.Args[1:], "\n")), 0o600)
+		if done := os.Getenv("ACPSERVE_FAKE_ARGV_DONE"); done != "" {
+			_ = os.WriteFile(done, []byte("done"), 0o600) // closed only after the argv file is written
+		}
 	}
 	if path := os.Getenv("ACPSERVE_FAKE_GOAL"); path != "" {
 		_ = os.WriteFile(path, goal, 0o600)
@@ -1191,7 +1194,9 @@ func TestCloseBlocksAdmissionBeforeCancelling(t *testing.T) {
 	}
 	id := created["result"].(map[string]any)["sessionId"].(string)
 	argv := filepath.Join(dir, "argv-during-close.txt")
+	argvDone := filepath.Join(dir, "argv-during-close.done")
 	setFakeEnv(s, "ACPSERVE_FAKE_ARGV", argv)
+	setFakeEnv(s, "ACPSERVE_FAKE_ARGV_DONE", argvDone)
 	firstPrompt, _ := json.Marshal(map[string]any{
 		"sessionId": id, "prompt": []any{map[string]any{"type": "text", "text": "work"}},
 	})
@@ -1236,8 +1241,10 @@ func TestCloseBlocksAdmissionBeforeCancelling(t *testing.T) {
 			}
 		}
 	}
-	waitFile(t, argv, "the first child's argv file")
-	_ = os.Remove(argv) // only a new child should recreate it
+	waitFile(t, argvDone, "the first child's argv completion marker")
+	if err := os.Remove(argv); err != nil {
+		t.Fatalf("cannot clear the first child's argv marker: %v", err)
+	} // only a new child should recreate it
 	params, _ := json.Marshal(map[string]any{"sessionId": id})
 	s.closeSession(&message{ID: json.RawMessage(`2`), Method: "session/close", Params: params})
 	waitSignal(t, promptDone, "first prompt completion")
@@ -1459,5 +1466,55 @@ func TestNewSessionDuringShutdownIsRefused(t *testing.T) {
 	s.mu.Unlock()
 	if count != 0 {
 		t.Fatalf("%d sessions attached after a refused creation", count)
+	}
+}
+
+func TestNewSessionCrossingShutdownIsRefused(t *testing.T) {
+	s, dir := testServer(t, "ok", nil)
+	out := &lockedBuffer{}
+	s.outMu.Lock()
+	s.out = json.NewEncoder(out)
+	s.outMu.Unlock()
+	before, err := os.ReadDir(s.stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	staged, release := make(chan struct{}), make(chan struct{})
+	s.afterMCPStaged = func() {
+		close(staged)
+		<-release
+	}
+	params, _ := json.Marshal(map[string]any{
+		"cwd": dir,
+		"mcpServers": []any{
+			map[string]any{"name": "tools", "command": "/bin/echo", "args": []any{"stdio"}},
+		},
+	})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.newSession(&message{ID: json.RawMessage(`1`), Method: "session/new", Params: params})
+	}()
+	waitSignal(t, staged, "MCP staging")
+	s.mu.Lock()
+	s.closing = true // the connection begins shutting down while creation is in flight
+	s.mu.Unlock()
+	close(release)
+	waitSignal(t, done, "session/new completion")
+	var reply map[string]any
+	for _, line := range out.lines() {
+		if json.Unmarshal([]byte(line), &reply) == nil && reply["id"] == float64(1) {
+			break
+		}
+	}
+	if reply == nil || reply["error"] == nil {
+		t.Fatalf("an in-flight creation was admitted during shutdown: %v", out.lines())
+	}
+	after, err := os.ReadDir(s.stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != len(before) {
+		t.Fatalf("shutdown refusal left %d files, want %d", len(after), len(before))
 	}
 }
