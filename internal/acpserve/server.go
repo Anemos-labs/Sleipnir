@@ -518,7 +518,27 @@ func (s *Server) openSession(m *message, replay bool) {
 	defer s.createMu.Unlock()
 	s.stateMu.Lock()
 	defer s.stateMu.Unlock()
-	// Settle the attached turn before reading the record: its final save holds
+	// Validate the request before touching the attached turn: a bad cwd or
+	// MCP definition must not cancel a live session.
+	existing, err := s.readRecord(p.SessionID)
+	if err != nil {
+		s.reply(m.ID, nil, fail(codeNotFound, "unknown session %s", p.SessionID))
+		return
+	}
+	dir := existing.Dir
+	if p.Cwd != "" {
+		dir, err = s.mcpCfg.ResolveDir(p.Cwd, false)
+		if err != nil {
+			s.reply(m.ID, nil, fail(codeInvalidParams, "%v", err))
+			return
+		}
+	}
+	mcpFile, err := writeMCPConfig(s, p.MCPServers)
+	if err != nil {
+		s.reply(m.ID, nil, fail(codeInvalidParams, "mcpServers: %v", err))
+		return
+	}
+	// Settle the attached turn before reading the final record: its save holds
 	// the resume id and replay the replacement must start from. Option changes
 	// take the same lock, so none can land between the read and the swap.
 	s.mu.Lock()
@@ -536,6 +556,7 @@ func (s *Server) openSession(m *message, replay bool) {
 	}
 	rec, err := s.readRecord(p.SessionID)
 	if err != nil {
+		removeMCPFile(mcpFile)
 		if attached != nil {
 			attached.unretire()
 		}
@@ -545,28 +566,11 @@ func (s *Server) openSession(m *message, replay bool) {
 	if s.afterRead != nil {
 		s.afterRead()
 	}
-	dir := rec.Dir
 	if p.Cwd != "" {
-		dir, err = s.mcpCfg.ResolveDir(p.Cwd, false)
-		if err != nil {
-			if attached != nil {
-				attached.unretire()
-			}
-			s.reply(m.ID, nil, fail(codeInvalidParams, "%v", err))
-			return
-		}
 		rec.Cwd = dir // subsequent turns start in the directory the client named
 	}
 	if system := systemText(p.SystemPrompt); system != "" {
 		rec.System = system
-	}
-	mcpFile, err := writeMCPConfig(s, p.MCPServers)
-	if err != nil {
-		if attached != nil {
-			attached.unretire()
-		}
-		s.reply(m.ID, nil, fail(codeInvalidParams, "mcpServers: %v", err))
-		return
 	}
 	sess := sessionFromRecord(s, rec, dir, mcpFile)
 	s.mu.Lock()

@@ -176,6 +176,16 @@ func (c *acpClient) notify(method string, params any) {
 	}
 }
 
+// waitSignal waits for a test hook with a hang guard, not a timing assertion.
+func waitSignal(t *testing.T, ch <-chan struct{}, what string) {
+	t.Helper()
+	select {
+	case <-ch:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("timed out waiting for %s", what)
+	}
+}
+
 // resultOf returns a response's result or fails.
 func resultOf(t *testing.T, m map[string]any) map[string]any {
 	t.Helper()
@@ -995,7 +1005,7 @@ func TestLoadIsSerializedWithCapacityReservation(t *testing.T) {
 		defer close(loadDone)
 		s.openSession(&message{ID: json.RawMessage(`1`), Method: "session/load", Params: loadParams}, false)
 	}()
-	<-entered // the load has read B but has not attached it yet
+	waitSignal(t, entered, "entered") // the load has read B but has not attached it yet
 	newDone := make(chan struct{})
 	go func() {
 		defer close(newDone)
@@ -1068,7 +1078,7 @@ func TestPromptRejectsASessionReplacedDuringAdmission(t *testing.T) {
 		defer close(promptDone)
 		s.prompt(context.Background(), &message{ID: json.RawMessage(`3`), Method: "session/prompt", Params: promptParams})
 	}()
-	<-entered
+	waitSignal(t, entered, "entered")
 	loadParams, _ := json.Marshal(map[string]any{"sessionId": id, "cwd": dir, "mcpServers": []any{}})
 	s.openSession(&message{ID: json.RawMessage(`2`), Method: "session/resume", Params: loadParams}, false)
 	close(release)
@@ -1130,7 +1140,7 @@ func TestLoadBlocksAdmissionWhileReplacingASession(t *testing.T) {
 		defer close(loadDone)
 		s.openSession(&message{ID: json.RawMessage(`2`), Method: "session/resume", Params: loadParams}, false)
 	}()
-	<-entered
+	waitSignal(t, entered, "entered")
 	close(release)
 	select {
 	case <-loadDone:
@@ -1215,14 +1225,14 @@ func TestLoadKeepsDetachedRecordAtCapacityBoundary(t *testing.T) {
 		defer close(loadDone)
 		s.openSession(&message{ID: json.RawMessage(`1`), Method: "session/load", Params: loadParams}, false)
 	}()
-	<-entered
+	waitSignal(t, entered, "entered")
 	newDone := make(chan struct{})
 	go func() {
 		defer close(newDone)
 		params, _ := json.Marshal(map[string]any{"cwd": dir})
 		s.newSession(&message{ID: json.RawMessage(`2`), Method: "session/new", Params: params})
 	}()
-	<-creatorEntered // the creator has reached newSession while the load is paused
+	waitSignal(t, creatorEntered, "creator entering newSession") // the creator has reached newSession while the load is paused
 	if s.createMu.TryLock() {
 		s.createMu.Unlock()
 		t.Fatal("the load did not hold createMu across its record read")
@@ -1258,4 +1268,64 @@ func TestLoadKeepsDetachedRecordAtCapacityBoundary(t *testing.T) {
 	if _, err := s.readRecord(detached.ID); err != nil {
 		t.Fatalf("the loaded record was evicted at the boundary: %v", err)
 	}
+}
+
+func TestInvalidLoadSetupDoesNotCancelTheActiveTurn(t *testing.T) {
+	s, dir := testServer(t, "slow", nil)
+	out := &lockedBuffer{}
+	s.outMu.Lock()
+	s.out = json.NewEncoder(out)
+	s.outMu.Unlock()
+	newParams, _ := json.Marshal(map[string]any{"cwd": dir})
+	s.newSession(&message{ID: json.RawMessage(`1`), Method: "session/new", Params: newParams})
+	var created map[string]any
+	if err := json.Unmarshal([]byte(out.lines()[0]), &created); err != nil {
+		t.Fatal(err)
+	}
+	id := created["result"].(map[string]any)["sessionId"].(string)
+	promptParams, _ := json.Marshal(map[string]any{
+		"sessionId": id, "prompt": []any{map[string]any{"type": "text", "text": "work"}},
+	})
+	promptDone := make(chan struct{})
+	go func() {
+		defer close(promptDone)
+		s.prompt(context.Background(), &message{ID: json.RawMessage(`2`), Method: "session/prompt", Params: promptParams})
+	}()
+	limit := time.After(10 * time.Second)
+	for {
+		s.mu.Lock()
+		sess := s.sessions[id]
+		s.mu.Unlock()
+		if sess != nil && sess.isActive() {
+			break
+		}
+		select {
+		case <-limit:
+			t.Fatal("the prompt never became active")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	outside := t.TempDir()
+	params, _ := json.Marshal(map[string]any{"sessionId": id, "cwd": outside, "mcpServers": []any{}})
+	s.openSession(&message{ID: json.RawMessage(`3`), Method: "session/resume", Params: params}, false)
+	var refused map[string]any
+	for _, line := range out.lines() {
+		var m map[string]any
+		if json.Unmarshal([]byte(line), &m) == nil && m["id"] == float64(3) {
+			refused = m
+		}
+	}
+	if refused == nil || refused["error"] == nil {
+		t.Fatalf("an out-of-roots cwd was accepted: %v", refused)
+	}
+	s.mu.Lock()
+	sess := s.sessions[id]
+	s.mu.Unlock()
+	if sess == nil || !sess.isActive() {
+		t.Fatal("a rejected load cancelled the active turn")
+	}
+	if j := sess.cancelJob(); j != nil {
+		<-j.done
+	}
+	waitSignal(t, promptDone, "prompt completion")
 }
