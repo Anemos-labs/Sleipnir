@@ -955,3 +955,66 @@ func TestLoadReadsTheFinalStateOfACancelledTurn(t *testing.T) {
 		t.Fatalf("resume id = %q, want sess-graceful: the load read before the turn's final save", rec.ResumeID)
 	}
 }
+
+func TestLoadIsSerializedWithCapacityReservation(t *testing.T) {
+	s, dir := testServer(t, "ok", nil)
+	out := &lockedBuffer{}
+	s.outMu.Lock()
+	s.out = json.NewEncoder(out)
+	s.outMu.Unlock()
+	// 254 attached sessions and one detached record B leave a single free slot.
+	for i := 0; i < maxSessions-2; i++ {
+		sess := newSession(s, dir, dir, "", "")
+		sess.ID = fmt.Sprintf("acp_seed_%03d", i)
+		s.sessions[sess.ID] = sess
+		sess.save()
+	}
+	detached := newSession(s, dir, dir, "", "")
+	detached.ID = "acp_detached"
+	s.sessions[detached.ID] = detached
+	detached.save()
+	delete(s.sessions, detached.ID)
+
+	release := make(chan struct{})
+	entered := make(chan struct{})
+	s.afterRead = func() {
+		close(entered)
+		<-release
+	}
+	loadParams, _ := json.Marshal(map[string]any{
+		"sessionId": detached.ID, "cwd": dir, "mcpServers": []any{},
+	})
+	loadDone := make(chan struct{})
+	go func() {
+		defer close(loadDone)
+		s.openSession(&message{ID: json.RawMessage(`1`), Method: "session/load", Params: loadParams}, false)
+	}()
+	<-entered // the load has read B but has not attached it yet
+	newDone := make(chan struct{})
+	go func() {
+		defer close(newDone)
+		params, _ := json.Marshal(map[string]any{"cwd": dir})
+		s.newSession(&message{ID: json.RawMessage(`2`), Method: "session/new", Params: params})
+	}()
+	close(release)
+	select {
+	case <-loadDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("load did not finish")
+	}
+	select {
+	case <-newDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("session/new did not finish")
+	}
+	s.mu.Lock()
+	count := len(s.sessions)
+	_, attachedB := s.sessions[detached.ID]
+	s.mu.Unlock()
+	if count != maxSessions || !attachedB {
+		t.Fatalf("attached %d sessions, loaded record attached = %v; want %d and true", count, attachedB, maxSessions)
+	}
+	if _, err := s.readRecord(detached.ID); err != nil {
+		t.Fatalf("the loaded record was evicted: %v", err)
+	}
+}

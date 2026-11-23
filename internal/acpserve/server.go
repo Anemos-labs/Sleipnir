@@ -133,6 +133,7 @@ type Server struct {
 
 	mu          sync.Mutex
 	createMu    sync.Mutex // serializes capacity check through session installation
+	afterRead   func()     // test hook: pauses a load after reading its record
 	stateMu     sync.Mutex // serializes per-id state changes with load/resume swaps
 	initialized bool
 	closing     bool
@@ -504,6 +505,11 @@ func (s *Server) openSession(m *message, replay bool) {
 		s.reply(m.ID, nil, fail(codeInvalidParams, "sessionId is required"))
 		return
 	}
+	// A load attaches an existing record; serialize it with the capacity
+	// decision in newSession so a detached record cannot be evicted while it
+	// is being loaded. createMu is always taken before stateMu and s.mu.
+	s.createMu.Lock()
+	defer s.createMu.Unlock()
 	s.stateMu.Lock()
 	defer s.stateMu.Unlock()
 	// Settle the attached turn before reading the record: its final save holds
@@ -522,6 +528,9 @@ func (s *Server) openSession(m *message, replay bool) {
 	if err != nil {
 		s.reply(m.ID, nil, fail(codeNotFound, "unknown session %s", p.SessionID))
 		return
+	}
+	if s.afterRead != nil {
+		s.afterRead()
 	}
 	dir := rec.Dir
 	if p.Cwd != "" {
