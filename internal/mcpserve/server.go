@@ -485,6 +485,13 @@ func realDir(dir string) (string, error) {
 	return real, nil
 }
 
+// ResolveDir turns a caller's cwd into a directory inside the configured
+// roots. It is the exported form of resolveDir, for other servers that apply
+// the same boundary to a run (see ACP).
+func (c Config) ResolveDir(cwd string, create bool) (string, error) {
+	return resolveDir(c, cwd, create)
+}
+
 // Inside reports whether dir (absolute, symlinks resolved) is one of roots or below one.
 func Inside(roots []string, dir string) bool {
 	for _, root := range roots {

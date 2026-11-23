@@ -25,6 +25,7 @@ Every document in this directory, grouped by what it is for.
 | [Extending Sleipnir](EXTENDING.md) | Instruction files, skills, slash commands, agent definitions, hooks, and sessions |
 | [Plugins](PLUGINS.md) | The plugin system and writing a plugin ([example](examples/plugins/hello)) |
 | [MCP tool servers](MCP.md) | Connecting to tool servers, and Sleipnir as a tool server |
+| [Agent Client Protocol](ACP.md) | Sleipnir as an ACP agent for editors and other harnesses |
 | [Web API](WEB-API.md) | The HTTP and event-stream interface of `sleipnir web` |
 
 ## Understand

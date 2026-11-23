@@ -208,6 +208,66 @@ commands:
 ```
 <!-- /flags -->
 
+### `sleipnir acp`
+
+Serves Sleipnir as an Agent Client Protocol (ACP) agent on stdin and stdout: `acp serve` creates ACP sessions from an
+editor or another harness, streams messages, tool calls and usage for each prompt, and keeps session metadata for
+`session/list`, `session/load` and `session/resume`. Each turn is a child `sleipnir run --json --delegated`, bounded by
+this server's roots, mode ceiling, allow rules and job limit. See `docs/ACP.md`.
+
+<!-- flags: acp -->
+```text
+usage: sleipnir acp serve [flags]
+
+Serves Sleipnir over the Agent Client Protocol (ACP) on stdin and stdout, so
+that an editor or another coding harness can run Sleipnir agents and teams as
+normal ACP sessions. Each turn runs as 'sleipnir run --json --delegated'.
+The flags are the limits of every turn; an ACP client cannot widen them.
+
+The client names the folder, goal, model, permission mode and team size of a
+session. Its MCP servers are handed to each turn through a private config file.
+
+commands:
+  serve [flags]       be an ACP agent on stdio (docs/ACP.md)
+```
+<!-- /flags -->
+
+The `serve` subcommand:
+
+<!-- flags: acp serve -->
+```text
+usage: sleipnir acp serve [flags]
+
+Serves Sleipnir as an ACP agent on stdin and stdout. One ACP session is one
+conversation; each prompt starts a child 'sleipnir run --json --delegated'.
+Progress, tools, usage and the final answer are sent as session/update
+notifications. Sessions are kept under ~/.sleipnir/acp-sessions so a client can
+list, load and resume them.
+
+A session's folder must be inside one of the roots: the --root flags, or the
+--cwd folder alone when only --cwd is given, or else your home directory. One
+entry in a client's configuration therefore serves every project under home.
+
+flags:
+  -allow value
+        a permission rule that needs no question in this run, repeatable: 'Bash(go test:*)', 'Edit(docs/**)'; the name tests stands for the build and test commands of most projects (go, cargo, npm, pnpm, yarn, node, pytest, unittest, mvn, gradle, dotnet and make: test, build, check, lint, format and vet, go mod init and tidy; ruff, mypy, pyright, tsc and eslint checks of the workspace; a Python virtual environment in the workspace (create it, install into it from the package index, test with it); curl or wget to this machine only (127.0.0.1, localhost, [::1]); no other install or download); more in docs/CONFIGURATION.md
+  -cwd string
+        the directory a session uses when the client names none, and the base of a relative cwd; given alone, also the only root
+  -max-jobs int
+        turns running at once; a start past it is refused (default 4)
+  -mode string
+        the most permissive mode a turn may use: plan | default | accept-edits | bypass | yolo; a client may ask for a stricter one (default "bypass")
+  -model string
+        model advertised and used when the client does not choose one (default: the configured model)
+  -no-mcp
+        ignore the MCP servers a client sends in session setup
+  -root value
+        a directory a session's cwd must be inside, repeatable (default: the --cwd directory if given, else your home directory)
+  -trust-project
+        pass --trust-project to every turn: apply the project's security-sensitive config and read its AGENTS.md, skills, commands and agent definitions; only for repositories you trust
+```
+<!-- /flags -->
+
 ### `sleipnir trust`
 
 Shows and keeps your answer to "may this project's own files be used". What a repository brings that the harness reads as text and

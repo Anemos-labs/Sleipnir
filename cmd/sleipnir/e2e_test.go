@@ -41,7 +41,9 @@ const e2eChildEnv = "SLEIPNIR_E2E_CHILD"
 func runAsSleipnir() {
 	// A chat starts itself again (/restart, /login), and `mcp serve` runs each goal as `sleipnir run`: what they start is this test
 	// binary too, so they keep the marker; any other command does not hand it on to what it runs.
-	if len(os.Args) < 2 || (os.Args[1] != "chat" && !(os.Args[1] == "mcp" && len(os.Args) > 2 && os.Args[2] == "serve")) {
+	if len(os.Args) < 2 || (os.Args[1] != "chat" &&
+		!(os.Args[1] == "mcp" && len(os.Args) > 2 && os.Args[2] == "serve") &&
+		!(os.Args[1] == "acp" && len(os.Args) > 2 && os.Args[2] == "serve")) {
 		os.Unsetenv(e2eChildEnv)
 	}
 	os.Args = append([]string{"sleipnir"}, os.Args[1:]...)

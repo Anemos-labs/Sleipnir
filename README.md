@@ -143,7 +143,9 @@ sleipnir --continue
 
 Other harnesses can delegate to Sleipnir too: `sleipnir mcp serve` is an MCP server whose tools start a goal, follow
 it and read its result, so Claude Code, Codex or an editor can hand work to a Sleipnir team
-([Sleipnir as a tool server](docs/MCP.md#sleipnir-as-a-tool-server)).
+([Sleipnir as a tool server](docs/MCP.md#sleipnir-as-a-tool-server)). An editor or harness that speaks the Agent Client
+Protocol can drive Sleipnir agents and teams directly with `sleipnir acp serve`
+([Agent Client Protocol](docs/ACP.md)).
 
 See the [CLI reference](docs/CLI.md).
 
@@ -160,7 +162,7 @@ provider-measured usage, and a team does not guarantee lower cost.
 ## Documentation
 
 - **Use:** [Getting started](docs/GETTING-STARTED.md), [CLI](docs/CLI.md), [configuration](docs/CONFIGURATION.md), [providers](docs/PROVIDERS.md)
-- **Extend:** [plugins](docs/PLUGINS.md), [extensions](docs/EXTENDING.md), [MCP](docs/MCP.md), [web API](docs/WEB-API.md)
+- **Extend:** [plugins](docs/PLUGINS.md), [extensions](docs/EXTENDING.md), [MCP](docs/MCP.md), [ACP](docs/ACP.md), [web API](docs/WEB-API.md)
 - **Understand:** [architecture](docs/ARCHITECTURE.md), [team protocol](docs/SWARM-PROTOCOL.md), [interfaces](docs/UX.md), [limitations](docs/STATUS.md), [roadmap](docs/ROADMAP.md)
 
 Every document, grouped by purpose: [documentation index](docs/README.md).

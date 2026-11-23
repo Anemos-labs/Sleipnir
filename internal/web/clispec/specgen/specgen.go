@@ -240,7 +240,7 @@ var positionals = map[string][]wire.CLIPositional{
 	"friction": {many("PATH", true, "a session directory, a directory of sessions, or a benchmark run directory")},
 	"council":  {many("SCREENSHOT", true, "the screenshots of the candidate (PNG, JPEG, WebP or GIF)")},
 	"tooleval": {},
-	"version":  {}, "mcp list": {},
+	"version":  {}, "mcp list": {}, "acp": {}, "acp serve": {},
 	"mcp approve": {pos("NAME", true, "the project server to approve")},
 	"mcp revoke":  {pos("NAME", true, "the approval to forget")},
 	"mcp test":    {many("NAME", false, "servers to start (default: all)")},
@@ -421,6 +421,8 @@ var modes = map[string]modeOf{
 	"trust add":       {mode: ModePriv, why: "it trusts this project's files: it asks for a confirmation first (--yes is implied)"},
 	"trust forget":    {mode: ModePriv, why: "it forgets a trust decision: it asks for a confirmation first"},
 	"mcp":             {mode: ModeRun}, "mcp list": {mode: ModeRun},
+	"acp":         {mode: ModeRun},
+	"acp serve":   {mode: ModeServer, why: "a stdio server: it runs until its client disconnects"},
 	"mcp approve": {mode: ModePriv, why: "it lets a project's tool server start: it asks for a confirmation first (--yes is implied)"},
 	"mcp revoke":  {mode: ModePriv, why: "it forgets an approval: it asks for a confirmation first"},
 	"mcp test":    {mode: ModeNet},
@@ -648,6 +650,17 @@ func Generate(in Inputs) (*wire.CLISpec, error) {
 			err = s.finish([]string{"sessions", "prune"}, usageLine(b.text), "Deletes recorded sessions that are old (default: older than 30 days, except the newest 20); without --yes it lists what would go.", parseFlagLines(b.text), sec, wire.CLICommand{})
 		case "mcp":
 			err = s.mcp(sec, b)
+		case "acp":
+			// The group and its serve subcommand share one section; the second
+			// flags block is the subcommand's own help.
+			if len(sec.blocks) < 2 {
+				return nil, fmt.Errorf("section %s: expected the group and serve flag blocks", cmd)
+			}
+			if err = s.finish([]string{"acp"}, "sleipnir acp <command> [flags]", "Be an ACP agent for editors and other harnesses: acp serve.", parseFlagLines(sec.blocks[0].text), sec, wire.CLICommand{Index: true}); err != nil {
+				break
+			}
+			serve := sec.blocks[1]
+			err = s.finish([]string{"acp", "serve"}, usageLine(serve.text), "Serves Sleipnir as an Agent Client Protocol agent on stdin and stdout for one client: each session is a conversation and each prompt runs a goal.", parseFlagLines(serve.text), sec, wire.CLICommand{Parent: "acp"})
 		case "trust":
 			err = s.trust(sec, b)
 		case "plugins":

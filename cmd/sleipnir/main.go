@@ -271,6 +271,7 @@ Set up a project:
   trust     a project's own instructions and settings: show, remember your yes
   plugins   switch plugins on and off: tools, skills, the team, the views
   mcp       tool servers (Model Context Protocol): list, approve, revoke, test
+  acp       be an ACP agent for editors and other harnesses (acp serve)
   schedule  goals to run on a schedule (cron): add, list, rm
   daemon    run the scheduled goals that are due (--once for a cron job)
 
