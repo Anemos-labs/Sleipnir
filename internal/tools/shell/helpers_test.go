@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/anemos-labs/sleipnir/internal/events"
+	"github.com/anemos-labs/sleipnir/internal/harden"
 	"github.com/anemos-labs/sleipnir/internal/perm"
 	"github.com/anemos-labs/sleipnir/internal/tools"
 )
@@ -40,11 +41,40 @@ func newHarness(t *testing.T, opts ...Options) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := NewManager(opts...)
+	// A base environment of the test's own, so that the worker counts a test reads are the manager's and not the ones the
+	// session running the tests happens to carry (SLEIPNIR_JOBS, GOMAXPROCS and GOFLAGS are set in a harness session).
+	m := NewManager(append([]Options{{BaseEnv: baseEnv(t)}}, opts...)...)
 	t.Cleanup(m.Shutdown)
 	reg := tools.NewRegistry()
 	Register(reg, m)
 	return &harness{t: t, m: m, reg: reg, root: root, blobs: events.NewMemBlobs(), log: events.NewMemLog()}
+}
+
+// baseEnv is the process environment without the worker counts a Budget sets, and with the keys harden holds put back as
+// Manager.baseEnv does for the process environment it reads.
+func baseEnv(t *testing.T) []string {
+	t.Helper()
+	var out []string
+	for _, kv := range os.Environ() {
+		if k, _, _ := strings.Cut(kv, "="); workerVar(k) {
+			continue
+		}
+		out = append(out, kv)
+	}
+	for _, name := range harden.Held() {
+		out = append(out, name+"="+harden.Secret(name))
+	}
+	return out
+}
+
+func workerVar(name string) bool {
+	switch name {
+	case "SLEIPNIR_JOBS", "GOMAXPROCS", "GOFLAGS", "CARGO_BUILD_JOBS", "CMAKE_BUILD_PARALLEL_LEVEL",
+		"PYTEST_XDIST_AUTO_NUM_WORKERS", "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+		"RAYON_NUM_THREADS", "VITEST_MAX_THREADS", "VITEST_MAX_FORKS", "UV_CONCURRENT_BUILDS", "BUNDLE_JOBS":
+		return true
+	}
+	return false
 }
 
 // outLog collects what an Env.Out callback receives.

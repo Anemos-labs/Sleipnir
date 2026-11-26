@@ -47,7 +47,17 @@ func TestSharedTreeAcceptSaysToCommitWithTheWorkersMessage(t *testing.T) {
 // The repository is named so the manager can run git there whatever the length of its path: relative to the project root, or
 // "the project root" itself, never cut.
 func TestSharedCommitHintNamesTheRepositoryWhole(t *testing.T) {
-	root := filepath.Join(t.TempDir(), strings.Repeat("deep", 40))
+	// A long name, as long as the filesystem takes: a stacked one (ecryptfs, say) allows fewer than the 255 bytes a name may
+	// have, and the test is about the hint, not about the limit.
+	base := t.TempDir()
+	name := strings.Repeat("deep", 40)
+	for len(name) > 8 {
+		if err := os.Mkdir(filepath.Join(base, name), 0o755); err == nil {
+			break
+		}
+		name = name[:len(name)-8]
+	}
+	root := filepath.Join(base, name)
 	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}

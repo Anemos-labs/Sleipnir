@@ -1,6 +1,8 @@
 package catalog
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/anemos-labs/sleipnir/internal/config"
@@ -10,6 +12,11 @@ import (
 func TestSaveDefaultWritesTheKeyAStartReads(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("SLEIPNIR_MODEL", "")
+	// A marker of its own, so that the temporary home is the root wherever it sits: a TMPDIR under a project (the harness keeps
+	// one under ~/.sleipnir) would otherwise be the root, and its configuration the one read.
+	if err := os.MkdirAll(filepath.Join(home, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	for role, want := range map[string]string{"": "models.default", "default": "models.default", "manager": "models.default", "judge": "models.roles.judge"} {
 		if got := DefaultKey(role); got != want {
 			t.Errorf("DefaultKey(%q) = %q, want %q", role, got, want)

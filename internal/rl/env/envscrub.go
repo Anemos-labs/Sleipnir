@@ -54,6 +54,9 @@ var toolchainVars = []string{
 	"GOROOT", "GOTOOLCHAIN", "GOFLAGS", "GOSUMDB", "GONOSUMDB", "GONOSUMCHECK", "GOPRIVATE", "GONOPROXY",
 	"GOEXPERIMENT", "CGO_ENABLED", "CC", "CXX", "RUSTUP_HOME", "RUSTUP_TOOLCHAIN", "JAVA_HOME",
 	"VIRTUAL_ENV", "CONDA_PREFIX", "PYENV_ROOT", "NVM_DIR", "SDKROOT", "DEVELOPER_DIR",
+	// Where an installed Python finds its packages: one installed for the user (pip install --user, a system pytest) lives
+	// outside the interpreter's own tree, and with Home replaced it is invisible without this.
+	"PYTHONPATH",
 }
 
 // networkVars are copied only for tasks that may use the network.
@@ -146,6 +149,17 @@ func buildEnv(s EnvSpec, goos string) []string {
 	for _, k := range toolchainVars {
 		if v, ok := base[k]; ok {
 			out[k] = v
+		}
+	}
+	if _, ok := out["PYTHONUSERBASE"]; !ok {
+		// Python finds the packages installed for the user (pip install --user) under the user site of HOME, which is replaced
+		// here: the original location is named, so that a system or user pytest stays visible to a verifier.
+		h := base["HOME"]
+		if windows {
+			h = base["USERPROFILE"]
+		}
+		if d := filepath.Join(h, ".local"); h != "" && isDir(d) {
+			out["PYTHONUSERBASE"] = d
 		}
 	}
 	if _, ok := out["RUSTUP_HOME"]; !ok {

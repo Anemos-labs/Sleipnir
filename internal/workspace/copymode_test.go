@@ -39,8 +39,9 @@ func newPlainDir(t testing.TB) string {
 	if err := os.Chmod(filepath.Join(dir, "src", "main.py"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// distinct, old modification times: the snapshot must preserve them
-	old := time.Unix(1_600_000_000, 123_000_000)
+	// distinct, old modification times: the snapshot must preserve them, to the second, which is the resolution of a stacked
+	// filesystem's timestamps (ecryptfs keeps no fraction)
+	old := time.Unix(1_600_000_000, 0)
 	filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
 			os.Chtimes(p, old, old)
@@ -84,7 +85,7 @@ func TestCopyModeGivesTheSameGuarantees(t *testing.T) {
 		t.Fatal("executable bit lost")
 	}
 	fi, _ := os.Stat(filepath.Join(a.Path, "docs", "guide.md"))
-	if !fi.ModTime().Equal(time.Unix(1_600_000_000, 123_000_000)) {
+	if !fi.ModTime().Equal(time.Unix(1_600_000_000, 0)) {
 		t.Fatalf("modification time not preserved: %v", fi.ModTime())
 	}
 	// the source directory itself is never touched: no .git, nothing added
@@ -345,7 +346,7 @@ func TestCloneTreeDetails(t *testing.T) {
 	must(t, os.MkdirAll(filepath.Join(src, "emptydir"), 0o755))
 	big := strings.Repeat("0123456789abcdef", 1<<16) // 1 MiB
 	writeFile(t, filepath.Join(src, "big.dat"), big)
-	stamp := time.Unix(1_500_000_000, 987_000_000)
+	stamp := time.Unix(1_500_000_000, 0) // to the second: see newPlainDir
 	must(t, os.Chtimes(filepath.Join(src, "a.txt"), stamp, stamp))
 	must(t, os.Chmod(filepath.Join(src, "a.txt"), 0o640))
 

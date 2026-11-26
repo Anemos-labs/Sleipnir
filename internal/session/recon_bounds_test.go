@@ -126,8 +126,28 @@ func hostileTree(t *testing.T) (root string, files int) {
 	}
 	deep := strings.Repeat("d/", 120)
 	write(deep+"deep.go", "package d\n\nfunc Deep() {}\n")
-	write(strings.Repeat("n", 250)+".go", "package n\n\nfunc Long() {}\n")
+	write(strings.Repeat("n", longestName(t, root))+".go", "package n\n\nfunc Long() {}\n")
 	return root, count
+}
+
+// longestName is the longest stem root's filesystem takes for a file called <stem>.go, up to the 255 bytes a name may have: a
+// stacked filesystem (ecryptfs, say) allows fewer, and a test of a name at the limit has to use the limit of the filesystem it
+// runs on.
+func longestName(t *testing.T, root string) int {
+	t.Helper()
+	const ext = ".go"
+	for n := 255 - len(ext); n > 32; n-- {
+		p := filepath.Join(root, strings.Repeat("n", n)+ext)
+		f, err := os.Create(p)
+		if err != nil {
+			continue
+		}
+		f.Close()
+		os.Remove(p)
+		return n
+	}
+	t.Skip("the filesystem takes no long file name")
+	return 0
 }
 
 func TestReconOfAHostileTreeStaysWithinItsCaps(t *testing.T) {

@@ -120,8 +120,12 @@ func newRig(t *testing.T, mut func(*Options), env ...string) *rig {
 	t.Helper()
 	home := t.TempDir()
 	rg := &rig{t: t, home: home, state: filepath.Join(home, "state"), project: filepath.Join(home, "proj"), host: &fakeHost{}}
-	if err := os.MkdirAll(rg.project, 0o755); err != nil {
-		t.Fatal(err)
+	// A marker on the home, so that the temporary directory is the root wherever it sits: a TMPDIR under a project (the harness
+	// keeps one under ~/.sleipnir) would otherwise be the root, and its configuration the one read.
+	for _, d := range []string{rg.project, filepath.Join(home, ".git")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 	t.Setenv("SLEIPNIR_HOME", rg.state)
 	t.Setenv("HOME", home)

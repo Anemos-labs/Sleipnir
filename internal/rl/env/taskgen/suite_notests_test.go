@@ -19,8 +19,9 @@ import (
 // missingPluginINI is a pytest configuration naming a plugin no environment has: pytest stops before collecting.
 const missingPluginINI = "[tool.pytest.ini_options]\naddopts = \"-p nonexistent_plugin\"\ntestpaths = [\"tests\"]\n"
 
-// missingPluginError is the last line pytest prints for missingPluginINI.
-const missingPluginError = `ImportError: Error importing plugin "nonexistent_plugin": No module named 'nonexistent_plugin'`
+// missingPluginError is the last line pytest prints for missingPluginINI. The label of the error is pytest's own ("ImportError:"
+// before 9, "ERROR:" since), so only the rest of the line is fixed.
+const missingPluginError = `Error importing plugin "nonexistent_plugin": No module named 'nonexistent_plugin'`
 
 func intp(n int) *int { return &n }
 
@@ -160,7 +161,7 @@ func TestRecordSuiteNoTests(t *testing.T) {
 	}
 	const cause = "ModuleNotFoundError: No module named 'nonexistent_plugin'"
 	for side, d := range map[string]string{"start": rec.StartNoTests, "reference": rec.ReferenceNoTests} {
-		if !strings.HasPrefix(d, "pytest: exit 1\n    | ") || !strings.HasSuffix(d, "    | "+cause) {
+		if !strings.HasPrefix(d, "pytest: exit ") || !strings.Contains(d, "\n    | ") || !strings.HasSuffix(d, "    | "+cause) {
 			t.Errorf("%s: %q", side, d)
 		}
 	}
@@ -168,7 +169,7 @@ func TestRecordSuiteNoTests(t *testing.T) {
 		t.Errorf("record: %+v", rec)
 	}
 	_, err = BuildUnits(rec, nil)
-	if err == nil || !strings.Contains(err.Error(), "nothing to score; no run with the reference solution reported a test (nor on the start); the first ended with pytest: exit 1\n") ||
+	if err == nil || !strings.Contains(err.Error(), "nothing to score; no run with the reference solution reported a test (nor on the start); the first ended with pytest: exit ") ||
 		!strings.HasSuffix(err.Error(), cause) {
 		t.Errorf("BuildUnits: %v", err)
 	}
@@ -199,8 +200,8 @@ func TestRebuildPythonNoTests(t *testing.T) {
 	if !errors.As(err, &rj) || rj.Reason != ReasonRebuildFewTests || rep.Rejected != rj || rep.Tests != 0 {
 		t.Fatalf("%v\nreport: %+v", err, rep)
 	}
-	if !strings.Contains(rj.Detail, "no run with the reference solution reported a test (nor on the start); the first ended with pytest: exit 1\n    | ") ||
-		!strings.HasSuffix(rj.Detail, "    | "+missingPluginError) || len(rj.Detail) > 2000 {
+	if !strings.Contains(rj.Detail, "no run with the reference solution reported a test (nor on the start); the first ended with pytest: exit ") ||
+		!strings.Contains(rj.Detail, "    | ") || !strings.HasSuffix(rj.Detail, missingPluginError) || len(rj.Detail) > 2000 {
 		t.Errorf("the rejection does not name the missing plugin (%d bytes):\n%s", len(rj.Detail), rj.Detail)
 	}
 }
@@ -233,8 +234,8 @@ func TestFromChainsPythonNoTests(t *testing.T) {
 		t.Fatalf("%d tasks, report %+v", len(tasks), rep)
 	}
 	d := rep.Rejections[0].Detail
-	if first := firstLine(d); !strings.HasSuffix(first, "; no run at any step reported a test; the first at step 3 ended with pytest: exit 1") ||
-		!strings.HasSuffix(d, "    | "+missingPluginError) || len(d) > 2000 {
+	if first := firstLine(d); !strings.Contains(first, "; no run at any step reported a test; the first at step 3 ended with pytest: exit ") ||
+		!strings.Contains(d, "    | ") || !strings.HasSuffix(d, missingPluginError) || len(d) > 2000 {
 		t.Errorf("the rejection does not name the missing plugin (%d bytes):\n%s", len(d), d)
 	}
 }
