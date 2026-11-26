@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -292,6 +293,11 @@ func TestLedgerWritesSerialized(t *testing.T) {
 	a, b := t.TempDir(), t.TempDir()
 	for _, d := range []string{a, b} {
 		write(t, filepath.Join(d, "AGENTS.md"), "x "+d+"\n")
+		// A marker of its own: the footprint is scanned from the root, and without one the temporary directory's root is
+		// wherever it sits (a TMPDIR under a project has that project's root, and a footprint too large to confirm).
+		if err := os.MkdirAll(filepath.Join(d, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
 		e.host.projects = append(e.host.projects, wire.Project{Dir: d})
 	}
 	for round := 0; round < 5; round++ {

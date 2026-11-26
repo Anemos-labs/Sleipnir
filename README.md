@@ -119,6 +119,7 @@ missing. Escape interrupts and pauses the goal; `/goal resume` continues it.
 | `/goal`, `/goal pause` | View or pause the goal |
 | `/model`, `/roles`, `/effort` | Choose models and reasoning effort |
 | `/research [depth] QUESTION` | Research the web into a cited wiki ([details](docs/RESEARCH.md)) |
+| `/pentest [depth] TARGET` | Attack a live target and report what it confirmed ([details](docs/PENTEST.md)) |
 | `/diff`, `/rewind` | Inspect or restore a checkpoint |
 | Ctrl+T or `/stats` | Live usage and cache statistics |
 | `/help` | Every command |

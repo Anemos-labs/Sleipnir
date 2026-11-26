@@ -63,6 +63,10 @@
     {
       "item": "workspace/merge",
       "reason": "the merge queue, the verification of each task and the worktrees of an isolated team; the terminal shows the queue counts on the Board view and prints the integration at the end"
+    },
+    {
+      "item": "pentest",
+      "reason": "lists the project's penetration tests with their phase and numbers, shows a run's findings, assets, scope and recorded traffic, and starts, reports on and closes a run; the terminal has /pentest and `sleipnir pentest`, which list, report on, start and close the same runs as text, and the report files are written beside the ledger"
     }
   ]
 }

@@ -229,31 +229,22 @@ func (m *Manager) track(p *proc) {
 
 // untrack removes a process from the manager's shutdown registry under its lock. A process group that still has a live member
 // once its command has ended is kept in view (lingering) for Shutdown; the groups recorded before that are gone by now are
-// forgotten, so that the record holds no id a later, unrelated group may take.
+// forgotten, so that the record holds no id a later, unrelated group may take. The removal and the record are made under one
+// lock: Shutdown reads both maps to decide whether anything is left, and a group added between two lock sections would be one
+// it never looks at again.
 func (m *Manager) untrack(p *proc) {
 	lingers := probesGroup && groupAlive(p.pid) // the real check: p.alive is a test's stand-in for killTree
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	delete(m.procs, p)
-	gone := make([]int, 0, len(m.lingering))
 	for g := range m.lingering {
-		gone = append(gone, g)
-	}
-	m.mu.Unlock()
-	for i := 0; i < len(gone); {
-		if groupAlive(gone[i]) {
-			gone = append(gone[:i], gone[i+1:]...)
-			continue
+		if !groupAlive(g) {
+			delete(m.lingering, g)
 		}
-		i++
 	}
-	m.mu.Lock()
-	for _, g := range gone {
-		delete(m.lingering, g)
-	}
-	if lingers && !m.closed {
+	if lingers {
 		m.lingering[p.pid] = lingerer{agent: p.agent, job: p.job, command: p.command, started: p.started}
 	}
-	m.mu.Unlock()
 }
 
 // lingerer says who left a lingering process group: the agent whose command started it, and whether that command was a
@@ -329,38 +320,62 @@ func (m *Manager) Shutdown() {
 
 	m.wg.Wait() // supervisors observe m.stop, kill their trees and return
 
-	m.mu.Lock()
-	stray := make([]*proc, 0, len(m.procs))
-	for p := range m.procs {
-		stray = append(stray, p)
+	// A command's untrack can run after the collection below (its pumps reach EOF only once what it left has let go), and it
+	// records the group it left. So the collection is repeated while a round finds something new: a single pass would miss a
+	// group recorded between the read of the maps and the end of the round, and leave it running. A round that finds only what
+	// the round before it already ended is the last one (a process that never reaches untrack is not collected forever).
+	var lastStray map[*proc]bool
+	lastGroups := map[int]bool{}
+	for {
+		m.mu.Lock()
+		stray := make([]*proc, 0, len(m.procs))
+		fresh := false
+		for p := range m.procs {
+			stray = append(stray, p)
+			fresh = fresh || !lastStray[p]
+		}
+		groups := make([]int, 0, len(m.lingering))
+		for g := range m.lingering {
+			groups = append(groups, g)
+			fresh = fresh || !lastGroups[g]
+		}
+		m.lingering = map[int]lingerer{}
+		m.mu.Unlock()
+		if len(stray) == 0 && len(groups) == 0 || !fresh {
+			return
+		}
+		lastStray = make(map[*proc]bool, len(stray))
+		for _, p := range stray {
+			lastStray[p] = true
+		}
+		lastGroups = make(map[int]bool, len(groups))
+		for _, g := range groups {
+			lastGroups[g] = true
+		}
+		var wg sync.WaitGroup
+		for _, p := range stray {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if !p.leaderDone() || !p.pumpsFinished() {
+					p.killTree()
+				} else {
+					// The command itself is over and its pipes are closed, but its group may still have a member: that is
+					// what untrack is about to record as lingering, and it has not run yet.
+					m.endGroup(p.pid)
+				}
+				p.closeReaders()
+			}()
+		}
+		for _, g := range groups {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				m.endGroup(g)
+			}()
+		}
+		wg.Wait()
 	}
-	m.mu.Unlock()
-	var wg sync.WaitGroup
-	for _, p := range stray {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if !p.leaderDone() || !p.pumpsFinished() {
-				p.killTree()
-			}
-			p.closeReaders()
-		}()
-	}
-	m.mu.Lock()
-	groups := make([]int, 0, len(m.lingering))
-	for g := range m.lingering {
-		groups = append(groups, g)
-	}
-	m.lingering = map[int]lingerer{}
-	m.mu.Unlock()
-	for _, g := range groups {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			m.endGroup(g)
-		}()
-	}
-	wg.Wait()
 }
 
 // endGroup ends a lingering process group (Manager.lingering) as killTree ends a command's: SIGTERM, then SIGKILL for what is

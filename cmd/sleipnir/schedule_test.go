@@ -79,6 +79,10 @@ func TestScheduleAddExplainsAMissingCronAndModel(t *testing.T) {
 	t.Setenv("SLEIPNIR_HOME", filepath.Join(root, "state"))
 	t.Setenv("SLEIPNIR_MODEL", "")
 	t.Chdir(root)
+	// A marker of its own, so that nothing above the temporary directory configures a model (a TMPDIR under a project would).
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	err := cmdSchedule(context.Background(), []string{"add", "0 9 * * *", "say hi"})
 	if err == nil || !strings.Contains(err.Error(), "--cron is required") || !strings.Contains(err.Error(), `"0 9 * * *" looks like one`) {
 		t.Errorf("a cron without --cron: %v", err)

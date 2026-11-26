@@ -132,6 +132,11 @@ type testEnv struct {
 func newEnv(t *testing.T, setup func(home, repo string)) *testEnv {
 	t.Helper()
 	home := t.TempDir()
+	// A marker of its own, so that the temporary home is the root wherever it sits: a TMPDIR under a project (the harness keeps
+	// one under ~/.sleipnir) would otherwise be the root, and its configuration the one read.
+	if err := os.MkdirAll(filepath.Join(home, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("HOME", home)
 	t.Setenv("SLEIPNIR_HOME", "")
 	t.Setenv("SLEIPNIR_MODEL", "")

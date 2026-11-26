@@ -636,6 +636,17 @@ func (rt *router) pages() {
 		ok(w, ScanDetail())
 	})
 	rt.tabRoute("GET /api/sessions/{id}/research", web.RouteOpts{}, func(w http.ResponseWriter, _ *http.Request, _ *Tab) { ok(w, Research()) })
+	rt.tabRoute("GET /api/sessions/{id}/pentest", web.RouteOpts{}, func(w http.ResponseWriter, _ *http.Request, _ *Tab) { ok(w, Pentests()) })
+	rt.tabRoute("GET /api/sessions/{id}/pentest/{slug}", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, _ *Tab) {
+		if r.PathValue("slug") != "pentest-20261009-2202-shop" {
+			http.Error(w, `{"error":"no_run"}`, http.StatusNotFound)
+			return
+		}
+		ok(w, PentestDetail())
+	})
+	rt.tabRoute("POST /api/sessions/{id}/pentest", web.RouteOpts{}, func(w http.ResponseWriter, _ *http.Request, _ *Tab) {
+		ok(w, map[string]any{"ok": true, "slug": "pentest-20261009-2202-shop"})
+	})
 	rt.get("/api/recorded", func(*http.Request) (any, error) {
 		return map[string]any{"recorded": Recorded(), "mb": 1.7}, nil
 	})

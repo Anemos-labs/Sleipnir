@@ -157,6 +157,9 @@ func TestListRecordedNewestFirstWithLocksAndNames(t *testing.T) {
 	t.Setenv("SLEIPNIR_HOME", filepath.Join(home, "state"))
 	root := SessionsDir(home)
 	now := time.Now()
+	// On the second, which is the resolution of a stacked filesystem's timestamps (ecryptfs keeps no fraction), so that a time
+	// the test set is a time it can compare against.
+	now = now.Truncate(time.Second)
 	old, older := now.Add(-48*time.Hour), now.Add(-96*time.Hour)
 	a := filepath.Join(root, "20261001-090000-aaaaaa")
 	b := filepath.Join(root, "20261002-090000-bbbbbb")

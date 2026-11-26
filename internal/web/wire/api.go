@@ -817,3 +817,48 @@ type TrustFile struct {
 	Bytes int64  `json:"bytes"`
 	Hash  string `json:"hash"`
 }
+
+// PentestRun is one penetration test of the project, for the Pentest view.
+type PentestRun struct {
+	Slug      string `json:"slug"`
+	Target    string `json:"target"`
+	Goal      string `json:"goal,omitempty"`
+	Depth     string `json:"depth"`
+	Phase     string `json:"phase"`
+	Created   string `json:"created"` // RFC 3339
+	Problems  int    `json:"problems"`
+	Assets    int    `json:"assets"`
+	InScope   int    `json:"inScope"`
+	Intents   int    `json:"intents"`
+	Open      int    `json:"open"`
+	Facts     int    `json:"facts"`
+	Findings  int    `json:"findings"`
+	Confirmed int    `json:"confirmed"`
+	Traffic   int    `json:"traffic"`
+	// Covered is the covered share of the in-scope assets, -1 when nothing is in scope.
+	Covered  float64        `json:"covered"`
+	ByType   map[string]int `json:"byType,omitempty"`
+	Severity map[string]int `json:"bySeverity,omitempty"`
+	Active   bool           `json:"active"`
+	// Proxy is the recording proxy's address while it runs, "" when it does not.
+	Proxy string `json:"proxy,omitempty"`
+}
+
+// PentestDepth is a depth a run can have, with what it asks for.
+type PentestDepth struct {
+	ID         string `json:"id"`
+	Title      string `json:"title"`
+	About      string `json:"about"`
+	Workers    int    `json:"workers"`
+	Confirmers int    `json:"confirmers"`
+	Reproduce  string `json:"reproduce,omitempty"`
+}
+
+// PentestRequest starts a run (/pentest DEPTH TARGET GOAL) or acts on one.
+type PentestRequest struct {
+	Action string `json:"action"` // start, close, report
+	Target string `json:"target,omitempty"`
+	Goal   string `json:"goal,omitempty"`
+	Depth  string `json:"depth,omitempty"`
+	Slug   string `json:"slug,omitempty"`
+}

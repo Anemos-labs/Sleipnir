@@ -112,6 +112,11 @@ func TestInit(t *testing.T) {
 		if err := os.RemoveAll(filepath.Join(w.project, ".sleipnir")); err != nil {
 			t.Fatal(err)
 		}
+		// A marker of its own, so that the project is the root wherever the temporary directory sits: a TMPDIR under a directory
+		// that is itself a project (the harness keeps one under ~/.sleipnir) would otherwise be taken for the root.
+		if err := os.MkdirAll(filepath.Join(w.project, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
 		r := w.run("", "init", "--model", "heimdallm/vendor/model")
 		assertRun(t, r, 0, nil, []string{"wrote ", "config.json", "AGENTS.md", "sleipnir init --user", "next: sleipnir doctor"})
 		if r.stdout != "" {

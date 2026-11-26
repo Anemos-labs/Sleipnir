@@ -150,6 +150,15 @@
 {"path":["models","fav","add"],"usage":"sleipnir models fav add provider/model...","summary":"Star one or more models.","positional":[{"name":"REF","required":true,"desc":"provider/model","variadic":true}],"source":"docs/CLI.md § sleipnir models","mode":"priv","why":"it changes your configuration: it asks for a confirmation first","parent":"models","flags":[]},
 {"path":["models","fav","list"],"usage":"sleipnir models fav list","summary":"Lists the favourite models kept as models.favorites in your user configuration.","positional":[],"source":"docs/CLI.md § sleipnir models","mode":"run","parent":"models","flags":[]},
 {"path":["models","fav","rm"],"usage":"sleipnir models fav rm provider/model...","summary":"Unstar one or more models.","positional":[{"name":"REF","required":true,"desc":"provider/model","variadic":true}],"source":"docs/CLI.md § sleipnir models","mode":"priv","why":"it changes your configuration: it asks for a confirmation first","parent":"models","flags":[]},
+{"path":["pentest"],"usage":"sleipnir pentest [RUN] [flags]","summary":"sleipnir pentest [RUN] lists the project's penetration tests with their target, depth, phase and numbers, or shows where one run stands.","positional":[{"name":"RUN","required":false,"desc":"a run's name, as `sleipnir pentest` lists it; none: list the runs"}],"source":"docs/CLI.md § sleipnir pentest","mode":"run","flags":[
+  {"name":"cwd","arg":"string","default":null,"defaultNote":"the current directory","repeatable":false,"desc":"the project (default: the current directory)"},
+  {"name":"depth","arg":"string","default":"standard","repeatable":false,"desc":"with --start: quick, standard or deep"},
+  {"name":"goal","arg":"string","default":null,"repeatable":false,"desc":"with --start: what the test is for"},
+  {"name":"json","arg":"bool","default":null,"repeatable":false,"desc":"machine-readable output"},
+  {"name":"proxy","arg":"bool","default":null,"repeatable":false,"desc":"print RUN's recording proxy address and CA certificate path"},
+  {"name":"report","arg":"bool","default":null,"repeatable":false,"desc":"rewrite RUN's report files from its ledger and print where they are"},
+  {"name":"start","arg":"bool","default":null,"repeatable":false,"desc":"create a run against the positional TARGET and print the goal that drives it"}
+ ]},
 {"path":["plugins"],"usage":"sleipnir plugins [flags]","summary":"Lists every plugin: its state, its category, the layer that decided it and what it adds.","positional":[],"source":"docs/CLI.md § sleipnir plugins","mode":"run","when":[{"flag":"trust-project","mode":"priv"}],"flags":[
   {"name":"cwd","arg":"string","default":null,"repeatable":false,"desc":"the project to look at (default: the current directory)"},
   {"name":"trust-project","arg":"bool","default":null,"repeatable":false,"desc":"also read the project's own plugins and settings"},
@@ -984,6 +993,7 @@
 {"cmd":"/goal","args":"TEXT","desc":"work until it is met, judged on evidence (/goal: status)","group":"conversation","paletteArgs":"[text|pause|resume|clear]","paletteDesc":"keep working until a goal is met, judged on evidence (--research=DEPTH researches first)"},
 {"cmd":"/research","args":"[d] Q","desc":"research Q on the web into a wiki (/research: the runs)","group":"conversation","paletteArgs":"[quick|standard|deep] QUESTION","paletteDesc":"a team researches the question on the web and publishes a wiki; alone, the runs; status|build|open|export RUN"},
 {"cmd":"/scan","args":"[d] [DIR]","desc":"map and hunt the repo, report what it proves (/scan: list)","group":"conversation","paletteArgs":"[survey|standard|deep] [DIR]","paletteDesc":"a team maps the repository at HEAD, hunts it for holes and reports what it proved; alone, the scans; status|report|rerun|compare SCAN"},
+{"cmd":"/pentest","args":"[d] T","desc":"attack a live target, report what it confirmed","group":"conversation","paletteArgs":"[quick|standard|deep] TARGET [GOAL]","paletteDesc":"a team attacks a live target over the network, records every exchange and reports what it confirmed; alone, the runs; status|report|check|coverage|close RUN"},
 {"cmd":"/new","args":"","desc":"start again, empty (same model and mode)","group":"conversation","paletteDesc":"start the conversation again, empty (the same model and mode)"},
 {"cmd":"/clear","args":"","desc":"the same as /new","group":"conversation","paletteDesc":"the same as /new"},
 {"cmd":"/resume","args":"[id]","desc":"pick an earlier session from a menu, and continue it","group":"conversation","paletteArgs":"[id]","paletteDesc":"continue an earlier session: the newest of this project, or one of the earlier ones listed as you type"},

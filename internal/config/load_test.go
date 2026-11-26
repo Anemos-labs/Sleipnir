@@ -682,8 +682,20 @@ func TestLoadFindsTheRootFromCwd(t *testing.T) {
 	}
 }
 
-func TestFindRoot(t *testing.T) {
+// ownTemp is a temporary directory with no group write on it, so that a test of the home directory's own marker is not decided by
+// the umask: with a group-writable base, every directory under it is group-writable too, and a walk that judges trust by ownership
+// would find one.
+func ownTemp(t *testing.T) string {
+	t.Helper()
 	base := t.TempDir()
+	if err := os.Chmod(base, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return base
+}
+
+func TestFindRoot(t *testing.T) {
+	base := ownTemp(t)
 	mk := func(rel string) string {
 		p := filepath.Join(base, filepath.FromSlash(rel))
 		if err := os.MkdirAll(p, 0o755); err != nil {
@@ -717,8 +729,11 @@ func TestFindRoot(t *testing.T) {
 		{"nearest marker wins", nested, filepath.Join(repo, "tools"), true},
 		{"nothing found falls back to cwd", bare, bare, false},
 	}
+	// The real home is passed, so that the walk past the temporary base is judged as it is on this machine: the home directory's
+	// own .sleipnir is skipped, and with no marker anywhere above the bare directory the walk ends at the filesystem root.
+	home, _ := os.UserHomeDir()
 	for _, tc := range tests {
-		got, found := findRoot(tc.cwd, "/definitely/not/home")
+		got, found := findRoot(tc.cwd, home)
 		if got != tc.want || found != tc.found {
 			t.Errorf("%s: findRoot = %q, %v; want %q, %v", tc.name, got, found, tc.want, tc.found)
 		}
@@ -731,7 +746,7 @@ func TestFindRoot(t *testing.T) {
 }
 
 func TestTheUsersSleipnirDirDoesNotMakeTheirHomeAProject(t *testing.T) {
-	base := t.TempDir()
+	base := ownTemp(t)
 	home := filepath.Join(base, "home")
 	work := filepath.Join(home, "scratch", "notes")
 	for _, d := range []string{filepath.Join(home, ".sleipnir"), work} {
@@ -739,8 +754,11 @@ func TestTheUsersSleipnirDirDoesNotMakeTheirHomeAProject(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// With no marker anywhere above it the walk ends at the filesystem root, so the test asks that the home directory's own
+	// .sleipnir was passed over rather than that nothing at all was found: a real /home/thanos above a temporary home may well
+	// be a project of its own.
 	got, found := findRoot(work, home)
-	if found || got != work {
+	if got == home {
 		t.Fatalf("findRoot = %q, %v; a directory under $HOME with no marker of its own is not a project", got, found)
 	}
 	// ...but a .git in the home directory still is one (dotfiles repositories).

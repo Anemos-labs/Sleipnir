@@ -30,6 +30,7 @@ const (
 	UpdateCheck     = "update-check"
 	Research        = "research"
 	Scan            = "scan"
+	Pentest         = "pentest"
 	RolePrefix      = "role:"
 	ViewPrefix      = "view:"
 )
@@ -50,6 +51,7 @@ var WebViews = []struct{ Name, Title, Description string }{
 	{"tools", "Tools", "every sleipnir command, with a form and its output; doctor and schedule"},
 	{"plugins", "Plugins", "switch plugins on and off and change their settings"},
 	{"memory", "Memory", "the agents' notes, the instruction files and the lessons, to read and edit"},
+	{"pentest", "Pentest", "the project's penetration tests: scope, assets, the exploration graph, findings and recorded traffic"},
 }
 
 // Builtin returns the manifests of the plugins compiled into Sleipnir, in
@@ -114,6 +116,9 @@ func Builtin() []Manifest {
 		{ID: Scan, Title: "Deep scan", Description: "/scan: a team maps a whole repository at a pinned commit, hunts it for holes, and reports only what verifiers confirmed and the sandbox reproduced",
 			Category: CatTeam, Off: true, Requires: []string{Goal},
 			Contributes: []Contribution{{KindTool, "scan"}, {KindSlash, "scan"}, {KindCLI, "scan"}}},
+		{ID: Pentest, Title: "Penetration test", Description: "/pentest: a team attacks a live target over the network, records every exchange through its own proxy, and reports only the holes it confirmed",
+			Category: CatTeam, Off: true, Requires: []string{Goal},
+			Contributes: []Contribution{{KindTool, "pentest"}, {KindSlash, "pentest"}, {KindCLI, "pentest"}, {KindView, "pentest"}, {KindNav, "pentest"}}},
 		{ID: UpdateCheck, Title: "Update check", Description: "say in the chat when a newer release is out", Category: CatTeam},
 	}
 	for _, r := range WorkerRoles {

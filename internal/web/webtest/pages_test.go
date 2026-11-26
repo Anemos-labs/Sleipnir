@@ -275,3 +275,26 @@ func TestWorkspaceDiffReadsBackwards(t *testing.T) {
 		t.Errorf("items.go at the start: exists %v, %d bytes, %d blame runs; want a file that is not there", c.Exists, len(c.Text), len(c.Blame))
 	}
 }
+
+func TestPentestRoute(t *testing.T) {
+	r := StartT(t, Options{})
+	var v PentestView
+	getJSON(t, r, "/api/sessions/shop/pentest", &v)
+	if !v.On || len(v.Depths) == 0 || len(v.Runs) != 2 {
+		t.Fatalf("the canned Pentest page has no runs or depths: %+v", v)
+	}
+	if !v.Runs[0].Active || v.Runs[0].Phase == "done" || v.Runs[1].Phase != "done" {
+		t.Errorf("want one run in work and one done: %+v", v.Runs)
+	}
+	var d map[string]any
+	getJSON(t, r, "/api/sessions/shop/pentest/pentest-20261009-2202-shop", &d)
+	if d["target"] != "https://staging.example.com" {
+		t.Errorf("detail target = %v", d["target"])
+	}
+	if code, b, _ := call(t, r, "GET", "/api/sessions/shop/pentest/nope", "", nil); code != 404 {
+		t.Errorf("GET a missing run = %d %s, want 404", code, b)
+	}
+	if code, b, _ := call(t, r, "GET", "/api/sessions/nope/pentest", "", nil); code != 404 {
+		t.Errorf("GET pentest of a tab that does not exist = %d %s, want 404", code, b)
+	}
+}

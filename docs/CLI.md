@@ -850,6 +850,47 @@ flags:
 ```
 <!-- /flags -->
 
+### `sleipnir pentest`
+
+`sleipnir pentest [RUN]` lists the project's penetration tests with their target, depth, phase and numbers, or shows where
+one run stands. `--report` rewrites the run's report (`REPORT.md`, `findings.json`, `findings.sarif`, `findings.csv`,
+`report.html`, `map.json`) from its ledger. Runs are started in the chat or the web page with `/pentest` (`docs/PENTEST.md`).
+
+<!-- flags: pentest -->
+```text
+usage: sleipnir pentest [RUN] [flags]
+
+The penetration tests of a project (docs/PENTEST.md). A run is started in the chat or the web page:
+/pentest [quick|standard|deep] TARGET [GOAL] has a team attack a live target over the network, record
+every exchange through the run's own recording proxy, and report only the holes it confirmed. Each run
+keeps its ledger, its captured traffic and its report under .sleipnir/pentest/RUN.
+
+Without RUN it lists the runs, newest first; with RUN it shows where the run stands. --start creates a run
+against TARGET and prints the goal that drives it, for a headless team:
+  sleipnir swarm 6 "$(sleipnir pentest --start --depth standard https://staging.example.com)"
+
+RUN --report rewrites the report files (REPORT.md, findings.json, findings.sarif, findings.csv,
+report.html, map.json) from the ledger and prints where they are. RUN --proxy prints the run's recording
+proxy address and CA, to point curl at it.
+
+flags:
+  -cwd string
+        the project (default: the current directory)
+  -depth string
+        with --start: quick, standard or deep (default "standard")
+  -goal string
+        with --start: what the test is for
+  -json
+        machine-readable output
+  -proxy
+        print RUN's recording proxy address and CA certificate path
+  -report
+        rewrite RUN's report files from its ledger and print where they are
+  -start
+        create a run against the positional TARGET and print the goal that drives it
+```
+<!-- /flags -->
+
 ### `sleipnir inspect`
 
 `sleipnir inspect DIR` serves the dashboard and prints its URL on stdout (with `--token`, the URL carries the token, which

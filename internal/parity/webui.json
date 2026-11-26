@@ -33,6 +33,11 @@
    "nav": true
   },
   {
+   "name": "pentest",
+   "title": "Pentest",
+   "nav": true
+  },
+  {
    "name": "plugins",
    "title": "Plugins",
    "nav": true
@@ -138,6 +143,14 @@
    "tab": null,
    "label": "Deep scan",
    "key": "d",
+   "radio": false
+  },
+  {
+   "id": "pentest",
+   "view": "pentest",
+   "tab": null,
+   "label": "Pentest",
+   "key": "n",
    "radio": false
   },
   {
@@ -260,6 +273,15 @@
   {
    "group": "conversation",
    "name": "/scan",
+   "kind": "slash",
+   "live": false,
+   "effects": [
+    "act:command"
+   ]
+  },
+  {
+   "group": "conversation",
+   "name": "/pentest",
    "kind": "slash",
    "live": false,
    "effects": [
@@ -733,6 +755,15 @@
   },
   {
    "group": "go to",
+   "name": "Pentest",
+   "kind": "view",
+   "live": true,
+   "effects": [
+    "view:pentest"
+   ]
+  },
+  {
+   "group": "go to",
    "name": "Run a command",
    "kind": "view",
    "live": true,
@@ -1162,6 +1193,15 @@
    "live": true,
    "effects": [
     "runner:models fav rm"
+   ]
+  },
+  {
+   "group": "the program (sleipnir ...)",
+   "name": "sleipnir pentest",
+   "kind": "program",
+   "live": true,
+   "effects": [
+    "runner:pentest"
    ]
   },
   {
@@ -1914,6 +1954,7 @@
    "/mode",
    "/model",
    "/new",
+   "/pentest",
    "/permissions",
    "/plan",
    "/plugins",
@@ -2654,6 +2695,7 @@
    "swarm",
    "research",
    "scan",
+   "pentest",
    "schedule",
    "schedule add",
    "schedule rm",
@@ -2912,6 +2954,22 @@
      "report",
      "rerun",
      "since",
+     "start"
+    ],
+    "modeWith": {}
+   },
+   "pentest": {
+    "mode": "run",
+    "positionals": [
+     "RUN"
+    ],
+    "flags": [
+     "cwd",
+     "depth",
+     "goal",
+     "json",
+     "proxy",
+     "report",
      "start"
     ],
     "modeWith": {}

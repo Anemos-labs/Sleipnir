@@ -281,7 +281,7 @@ func (ev *evaluator) ownInterpreter(real, name, shown string) string {
 	case ev.rs.inWorkspace(target):
 		return shown + " runs a program of the workspace, not an installed python"
 	case !trustedInterpreter(target):
-		return shown + " runs " + target + ", which someone other than you or root can change"
+		return shown + " runs the interpreter " + target + ", which someone other than you or root can change"
 	}
 	f, err := openNoWait(target)
 	if err != nil {

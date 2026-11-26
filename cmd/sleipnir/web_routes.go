@@ -350,6 +350,39 @@ func (h *webHostImpl) routes(srv *web.Server) {
 		}
 		ok(w, res)
 	})
+	// 10d. Penetration test: the runs, one run in full, starting one, and acting on one.
+	h.tabRoute(srv, "GET /api/sessions/{id}/pentest", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
+		runs, plugin := []wire.PentestRun{}, false
+		if s := t.session(); s != nil && s.PentestStore() != nil {
+			runs, plugin = s.PentestRuns(), true
+		}
+		ok(w, map[string]any{"runs": runs, "depths": session.PentestDepths(), "on": plugin})
+	})
+	h.tabRoute(srv, "GET /api/sessions/{id}/pentest/{slug}", web.RouteOpts{}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
+		s := t.session()
+		if s == nil {
+			writeErr(w, t.noSession())
+			return
+		}
+		d, err := s.PentestDetail(r.PathValue("slug"))
+		if err != nil {
+			writeErr(w, werr(http.StatusNotFound, "no_run", err.Error()))
+			return
+		}
+		ok(w, d)
+	})
+	h.tabRoute(srv, "POST /api/sessions/{id}/pentest", web.RouteOpts{MaxBody: goalBodyMax}, func(w http.ResponseWriter, r *http.Request, t *webTab) {
+		var body wire.PentestRequest
+		if !web.DecodeJSON(w, r, &body) {
+			return
+		}
+		res, err := t.pentestAction(r.Context(), body)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		ok(w, res)
+	})
 	srv.HandleFunc("POST /api/scan/clone", h.scanClone, web.RouteOpts{WriteTimeout: 20 * time.Minute})
 	srv.HandleFunc("GET /api/scan/clone/progress", h.scanCloneProgress, web.RouteOpts{})
 
