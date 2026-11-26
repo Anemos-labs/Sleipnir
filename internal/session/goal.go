@@ -16,6 +16,7 @@ import (
 	"github.com/anemos-labs/sleipnir/internal/events"
 	"github.com/anemos-labs/sleipnir/internal/goal"
 	"github.com/anemos-labs/sleipnir/internal/kv"
+	"github.com/anemos-labs/sleipnir/internal/pentest"
 	"github.com/anemos-labs/sleipnir/internal/plan"
 	"github.com/anemos-labs/sleipnir/internal/provider"
 	"github.com/anemos-labs/sleipnir/internal/scan"
@@ -691,6 +692,13 @@ func (s *Session) noteObjective(g *goal.State) {
 	s.mu.Lock()
 	s.objective = g.Objective
 	s.mu.Unlock()
+	if slug := pentest.ObjectiveSlug(g.Objective); slug != "" {
+		if s.pentest == nil {
+			s.notice("", "pentest: this goal drives the run "+slug+", but the pentest plugin is off, so the team has no pentest tool: stop, run sleipnir plugins enable pentest, and start the session again")
+		} else if err := s.pentest.store.Bind(slug); err != nil {
+			s.notice("", "pentest: "+err.Error())
+		}
+	}
 	if slug := scan.ObjectiveSlug(g.Objective); slug != "" {
 		if s.scan == nil {
 			s.notice("", "scan: this goal drives the scan "+slug+", but the scan plugin is off, so the team has no scan tool: stop, run sleipnir plugins enable scan, and start the session again")

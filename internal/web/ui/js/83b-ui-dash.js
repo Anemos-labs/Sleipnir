@@ -87,6 +87,10 @@
     ['research.runs', 'Research runs', 'every run of the project: its phase, its evidence, its wiki and the export', 0, 0, 7, 12, 3, 3, 'list'],
     ['research.new', 'New research', 'a question and a depth: the team researches it into a wiki', 7, 0, 5, 12, 3, 3],
   ]);
+  page('pentest', { title: 'Pentest', view: 'pentest', wrap: 'ptv' }, [
+    ['pentest.runs', 'Runs', 'every penetration test of the project: its target, its phase, its numbers and its findings by severity', 0, 0, 8, 12, 3, 3, 'list'],
+    ['pentest.new', 'New test', 'a target, what the test is for, and a depth', 8, 0, 4, 12, 3, 3],
+  ]);
   page('scan', { title: 'Deep scan', view: 'scan', wrap: 'scanv' }, [
     ['scan.runs', 'Scans', 'every deep scan of the project: its phase, its numbers, its findings by severity', 0, 0, 4, 12, 3, 3, 'list'],
     ['scan.findings', 'Report', 'the selected scan\'s report: its summary, its findings filtered by severity, status and category, each with its trace, verdicts and reproductions; open an issue or fix one', 4, 0, 8, 12, 4, 3, 'list'],
@@ -184,6 +188,7 @@
     ['replay', 'Replay', 'the session as a recording: scrub and speed'],
     ['sessions', 'Sessions', 'live and recorded sessions'],
     ['research', 'Research', 'deep research runs and their wikis'],
+    ['pentest', 'Pentest', 'penetration tests of a live target: its scope, assets, findings and recorded traffic'],
     ['tools', 'Tools', 'every sleipnir command, with a form'],
     ['doctor', 'Doctor', 'probe an endpoint'],
     ['schedule', 'Schedule', 'cron jobs and the daemon'],

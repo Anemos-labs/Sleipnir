@@ -306,6 +306,7 @@ const chatHelp = `conversation
 /goal TEXT         work until it is met, judged on evidence (/goal: status)
 /research [d] Q    research Q on the web into a wiki (/research: the runs)
 /scan [d] [DIR]    map and hunt the repo, report what it proves (/scan: list)
+/pentest [d] T     attack a live target, report what it confirmed
 /new               start again, empty (same model and mode)
 /clear             the same as /new
 /resume [id]       pick an earlier session from a menu, and continue it

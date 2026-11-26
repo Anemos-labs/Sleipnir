@@ -15,6 +15,7 @@ Every document in this directory, grouped by what it is for.
 | [GitHub delivery](GITHUB-DELIVERY.md) | Auto-fix of CI and reviews, and auto-merge |
 | [Deep research](RESEARCH.md) | The `research` plugin: a question turned into a cited wiki |
 | [Deep scan](SCAN.md) | The `scan` plugin: a team review of a whole repository |
+| [Penetration test](PENTEST.md) | The `pentest` plugin: a team attack on a live target, with recorded evidence |
 | [Security model](SECURITY.md) | What the setup protects against, OS hardening, and reporting a vulnerability |
 | [Capabilities and limitations](STATUS.md) | What is supported and its known limits |
 
