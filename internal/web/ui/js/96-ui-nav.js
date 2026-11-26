@@ -40,7 +40,7 @@
     { id: 'files', view: 'workspace', tab: 'files', label: 'Files', key: 'f', about: 'the project\'s files, as of any checkpoint' },
     { id: 'research', view: 'research', label: 'Research', key: 'w', about: 'deep research runs and the wikis they publish' },
     { id: 'scan', view: 'scan', label: 'Deep scan', short: 'Scan', key: 'd', about: 'deep scans of a repository: its map, its attack surface, and the findings verifiers confirmed' },
-    { id: 'pentest', view: 'pentest', label: 'Pentest', key: 't', about: 'penetration tests of a live target: its scope, assets, findings and recorded traffic' },
+    { id: 'pentest', view: 'pentest', label: 'Pentest', key: 'n', about: 'penetration tests of a live target: its scope, assets, findings and recorded traffic' },
     { id: 'checkpoints', view: 'workspace', tab: 'checkpoints', label: 'Checkpoints', key: 'k', grp: 'inspect', about: 'the saved states of the files, to compare or roll back' },
     { id: 'merge', view: 'workspace', tab: 'merge', label: 'Merge', key: 'q', about: 'what is verified and merged, and applying it' },
     { id: 'mail', view: 'mail', label: 'Mail', key: 'm', about: 'the messages the agents send each other' },

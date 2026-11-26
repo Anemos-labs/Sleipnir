@@ -150,7 +150,7 @@
    "view": "pentest",
    "tab": null,
    "label": "Pentest",
-   "key": "t",
+   "key": "n",
    "radio": false
   },
   {
@@ -2695,6 +2695,7 @@
    "swarm",
    "research",
    "scan",
+   "pentest",
    "schedule",
    "schedule add",
    "schedule rm",
@@ -2779,8 +2780,7 @@
    "rl tasks stats",
    "rl tasks update-scorer",
    "rl tasks validate",
-   "rl verify",
-   "pentest"
+   "rl verify"
   ],
   "commands": {
    "chat": {
@@ -2954,6 +2954,22 @@
      "report",
      "rerun",
      "since",
+     "start"
+    ],
+    "modeWith": {}
+   },
+   "pentest": {
+    "mode": "run",
+    "positionals": [
+     "RUN"
+    ],
+    "flags": [
+     "cwd",
+     "depth",
+     "goal",
+     "json",
+     "proxy",
+     "report",
      "start"
     ],
     "modeWith": {}
@@ -4444,22 +4460,6 @@
      "RUN_DIR"
     ],
     "flags": [],
-    "modeWith": {}
-   },
-   "pentest": {
-    "mode": "run",
-    "positionals": [
-     "RUN"
-    ],
-    "flags": [
-     "cwd",
-     "depth",
-     "goal",
-     "json",
-     "proxy",
-     "report",
-     "start"
-    ],
     "modeWith": {}
    }
   }
